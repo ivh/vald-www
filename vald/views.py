@@ -185,10 +185,11 @@ def showline_online_submit(request):
     # Validate form
     form = ShowLineOnlineForm(request.POST)
     if not form.is_valid():
-        # Show form errors
+        # Show form errors with field names
         for field, errors in form.errors.items():
             for error in errors:
-                messages.error(request, error)
+                field_label = form.fields[field].label if field in form.fields else field
+                messages.error(request, f"{field_label}: {error}")
         context['form'] = form
         return render(request, 'vald/showline-online.html', context)
 
