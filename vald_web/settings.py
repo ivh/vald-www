@@ -153,3 +153,4 @@ VALD_PARSEREQUEST_BIN = VALD_BIN / 'parserequest'  # parserequest binary
 VALD_WORKING_DIR = BASE_DIR / 'working'  # Separate from email-based TMP_WORKING
 VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'  # Output directory for results
 VALD_DIRECT_SUBMISSION = True  # Enable direct submission (bypassing email)
+VALD_MAX_WORKERS = 2  # Maximum parallel job executions (FIFO queue)

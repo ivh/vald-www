@@ -5,8 +5,99 @@ Bypasses email system and calls parserequest binary directly.
 import os
 import re
 import subprocess
+import queue
+import threading
 from pathlib import Path
 from django.conf import settings
+
+
+class JobQueue:
+    """
+    FIFO job queue with worker threads to limit parallel job execution.
+
+    Ensures only N jobs run concurrently while maintaining submission order.
+    Jobs submitted while workers are busy will wait in queue.
+    """
+
+    def __init__(self, max_workers=2):
+        """
+        Initialize job queue with worker threads.
+
+        Args:
+            max_workers: Maximum number of jobs to run in parallel (default: 2)
+        """
+        self.job_queue = queue.Queue()
+        self.max_workers = max_workers
+        self.workers = []
+        self._start_workers()
+
+    def _start_workers(self):
+        """Start worker threads that process jobs from the queue."""
+        for i in range(self.max_workers):
+            worker = threading.Thread(
+                target=self._worker,
+                name=f"VALDJobWorker-{i}",
+                daemon=True
+            )
+            worker.start()
+            self.workers.append(worker)
+
+    def _worker(self):
+        """Worker thread function - processes jobs from queue until program exits."""
+        while True:
+            job_func, result_queue = self.job_queue.get()
+            try:
+                result = job_func()
+                result_queue.put(('success', result))
+            except Exception as e:
+                result_queue.put(('error', str(e)))
+            finally:
+                self.job_queue.task_done()
+
+    def submit(self, job_func):
+        """
+        Submit a job to the queue and wait for result.
+
+        Args:
+            job_func: Callable that executes the job and returns result
+
+        Returns:
+            Result from job_func()
+
+        Raises:
+            Exception: If job_func raises an exception
+        """
+        result_queue = queue.Queue()
+        self.job_queue.put((job_func, result_queue))
+        status, result = result_queue.get()
+
+        if status == 'error':
+            raise Exception(result)
+        return result
+
+
+# Global job queue instance
+_job_queue = None
+_queue_lock = threading.Lock()
+
+
+def get_job_queue():
+    """
+    Get or create the global job queue instance.
+
+    Returns:
+        JobQueue: Singleton job queue instance
+    """
+    global _job_queue
+
+    if _job_queue is None:
+        with _queue_lock:
+            # Double-check locking pattern
+            if _job_queue is None:
+                max_workers = getattr(settings, 'VALD_MAX_WORKERS', 2)
+                _job_queue = JobQueue(max_workers)
+
+    return _job_queue
 
 
 def uuid_to_6digit(uuid_obj):
@@ -111,7 +202,9 @@ def submit_request_direct(request_obj):
     if not job_file.exists():
         return (False, f"job script not created: {job_file}")
 
-    try:
+    # Define job execution function for queue
+    def execute_job():
+        """Execute the job script - this runs in worker thread."""
         # Make job executable
         os.chmod(job_file, 0o755)
 
@@ -126,8 +219,14 @@ def submit_request_direct(request_obj):
         )
 
         if result.returncode != 0:
-            return (False, f"Job execution failed: {result.stderr}")
+            raise Exception(f"Job execution failed: {result.stderr}")
 
+        return result
+
+    # Submit job to queue (blocks until job completes)
+    try:
+        job_queue = get_job_queue()
+        result = job_queue.submit(execute_job)
     except subprocess.TimeoutExpired:
         return (False, "Job execution timed out")
     except Exception as e:
