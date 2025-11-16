@@ -436,34 +436,62 @@ def handle_extract_request(request):
         else:
             email_context[key] = value
 
-    # Render request template
-    mail_content = render_request_template(reqtype, email_context)
-    subject = form.cleaned_data.get('subject', f'VALD {reqtype} request')
+    # Create Request record for tracking
+    req_obj = Request.objects.create(
+        user_email=user_email,
+        user_name=request.session.get('name', user_email),
+        request_type=reqtype,
+        parameters=form.cleaned_data,
+        status='pending'
+    )
 
     try:
-        # Send email (existing behavior)
-        send_mail(
-            subject if subject else f'VALD {reqtype} request',
-            mail_content,
-            user_email,
-            [settings.VALD_REQUEST_EMAIL],
-            fail_silently=False,
-        )
+        # Check if direct submission is enabled
+        if getattr(settings, 'VALD_DIRECT_SUBMISSION', False):
+            # Direct submission - bypass email system
+            from .backend import submit_request_direct
 
-        # Create Request record for tracking
-        req_obj = Request.objects.create(
-            user_email=user_email,
-            user_name=request.session.get('name', user_email),
-            request_type=reqtype,
-            parameters=form.cleaned_data,
-            status='pending'
-        )
+            # Update status to processing
+            req_obj.status = 'processing'
+            req_obj.save()
+
+            # Submit directly to backend
+            success, result = submit_request_direct(req_obj)
+
+            if success:
+                # Update request with output file
+                req_obj.status = 'complete'
+                req_obj.output_file = result
+                req_obj.save()
+                messages.success(request, 'Your request has been processed successfully.')
+            else:
+                # Processing failed
+                req_obj.status = 'failed'
+                req_obj.save()
+                messages.error(request, f'Request processing failed: {result}')
+
+        else:
+            # Email-based submission (legacy)
+            mail_content = render_request_template(reqtype, email_context)
+            subject = form.cleaned_data.get('subject', f'VALD {reqtype} request')
+
+            send_mail(
+                subject if subject else f'VALD {reqtype} request',
+                mail_content,
+                user_email,
+                [settings.VALD_REQUEST_EMAIL],
+                fail_silently=False,
+            )
+            messages.success(request, 'Your request has been submitted successfully.')
 
         # Redirect to request detail page
-        messages.success(request, 'Your request has been submitted successfully.')
         return redirect('vald:request_detail', uuid=req_obj.uuid)
 
     except Exception as e:
+        # Mark request as failed
+        req_obj.status = 'failed'
+        req_obj.save()
+
         messages.error(request, f'A problem occurred when processing your input: {e}')
         context['form'] = form
         template_map = {

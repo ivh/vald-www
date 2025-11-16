@@ -147,3 +147,9 @@ DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
 SITENAME = 'VALD'
 MAINTENANCE = False
+
+# Backend processing configuration
+VALD_PARSEREQUEST_BIN = BASE_DIR / 'bin' / 'parserequest'  # parserequest binary
+VALD_WORKING_DIR = BASE_DIR / 'EMS' / 'DJANGO_WORKING'  # Separate from email-based TMP_WORKING
+VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'  # Output directory for results
+VALD_DIRECT_SUBMISSION = True  # Enable direct submission (bypassing email)

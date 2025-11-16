@@ -1,0 +1,216 @@
+"""
+Backend processing functions for direct VALD request submission.
+Bypasses email system and calls parserequest binary directly.
+"""
+import os
+import re
+import subprocess
+from pathlib import Path
+from django.conf import settings
+
+
+def get_client_name(user_email):
+    """
+    Extract ClientName from user email by looking up in clients.register.
+    Returns alphanumeric-only version of the name.
+    """
+    from .utils import validate_user_email
+
+    is_valid, user_name, is_local = validate_user_email(user_email)
+    if not is_valid:
+        return None
+
+    # Convert to alphanumeric only (matching parsemail.c logic line 86)
+    client_name = ''.join(c for c in user_name if c.isalnum())
+
+    if is_local:
+        client_name += '_local'
+
+    return client_name
+
+
+def submit_request_direct(request_obj):
+    """
+    Submit a request directly to the backend processing system.
+
+    Args:
+        request_obj: Request model instance with user_email, request_type, parameters
+
+    Returns:
+        tuple: (success, output_file_path or error_message)
+    """
+    # Get client name
+    client_name = get_client_name(request_obj.user_email)
+    if not client_name:
+        return (False, "User not registered")
+
+    # Ensure working directory exists
+    working_dir = settings.VALD_WORKING_DIR
+    working_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use UUID for all filenames
+    request_id = str(request_obj.uuid)
+
+    # Create request file
+    request_file = working_dir / f"request.{request_id}"
+    try:
+        with open(request_file, 'w') as f:
+            # Write request content in VALD format
+            content = format_request_file(request_obj)
+            f.write(content)
+    except Exception as e:
+        return (False, f"Failed to create request file: {e}")
+
+    # Call parserequest binary
+    try:
+        parserequest_bin = settings.VALD_PARSEREQUEST_BIN
+        if not parserequest_bin.exists():
+            return (False, f"parserequest binary not found: {parserequest_bin}")
+
+        # parserequest expects: ./parserequest request.NNNNNN ClientName
+        # It will create job.NNNNNN in current directory
+        result = subprocess.run(
+            [str(parserequest_bin), str(request_file.name), client_name],
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode != 0:
+            return (False, f"parserequest failed: {result.stderr}")
+
+    except subprocess.TimeoutExpired:
+        return (False, "parserequest timed out")
+    except Exception as e:
+        return (False, f"Error calling parserequest: {e}")
+
+    # Execute generated job script
+    job_file = working_dir / f"job.{request_id}"
+    if not job_file.exists():
+        return (False, f"job script not created: {job_file}")
+
+    try:
+        # Make job executable
+        os.chmod(job_file, 0o755)
+
+        # Execute job script
+        # Note: job script expects to run in working directory
+        result = subprocess.run(
+            [str(job_file)],
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout for extraction
+        )
+
+        if result.returncode != 0:
+            return (False, f"Job execution failed: {result.stderr}")
+
+    except subprocess.TimeoutExpired:
+        return (False, "Job execution timed out")
+    except Exception as e:
+        return (False, f"Error executing job: {e}")
+
+    # Find output file
+    # parserequest creates files like: ClientName.UUID.gz in VALD_FTP_DIR
+    output_file = settings.VALD_FTP_DIR / f"{client_name}.{request_id}.gz"
+
+    if output_file.exists():
+        return (True, str(output_file))
+    else:
+        # Check if it's in working directory (might need to move it)
+        working_output = working_dir / f"{client_name}.{request_id}.gz"
+        if working_output.exists():
+            # Move to FTP directory
+            settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
+            working_output.rename(output_file)
+            return (True, str(output_file))
+        else:
+            return (False, f"Output file not found: {output_file}")
+
+
+def format_request_file(request_obj):
+    """
+    Format request parameters into VALD request file format.
+    This is the format that parserequest expects.
+
+    Args:
+        request_obj: Request model instance
+
+    Returns:
+        str: Formatted request content
+    """
+    params = request_obj.parameters
+    reqtype = request_obj.request_type
+
+    lines = ["begin request"]
+
+    # Request type
+    type_map = {
+        'extractall': 'extract all',
+        'extractelement': 'extract element',
+        'extractstellar': 'extract stellar',
+        'showline': 'show line',
+    }
+    lines.append(type_map.get(reqtype, reqtype))
+
+    # Configuration
+    pconf = params.get('pconf', 'default')
+    lines.append(f"{pconf} configuration")
+
+    # Retrieval method - always use viaftp for direct submissions
+    lines.append("via ftp")
+
+    # Format
+    if 'format' in params:
+        lines.append(f"{params['format']} format")
+
+    # Units and medium
+    if 'waveunit' in params:
+        lines.append(f"waveunit {params['waveunit']}")
+    if 'energyunit' in params:
+        lines.append(f"energyunit {params['energyunit']}")
+    if 'medium' in params:
+        lines.append(f"medium {params['medium']}")
+
+    # Isotopic scaling
+    if 'isotopic_scaling' in params:
+        lines.append(f"isotopic scaling {params['isotopic_scaling']}")
+
+    # VdW format
+    if 'vdwformat' in params and params['vdwformat'] != 'default':
+        lines.append(f"{params['vdwformat']} waals")
+
+    # Flags (hrad, hstark, hwaals, hlande, hterm, hfssplit)
+    for flag in ['hrad', 'hstark', 'hwaals', 'hlande', 'hterm', 'hfssplit']:
+        if params.get(flag):
+            # These are stored as their label values in parameters
+            lines.append(params[flag])
+
+    # Request-specific parameters
+    if reqtype == 'extractall':
+        if 'stwvl' in params and 'endwvl' in params:
+            lines.append(f"{params['stwvl']}, {params['endwvl']}")
+
+    elif reqtype == 'extractelement':
+        if 'stwvl' in params and 'endwvl' in params:
+            lines.append(f"{params['stwvl']}, {params['endwvl']}")
+        if 'element' in params:
+            lines.append(params['element'])
+
+    elif reqtype == 'extractstellar':
+        if 'stwvl' in params and 'endwvl' in params:
+            lines.append(f"{params['stwvl']}, {params['endwvl']}")
+        if 'teff' in params and 'logg' in params:
+            lines.append(f"{params['teff']}, {params['logg']}")
+
+    elif reqtype == 'showline':
+        if 'wvl0' in params and 'win0' in params:
+            lines.append(f"{params['wvl0']}, {params['win0']}")
+        if 'el0' in params:
+            lines.append(params['el0'])
+
+    lines.append("end request")
+
+    return '\n'.join(lines) + '\n'
