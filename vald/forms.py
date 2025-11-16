@@ -452,3 +452,52 @@ the world."""
         if '@' not in email:
             raise ValidationError("Your email address should at least contain a '@'!")
         return email
+
+
+class ShowLineOnlineForm(forms.Form):
+    """Show Line Online form - single wavelength/window/element set for immediate execution"""
+    wvl0 = forms.FloatField(
+        label='Approximate wavelength',
+        required=True,
+        min_value=0.01,
+        widget=forms.TextInput(attrs={'size': '10'})
+    )
+    win0 = forms.FloatField(
+        label='Wavelength window',
+        required=True,
+        min_value=0.01,
+        max_value=5.0,
+        widget=forms.TextInput(attrs={'size': '10'})
+    )
+    el0 = forms.CharField(
+        label='Element [ + ionization ]',
+        required=True,
+        max_length=20,
+        widget=forms.TextInput(attrs={'size': '5'})
+    )
+    pconf = forms.ChoiceField(
+        label='Linelist configuration',
+        choices=[('default', 'Default'), ('personal', 'Custom')],
+        initial='default',
+        widget=forms.RadioSelect
+    )
+    isotopic_scaling = forms.ChoiceField(
+        label='Isotopic scaling of oscillator strength',
+        choices=[('on', 'On'), ('off', 'Off')],
+        initial='on',
+        widget=forms.RadioSelect
+    )
+
+    def clean_el0(self):
+        el = self.cleaned_data['el0'].strip()
+        parts = el.split()
+
+        if len(parts) > 1:
+            # Check if ionization stage is a number
+            ionization = parts[1]
+            if ionization and not ionization.isdigit():
+                raise ValidationError(
+                    "Please express the ionization stage as an arabic number"
+                )
+
+        return el

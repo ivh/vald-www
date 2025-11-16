@@ -14,6 +14,7 @@ from .forms import (
     ExtractStellarForm,
     ShowLineForm,
     ContactForm,
+    ShowLineOnlineForm,
 )
 from .utils import (
     validate_user_email,
@@ -166,6 +167,7 @@ def showline(request):
 def showline_online(request):
     """Show Line Online form"""
     context = get_user_context(request)
+    context['form'] = ShowLineOnlineForm()
     return render(request, 'vald/showline-online.html', context)
 
 
@@ -180,12 +182,22 @@ def showline_online_submit(request):
     if request.method != 'POST':
         return redirect('vald:showline_online')
 
-    # Get form data
-    wvl0 = request.POST.get('wvl0', '')
-    win0 = request.POST.get('win0', '')
-    el0 = request.POST.get('el0', '')
-    pconf = request.POST.get('pconf', 'default')
-    isotopic_scaling = request.POST.get('isotopic_scaling', 'on')
+    # Validate form
+    form = ShowLineOnlineForm(request.POST)
+    if not form.is_valid():
+        # Show form errors
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, error)
+        context['form'] = form
+        return render(request, 'vald/showline-online.html', context)
+
+    # Get validated form data
+    wvl0 = form.cleaned_data['wvl0']
+    win0 = form.cleaned_data['win0']
+    el0 = form.cleaned_data['el0']
+    pconf = form.cleaned_data['pconf']
+    isotopic_scaling = form.cleaned_data['isotopic_scaling']
 
     # Determine config file to use
     email = request.session.get('email')

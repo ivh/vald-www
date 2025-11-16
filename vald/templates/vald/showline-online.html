@@ -1,52 +1,5 @@
 {% extends "vald/base.html" %}
 
-{% block extra_head %}
-<script>
-function sendIt() {
-  var go = false;
-  for (var i=0; i < 1; i++) {
-    var j = 3 * i;
-    if ( (document.bottomform.elements[j].value.length != 0)
-        | (document.bottomform.elements[j].value.length != 0)
-        | (document.bottomform.elements[j].value.length != 0)
-        | (go == false) ) {
-      if (document.bottomform.elements[j].value.length == 0)
-         { alert("Please enter a value in the 'Approximate wavelength' field");
-           return false }
-      if (document.bottomform.elements[j].value <=0 )
-         { alert("Please provide a positive value in the 'Approximate wavelength' field");
-           return false }
-      if (document.bottomform.elements[j+1].value.length == 0)
-         { alert("Please enter a value in the 'Wavelength window' field");
-           return false }
-      if (document.bottomform.elements[j+1].value <=0 )
-         { alert("Please provide a positive value in the 'Wavelength window' field");
-           return false }
-      if (document.bottomform.elements[j+1].value >5 )
-         { alert("Maximum wavelength window size allowed is 5 A");
-           return false }
-      if (document.bottomform.elements[j+2].value.length == 0)
-         { alert("Please enter a value in the 'Element + ionization' field");
-           return false }
-      else { elmion = document.bottomform.elements[j+2].value.split(" ");
-         if (elmion.length > 1)
-         { if ( (elmion[1].length > 0) && (isNaN(parseInt(elmion[1]))) )
-              { alert("Please express the ionization stage as an arabic number");
-            return false }
-         }
-           }
-      go = true;
-    }
-  }
-  document.bottomform.submit();
-  return true;
-}
-function resetIt() {
-  document.bottomform.reset();
-}
-</script>
-{% endblock %}
-
 {% block content %}
 <form name="bottomform" method="post" action="{% url 'vald:showline_online_submit' %}">
 {% csrf_token %}
@@ -57,39 +10,28 @@ function resetIt() {
 
 <tr><td>Approximate wavelength<td>Wavelength window<td>Element [ +
 ionization ]
-<tr><td><input name="wvl0" type="text" size=10>  &Aring; (air)
-<td><input name="win0" type="text" size=10>  &Aring; (air)
-<td><input name="el0" type="text" size=5>
+<tr><td>{{ form.wvl0 }}  &Aring; (air)
+<td>{{ form.win0 }}  &Aring; (air)
+<td>{{ form.el0 }}
 
 <tr><td colspan=3><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td><input type="radio" name="pconf" value="default" checked> Default
-<tr><td><td><input type="radio" name="pconf" value="personal"> Custom
+<td>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
 
 <tr><td colspan=3><hr>
 <tr><td>Isotopic scaling of oscillator strength
-<td><input type="radio" name="isotopic_scaling" value="on" checked> On
+<td>{% for radio in form.isotopic_scaling %}<div>{{ radio }}</div>{% endfor %}
 <td>
 <i>(Takes precendence over the default value set in the
 <a href="{% url 'vald:unitselection' %}">unit selection</a> dialog)</i>
-<tr><td><td><input type="radio" name="isotopic_scaling" value="off"> Off
 
 <tr><td colspan=3><hr>
 
 <tr>
 <input type="hidden" name="reqtype" value="showline-online">
-<td><input type="button" value="Submit request" onClick="sendIt()">
-<td><input type="button" value="Reset form" onClick="resetIt()">
+<td><input type="submit" value="Submit request">
+<td><input type="reset" value="Reset form">
 
 </table>
-
-<script>
-  for (var i = 0; i < document.bottomform.elements.isotopic_scaling.length; i++) {
-         document.bottomform.elements.isotopic_scaling[i].checked = false;
-         if(document.bottomform.elements.isotopic_scaling[i].value == "{{ isotopic_scaling }}") {
-                 document.bottomform.elements.isotopic_scaling[i].checked = true;
-         }
-  }
-</script>
 </form>
 {% endblock %}
