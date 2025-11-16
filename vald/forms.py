@@ -25,9 +25,8 @@ class ExtractAllForm(forms.Form):
     )
     viaftp = forms.ChoiceField(
         label='Retrieve data via',
-        choices=[('', 'Email'), ('via ftp', 'FTP')],
-        initial='',
-        required=False,
+        choices=[('email', 'Email'), ('via ftp', 'FTP')],
+        initial='email',
         widget=forms.RadioSelect
     )
     hfssplit = forms.BooleanField(
@@ -116,9 +115,8 @@ class ExtractElementForm(forms.Form):
     )
     viaftp = forms.ChoiceField(
         label='Retrieve data via',
-        choices=[('', 'Email'), ('via ftp', 'FTP')],
-        initial='',
-        required=False,
+        choices=[('email', 'Email'), ('via ftp', 'FTP')],
+        initial='email',
         widget=forms.RadioSelect
     )
     hfssplit = forms.BooleanField(
@@ -247,9 +245,8 @@ class ExtractStellarForm(forms.Form):
     )
     viaftp = forms.ChoiceField(
         label='Retrieve data via',
-        choices=[('', 'Email'), ('via ftp', 'FTP')],
-        initial='',
-        required=False,
+        choices=[('email', 'Email'), ('via ftp', 'FTP')],
+        initial='email',
         widget=forms.RadioSelect
     )
     hfssplit = forms.BooleanField(
