@@ -1,4 +1,59 @@
 from django.db import models
+from django.contrib.auth.hashers import make_password, check_password
+import secrets
+
+
+class User(models.Model):
+    """User model for authentication - supports multiple emails per user"""
+    name = models.CharField(max_length=255)
+    affiliation = models.TextField(blank=True)  # Free text from clients.register
+    password = models.CharField(max_length=128, blank=True, null=True)  # Null = needs activation
+    activation_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User"
+        verbose_name_plural = "Users"
+
+    def __str__(self):
+        return f"{self.name}"
+
+    def set_password(self, raw_password):
+        """Hash and set password"""
+        self.password = make_password(raw_password)
+        self.activation_token = None  # Clear activation token once password is set
+
+    def check_password(self, raw_password):
+        """Check if password matches"""
+        if not self.password:
+            return False
+        return check_password(raw_password, self.password)
+
+    def generate_activation_token(self):
+        """Generate a unique activation token"""
+        self.activation_token = secrets.token_urlsafe(32)
+        return self.activation_token
+
+    def needs_activation(self):
+        """Check if user needs to set password"""
+        return not self.password
+
+
+class UserEmail(models.Model):
+    """Email addresses for users - supports multiple emails per user"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='emails')
+    email = models.EmailField(unique=True, db_index=True)
+    is_primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "User Email"
+        verbose_name_plural = "User Emails"
+
+    def __str__(self):
+        return f"{self.email} ({self.user.name})"
 
 
 class UserPreferences(models.Model):
