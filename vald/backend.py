@@ -9,6 +9,26 @@ from pathlib import Path
 from django.conf import settings
 
 
+def uuid_to_6digit(uuid_obj):
+    """
+    Convert a UUID to a 6-digit number for legacy backend compatibility.
+
+    The parserequest binary expects numeric IDs and uses atol() to parse them.
+    We hash the UUID to get a deterministic 6-digit number.
+
+    Args:
+        uuid_obj: UUID object or string representation
+
+    Returns:
+        int: 6-digit number (0-999999)
+    """
+    uuid_str = str(uuid_obj)
+    # Hash the UUID string and take modulo 1000000
+    hash_val = hash(uuid_str)
+    # Ensure positive number
+    return abs(hash_val) % 1000000
+
+
 def get_client_name(user_email):
     """
     Extract ClientName from user email by looking up in clients.register.
@@ -48,11 +68,12 @@ def submit_request_direct(request_obj):
     working_dir = settings.VALD_WORKING_DIR
     working_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use UUID for all filenames
-    request_id = str(request_obj.uuid)
+    # Convert UUID to 6-digit number for backend compatibility
+    # parserequest uses atol() which can't parse UUIDs
+    backend_id = uuid_to_6digit(request_obj.uuid)
 
-    # Create request file
-    request_file = working_dir / f"request.{request_id}"
+    # Create request file with 6-digit ID
+    request_file = working_dir / f"request.{backend_id:06d}"
     try:
         with open(request_file, 'w') as f:
             # Write request content in VALD format
@@ -85,8 +106,8 @@ def submit_request_direct(request_obj):
     except Exception as e:
         return (False, f"Error calling parserequest: {e}")
 
-    # Execute generated job script
-    job_file = working_dir / f"job.{request_id}"
+    # Execute generated job script (parserequest creates job.NNNNNN)
+    job_file = working_dir / f"job.{backend_id:06d}"
     if not job_file.exists():
         return (False, f"job script not created: {job_file}")
 
@@ -113,14 +134,14 @@ def submit_request_direct(request_obj):
         return (False, f"Error executing job: {e}")
 
     # Find output file
-    # parserequest creates files like: ClientName.UUID.gz in VALD_FTP_DIR
-    output_file = settings.VALD_FTP_DIR / f"{client_name}.{request_id}.gz"
+    # parserequest creates files like: ClientName.NNNNNN.gz
+    output_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.gz"
 
     if output_file.exists():
         return (True, str(output_file))
     else:
         # Check if it's in working directory (might need to move it)
-        working_output = working_dir / f"{client_name}.{request_id}.gz"
+        working_output = working_dir / f"{client_name}.{backend_id:06d}.gz"
         if working_output.exists():
             # Move to FTP directory
             settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
