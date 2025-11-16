@@ -112,10 +112,20 @@ USE_I18N = True
 
 USE_TZ = True
 
+## DEPLOY via reverse proxy
+FORCE_SCRIPT_NAME = '/new'
+USE_X_FORWARDED_HOST = True
+CSRF_COOKIE_PATH = '/new'
+SESSION_COOKIE_PATH = '/new'
+CSRF_TRUSTED_ORIGINS = ['https://vald.astro.uu.se']
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+#SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = "new/static/"
 STATICFILES_DIRS = [BASE_DIR / "style"]
 
 # Default primary key field type

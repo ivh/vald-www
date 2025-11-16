@@ -224,14 +224,14 @@ def showline_online_submit(request):
     request_content = f"{wvl0}, {win0}\n{el0}\n{configfile}\n"
 
     # Build command arguments
-    args = [str(settings.VALD_BIN_PATH), '-html']
+    args = [str(settings.VALD_SHOWLINE_BIN), '-html']
     if isotopic_scaling == 'off':
         args.append('-noisotopic')
 
     # Execute the showline binary
     try:
-        if not settings.VALD_BIN_PATH.exists():
-            messages.error(request, f'Show Line binary not found at: {settings.VALD_BIN_PATH}')
+        if not settings.VALD_SHOWLINE_BIN.exists():
+            messages.error(request, f'Show Line binary not found at: {settings.VALD_SHOWLINE_BIN}')
             return redirect('vald:showline_online')
 
         process = subprocess.Popen(
