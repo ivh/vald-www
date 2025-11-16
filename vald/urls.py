@@ -19,6 +19,7 @@ urlpatterns = [
 
     # Form submission
     path('submit/', views.submit_request, name='submit_request'),
+    path('showline-online/submit/', views.showline_online_submit, name='showline_online_submit'),
 
     # Unit selection
     path('unitselection/', views.unitselection, name='unitselection'),

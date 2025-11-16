@@ -136,6 +136,7 @@ VALD_REQUEST_EMAIL = 'vald-request@localhost'  # Where to send requests
 
 # VALD-specific configuration
 VALD_ROOT = BASE_DIR
+VALD_BIN_PATH = BASE_DIR / 'bin' / 'showline4.1'  # Path to showline binary
 CLIENTS_REGISTER = BASE_DIR / 'config' / 'clients.register'
 CLIENTS_REGISTER_LOCAL = BASE_DIR / 'config' / 'clients.register.local'
 PERSCONFIG_DIR = BASE_DIR / 'config' / 'personal_configs'

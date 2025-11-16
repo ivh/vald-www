@@ -151,10 +151,87 @@ def showline(request):
 
 @require_login
 def showline_online(request):
-    """Show Line Online form (not implemented in original)"""
+    """Show Line Online form"""
     context = get_user_context(request)
-    context['error'] = 'Show Line Online feature is not yet implemented in this version.'
-    return render(request, 'vald/error.html', context)
+    return render(request, 'vald/showline-online.html', context)
+
+
+@require_login
+def showline_online_submit(request):
+    """Execute Show Line Online and display results"""
+    import subprocess
+    from .persconfig import load_or_create_persconfig, compare_with_default
+
+    context = get_user_context(request)
+
+    if request.method != 'POST':
+        return redirect('vald:showline_online')
+
+    # Get form data
+    wvl0 = request.POST.get('wvl0', '')
+    win0 = request.POST.get('win0', '')
+    el0 = request.POST.get('el0', '')
+    pconf = request.POST.get('pconf', 'default')
+    isotopic_scaling = request.POST.get('isotopic_scaling', 'on')
+
+    # Determine config file to use
+    email = request.session.get('email')
+    if pconf == 'personal':
+        # Try to get user's personal config from database
+        try:
+            persconf_obj = load_or_create_persconfig(
+                email,
+                settings.PERSCONFIG_DEFAULT,
+                settings.PERSCONFIG_DIR / f"{email.replace('@', '_').replace('.', '_')}.cfg"
+            )
+            # For now, just use default - would need to write DB config to temp file
+            configfile = str(settings.PERSCONFIG_DEFAULT)
+            note = "NOTE: Custom configuration not yet fully supported for online extraction. Using default configuration instead."
+        except:
+            configfile = str(settings.PERSCONFIG_DEFAULT)
+            note = "NOTE: Custom configuration file does not (yet) exist. Using default configuration instead."
+    else:
+        configfile = str(settings.PERSCONFIG_DEFAULT)
+        note = None
+
+    # Build request content (same format as showline-online-req.txt)
+    request_content = f"{wvl0}, {win0}\n{el0}\n{configfile}\n"
+
+    # Build command arguments
+    args = [str(settings.VALD_BIN_PATH), '-html']
+    if isotopic_scaling == 'off':
+        args.append('-noisotopic')
+
+    # Execute the showline binary
+    try:
+        if not settings.VALD_BIN_PATH.exists():
+            context['error'] = f'Show Line binary not found at: {settings.VALD_BIN_PATH}'
+            return render(request, 'vald/error.html', context)
+
+        process = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        stdout, stderr = process.communicate(input=request_content, timeout=30)
+
+        if process.returncode != 0:
+            context['error'] = f'Show Line execution failed with return code {process.returncode}.\nError: {stderr}'
+            return render(request, 'vald/error.html', context)
+
+        context['output'] = stdout
+        context['note'] = note
+        return render(request, 'vald/showline-online-result.html', context)
+
+    except subprocess.TimeoutExpired:
+        context['error'] = 'Show Line execution timed out (30 seconds)'
+        return render(request, 'vald/error.html', context)
+    except Exception as e:
+        context['error'] = f'Error executing Show Line: {e}'
+        return render(request, 'vald/error.html', context)
 
 
 def submit_request(request):
