@@ -12,15 +12,27 @@ class Command(BaseCommand):
             action='store_true',
             help='Show what would be imported without making changes',
         )
+        parser.add_argument(
+            '--file',
+            type=str,
+            help='Process specific register file instead of defaults (clients.register and clients.register.local)',
+        )
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
+        custom_file = options.get('file')
 
-        # Parse both register files
-        register_files = [
-            (settings.CLIENTS_REGISTER, False),
-            (settings.CLIENTS_REGISTER_LOCAL, True),
-        ]
+        # Determine which files to process
+        if custom_file:
+            # Process only the specified file
+            from pathlib import Path
+            register_files = [(Path(custom_file), False)]
+        else:
+            # Parse both default register files
+            register_files = [
+                (settings.CLIENTS_REGISTER, False),
+                (settings.CLIENTS_REGISTER_LOCAL, True),
+            ]
 
         total_users = 0
         total_emails = 0
