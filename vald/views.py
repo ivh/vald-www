@@ -301,10 +301,11 @@ def handle_contact_request(request):
     form = ContactForm(request.POST)
 
     if not form.is_valid():
-        # Show form errors
+        # Show form errors with field names
         for field, errors in form.errors.items():
             for error in errors:
-                messages.error(request, error)
+                field_label = form.fields[field].label if field in form.fields else field
+                messages.error(request, f"{field_label}: {error}")
         context['form'] = form
         return render(request, 'vald/contact.html', context)
 
@@ -374,10 +375,11 @@ def handle_extract_request(request):
     form = form_class(request.POST)
 
     if not form.is_valid():
-        # Show form errors
+        # Show form errors with field names
         for field, errors in form.errors.items():
             for error in errors:
-                messages.error(request, error)
+                field_label = form.fields[field].label if field in form.fields else field
+                messages.error(request, f"{field_label}: {error}")
         context['form'] = form
         # Redirect to the appropriate form page
         template_map = {
