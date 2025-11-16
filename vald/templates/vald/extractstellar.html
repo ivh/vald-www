@@ -2,57 +2,6 @@
 
 {% block extra_head %}
 <script>
-function sendIt() {
-  if (document.bottomform.stwvl.value.length == 0)
-    { alert("Please enter a value in the 'Starting wavelength' field");
-      return false }
-  if (document.bottomform.stwvl.value <= 0)
-    { alert("Please provide a positive value in the 'Starting wavelength' field");
-      return false }
-  if (document.bottomform.endwvl.value.length == 0)
-    { alert("Please enter a value in the 'Ending wavelength' field");
-      return false }
-  if (document.bottomform.endwvl.value <= 0)
-    { alert("Please provide a positive value in the 'Ending wavelength' field");
-      return false }
-  if (document.bottomform.endwvl.value - document.bottomform.stwvl.value <= 0)
-    { alert("The 'Ending wavelength' cannot be smaller than or equal to the 'Starting wavelength'");
-      return false }
-  if ((document.bottomform.endwvl.value - document.bottomform.stwvl.value > 50)
-     && (document.bottomform.elements[9].checked))
-    { alert("The maximum wavelength range that can be requested by email is 50 A. Select FTP method!");
-      return false }
-
-  if (document.bottomform.dlimit.value.length == 0)
-    { alert("Please enter a value in the 'Detection limit' field");
-      return false }
-  if (document.bottomform.dlimit.value < 0 | document.bottomform.dlimit.value > 1)
-    { alert("The 'Detection limit' should be between 0 and 1");
-      return false }
-  if (document.bottomform.micturb.value.length == 0)
-    { alert("Please enter a value in the 'Microturbulence' field");
-      return false }
-  if (document.bottomform.micturb.value < 0)
-    { alert("Please provide a positive value in the 'Microturbulence' field");
-      return false }
-  if (document.bottomform.micturb.value > 100)
-    { alert("The value in the 'Microturbulence' field is not acceptable");
-      return false }
-  if (document.bottomform.teff.value.length == 0)
-    { alert("Please enter a value in the 'Teff' field");
-      return false }
-  if (document.bottomform.teff.value <= 0)
-    { alert("Please provide a positive value in the 'Teff' field");
-      return false }
-  if (document.bottomform.logg.value.length == 0)
-    { alert("Please enter a value in the 'log g' field");
-      return false }
-  document.bottomform.submit();
-  return true;
-}
-function resetIt() {
-  document.bottomform.reset();
-}
 var wavelabel1 = "wavelength";
 var wavelabel2 = "&Aring;";
 if (("{{ waveunit }}" == "angstrom") && ("{{ medium }}" == "air")   ) {wavelabel2 = "&Aring; (air)"}
@@ -72,62 +21,52 @@ if (("{{ waveunit }}" == "1/cm")                               ) {wavelabel1 = "
 <hr><h3>Extract Stellar</h3><hr>
 
 <p><tr><td>Starting <script>document.write(wavelabel1);</script> :
-<td><input name="stwvl" type="text" size=10> <script>document.write(wavelabel2);</script>
+<td>{{ form.stwvl }} <script>document.write(wavelabel2);</script>
 
 <tr><td>Ending <script>document.write(wavelabel1);</script> :
-<td><input name="endwvl" type="text" size=10> <script>document.write(wavelabel2);</script>
-<tr><td>Detection threshold : <td><input name="dlimit" type="text" size=5> (fraction, in the range 0-1)
+<td>{{ form.endwvl }} <script>document.write(wavelabel2);</script>
+<tr><td>Detection threshold : <td>{{ form.dlimit }} (fraction, in the range 0-1)
 
 <tr><td>Microturbulence :
-<td><input name="micturb" type="text" size=5>  km/sec
+<td>{{ form.micturb }}  km/sec
 
 <tr><td>Teff :
-<td><input name="teff" type="text" size=5>  K
+<td>{{ form.teff }}  K
 
 <tr><td>log g :
-<td><input name="logg" type="text" size=5>  g in cgs units
-<tr><td>Chemical composition : <td><textarea name="chemcomp" rows=2
-cols=30>
-</textarea><td>For example : Sr: -4.67, Cr: -3.37. You can also set metallicity: M/H: -0.5
+<td>{{ form.logg }}  g in cgs units
+<tr><td>Chemical composition : <td>{{ form.chemcomp }}<td>For example : Sr: -4.67, Cr: -3.37. You can also set metallicity: M/H: -0.5
 
 <tr><td>Extraction format :
-<td><input type="radio" name="format" value="short" checked> Short format
-<tr><td><td><input type="radio" name="format" value="long"> Long format
+<td>{% for radio in form.format %}<div>{{ radio }}</div>{% endfor %}
 
 <tr><td>Retrieve data via
-<td><input name="viaftp" type="radio" value="" checked> Email
-<tr><td><td><input name="viaftp" type="radio" value="via ftp"> FTP
+<td>{% for radio in form.viaftp %}<div>{{ radio }}</div>{% endfor %}
 <tr><td colspan=2><hr>
-<tr><td>Hyperfine structure<td><input type="checkbox" name="hfssplit" value="HFS splitting"> Include HFS splitting
+<tr><td>Hyperfine structure<td>{{ form.hfssplit }} Include HFS splitting
 <tr><td colspan=2><hr>
 <tr><td>Require lines to have a known value of : <td>
-<input type="checkbox" name="hrad" value="have rad"> Radiative damping constant
-<tr><td><td><input type="checkbox" name="hstark" value="have stark"> Stark
-damping constant
-<tr><td><td><input type="checkbox" name="hwaals" value="have waals"> Van
-der Waals damping constant
-<tr><td><td><input type="checkbox" name="hlande" value="have lande">
-Land&eacute; factor
-<tr><td><td><input type="checkbox" name="hterm" value="have term"> Term
-designation
+{{ form.hrad }} Radiative damping constant
+<tr><td><td>{{ form.hstark }} Stark damping constant
+<tr><td><td>{{ form.hwaals }} Van der Waals damping constant
+<tr><td><td>{{ form.hlande }} Land&eacute; factor
+<tr><td><td>{{ form.hterm }} Term designation
 
 <tr><td colspan=3><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td><input type="radio" name="pconf" value="default" checked> Default
-<tr><td><td><input type="radio" name="pconf" value="personal"> Custom
+<td>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
 
 <tr><td colspan=3><hr>
 <tr><td><a href="{% url 'vald:unitselection' %}">Unit selection</a>
 <td colspan=2><i>Energy unit: {{ energyunit }} - Medium: {{ medium }} - Wavelength unit: {{ waveunit }} - VdW syntax: {{ vdwformat }}</i>
 <tr><td colspan=3><hr>
-<tr><td>Optional comment for request<td colspan=2><input type="text" name="subject"
-size=40>
+<tr><td>Optional comment for request<td colspan=2>{{ form.subject }}
 <tr><td colspan=3><hr>
 
 <tr>
 <input type="hidden" name="reqtype" value="extractstellar">
-<td><input type="button" value="Submit request" onClick="sendIt()">
-<td><input type="button" value="Reset form" onClick="resetIt()">
+<td><input type="submit" value="Submit request">
+<td><input type="reset" value="Reset form">
 
 </table>
 </form>

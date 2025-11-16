@@ -2,11 +2,19 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.conf import settings
 from django.core.mail import send_mail
+from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from pathlib import Path
 import glob
 
 from .models import UserPreferences, PersonalConfig, LineList
+from .forms import (
+    ExtractAllForm,
+    ExtractElementForm,
+    ExtractStellarForm,
+    ShowLineForm,
+    ContactForm,
+)
 from .utils import (
     validate_user_email,
     spam_check,
@@ -102,8 +110,10 @@ def login(request):
                 prefs.name = user_name
                 prefs.save()
 
+            messages.success(request, f'Welcome, {user_name}! You have successfully logged in.')
             return redirect('vald:index')
         else:
+            messages.error(request, 'Email address not registered. Please use the contact form to register.')
             context = get_user_context(request)
             return render(request, 'vald/notregistered.html', context)
 
@@ -114,9 +124,8 @@ def require_login(view_func):
     """Decorator to require login"""
     def wrapper(request, *args, **kwargs):
         if not request.session.get('email'):
-            context = get_user_context(request)
-            context['error'] = 'You are not logged in. Please log in and try again.'
-            return render(request, 'vald/error.html', context)
+            messages.error(request, 'You are not logged in. Please log in and try again.')
+            return redirect('vald:index')
         return view_func(request, *args, **kwargs)
     return wrapper
 
@@ -125,6 +134,7 @@ def require_login(view_func):
 def extractall(request):
     """Extract All form"""
     context = get_user_context(request)
+    context['form'] = ExtractAllForm()
     return render(request, 'vald/extractall.html', context)
 
 
@@ -132,6 +142,7 @@ def extractall(request):
 def extractelement(request):
     """Extract Element form"""
     context = get_user_context(request)
+    context['form'] = ExtractElementForm()
     return render(request, 'vald/extractelement.html', context)
 
 
@@ -139,6 +150,7 @@ def extractelement(request):
 def extractstellar(request):
     """Extract Stellar form"""
     context = get_user_context(request)
+    context['form'] = ExtractStellarForm()
     return render(request, 'vald/extractstellar.html', context)
 
 
@@ -146,6 +158,7 @@ def extractstellar(request):
 def showline(request):
     """Show Line form"""
     context = get_user_context(request)
+    context['form'] = ShowLineForm()
     return render(request, 'vald/showline.html', context)
 
 
@@ -205,8 +218,8 @@ def showline_online_submit(request):
     # Execute the showline binary
     try:
         if not settings.VALD_BIN_PATH.exists():
-            context['error'] = f'Show Line binary not found at: {settings.VALD_BIN_PATH}'
-            return render(request, 'vald/error.html', context)
+            messages.error(request, f'Show Line binary not found at: {settings.VALD_BIN_PATH}')
+            return redirect('vald:showline_online')
 
         process = subprocess.Popen(
             args,
@@ -219,19 +232,21 @@ def showline_online_submit(request):
         stdout, stderr = process.communicate(input=request_content, timeout=30)
 
         if process.returncode != 0:
-            context['error'] = f'Show Line execution failed with return code {process.returncode}.\nError: {stderr}'
-            return render(request, 'vald/error.html', context)
+            messages.error(request, f'Show Line execution failed with return code {process.returncode}. Error: {stderr}')
+            return redirect('vald:showline_online')
 
         context['output'] = stdout
         context['note'] = note
+        if note:
+            messages.warning(request, note)
         return render(request, 'vald/showline-online-result.html', context)
 
     except subprocess.TimeoutExpired:
-        context['error'] = 'Show Line execution timed out (30 seconds)'
-        return render(request, 'vald/error.html', context)
+        messages.error(request, 'Show Line execution timed out (30 seconds)')
+        return redirect('vald:showline_online')
     except Exception as e:
-        context['error'] = f'Error executing Show Line: {e}'
-        return render(request, 'vald/error.html', context)
+        messages.error(request, f'Error executing Show Line: {e}')
+        return redirect('vald:showline_online')
 
 
 def submit_request(request):
@@ -270,37 +285,38 @@ def submit_request(request):
 def handle_contact_request(request):
     """Handle contact form submission"""
     context = get_user_context(request)
+    form = ContactForm(request.POST)
 
-    # Get form data
-    message = request.POST.get('message', '')
-    contactemail = request.POST.get('contactemail', '')
-    contactname = request.POST.get('contactname', '')
-    affiliation = request.POST.get('affiliation', '')
-    position = request.POST.get('position', '')
-    manager = request.POST.get('manager', 'valdadministrator')
-    subject = request.POST.get('subject', 'VALD contact request')
-    permission = request.POST.get('permission', '')
-    privacy_statement = request.POST.get('privacy_statement', '')
+    if not form.is_valid():
+        # Show form errors
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, error)
+        context['form'] = form
+        return render(request, 'vald/contact.html', context)
 
     # Spam check
+    message = form.cleaned_data['message']
     if not spam_check(message):
-        context['error'] = 'Your message was rejected because the content was classed as spam.'
-        return render(request, 'vald/error.html', context)
+        messages.error(request, 'Your message was rejected because the content was classed as spam.')
+        context['form'] = form
+        return render(request, 'vald/contact.html', context)
 
     # Prepare email content
     email_context = {
-        'contactemail': contactemail,
-        'contactname': contactname,
-        'affiliation': affiliation,
-        'position': position,
-        'message': message,
-        'permission': permission,
-        'privacy_statement': privacy_statement,
+        'contactemail': form.cleaned_data['contactemail'],
+        'contactname': form.cleaned_data['contactname'],
+        'affiliation': form.cleaned_data['affiliation'],
+        'position': form.cleaned_data['position'],
+        'message': form.cleaned_data['message'],
+        'permission': form.cleaned_data['permission'],
+        'privacy_statement': form.cleaned_data['privacy_statement'],
     }
 
     mail_content = render_request_template('contact', email_context)
 
     # Determine recipient based on manager selection
+    manager = form.cleaned_data['manager']
     recipient_map = {
         'valdadministrator': settings.VALD_REQUEST_EMAIL,
         'valdwebmanager': settings.VALD_REQUEST_EMAIL,
@@ -309,26 +325,57 @@ def handle_contact_request(request):
 
     try:
         send_mail(
-            subject,
+            'VALD contact request',
             mail_content,
             settings.DEFAULT_FROM_EMAIL,
             [recipient],
             fail_silently=False,
         )
+        messages.success(request, 'Your message has been sent successfully.')
         return render(request, 'vald/confirmcontact.html', context)
     except Exception as e:
-        context['error'] = f'A problem occurred when processing your input: {e}'
-        return render(request, 'vald/error.html', context)
+        messages.error(request, f'A problem occurred when processing your input: {e}')
+        context['form'] = form
+        return render(request, 'vald/contact.html', context)
 
 
 def handle_extract_request(request):
     """Handle extract/showline form submissions"""
     context = get_user_context(request)
-
     reqtype = request.POST.get('reqtype')
     user_email = request.session.get('email')
 
-    # Build email context from POST data
+    # Determine which form to use
+    form_map = {
+        'extractall': ExtractAllForm,
+        'extractelement': ExtractElementForm,
+        'extractstellar': ExtractStellarForm,
+        'showline': ShowLineForm,
+    }
+
+    form_class = form_map.get(reqtype)
+    if not form_class:
+        messages.error(request, 'Invalid request type.')
+        return redirect('vald:index')
+
+    form = form_class(request.POST)
+
+    if not form.is_valid():
+        # Show form errors
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, error)
+        context['form'] = form
+        # Redirect to the appropriate form page
+        template_map = {
+            'extractall': 'vald/extractall.html',
+            'extractelement': 'vald/extractelement.html',
+            'extractstellar': 'vald/extractstellar.html',
+            'showline': 'vald/showline.html',
+        }
+        return render(request, template_map[reqtype], context)
+
+    # Build email context from validated form data
     email_context = {
         'reqtype': reqtype,
         'user_email': user_email,
@@ -354,27 +401,50 @@ def handle_extract_request(request):
             'isotopic_scaling': 'on',
         })
 
-    # Copy all POST data to context
-    for key, value in request.POST.items():
-        if key != 'csrfmiddlewaretoken':
+    # Copy all cleaned data to context
+    for key, value in form.cleaned_data.items():
+        # Convert boolean fields to their expected values
+        if isinstance(value, bool):
+            if value and key.startswith('h'):  # hfssplit, hrad, etc.
+                # These need their label values from the form
+                field_values = {
+                    'hfssplit': 'HFS splitting',
+                    'hrad': 'have rad',
+                    'hstark': 'have stark',
+                    'hwaals': 'have waals',
+                    'hlande': 'have lande',
+                    'hterm': 'have term',
+                }
+                email_context[key] = field_values.get(key, str(value))
+            else:
+                email_context[key] = value
+        else:
             email_context[key] = value
 
     # Render request template
     mail_content = render_request_template(reqtype, email_context)
-    subject = request.POST.get('subject', f'VALD {reqtype} request')
+    subject = form.cleaned_data.get('subject', f'VALD {reqtype} request')
 
     try:
         send_mail(
-            subject,
+            subject if subject else f'VALD {reqtype} request',
             mail_content,
             user_email,
             [settings.VALD_REQUEST_EMAIL],
             fail_silently=False,
         )
+        messages.success(request, 'Your request has been submitted successfully.')
         return render(request, 'vald/confirmsubmitted.html', context)
     except Exception as e:
-        context['error'] = f'A problem occurred when processing your input: {e}'
-        return render(request, 'vald/error.html', context)
+        messages.error(request, f'A problem occurred when processing your input: {e}')
+        context['form'] = form
+        template_map = {
+            'extractall': 'vald/extractall.html',
+            'extractelement': 'vald/extractelement.html',
+            'extractstellar': 'vald/extractstellar.html',
+            'showline': 'vald/showline.html',
+        }
+        return render(request, template_map[reqtype], context)
 
 
 @require_login
@@ -401,6 +471,7 @@ def save_units(request):
     prefs.isotopic_scaling = request.POST.get('isotopic_scaling', 'on')
     prefs.save()
 
+    messages.success(request, 'Your unit preferences have been saved successfully.')
     context = get_user_context(request)
     context['unitsupdated'] = True
     return render(request, 'vald/unitselection.html', context)
@@ -412,6 +483,7 @@ def documentation(request, docpage):
 
     # Special handling for contact.html
     if docpage == 'contact.html':
+        context['form'] = ContactForm()
         return render(request, 'vald/contact.html', context)
 
     doc_file = settings.DOCUMENTATION_DIR / docpage
@@ -501,8 +573,9 @@ def persconf(request):
             # Re-compare with default
             persconf_obj = compare_with_default(persconf_obj, settings.PERSCONFIG_DEFAULT)
 
+            messages.success(request, f'Linelist "{linelist.name}" has been saved successfully.')
         except (LineList.DoesNotExist, ValueError):
-            pass
+            messages.error(request, 'Failed to save linelist.')
 
         # Clear edit mode
         editid = None
@@ -513,8 +586,9 @@ def persconf(request):
         try:
             linelist = persconf_obj.linelists.get(list_id=int(editid))
             restore_linelist_to_default(linelist, settings.PERSCONFIG_DEFAULT)
+            messages.success(request, f'Linelist "{linelist.name}" has been restored to default.')
         except (LineList.DoesNotExist, ValueError):
-            pass
+            messages.error(request, 'Failed to restore linelist.')
 
         editid = None
         action = None

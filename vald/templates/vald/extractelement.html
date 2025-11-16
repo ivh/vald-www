@@ -2,42 +2,6 @@
 
 {% block extra_head %}
 <script>
-function sendIt() {
-  if (document.bottomform.elements[0].value.length == 0)
-    { alert("Please enter a value in the 'Starting wavelength' field");
-      return false }
-  if (document.bottomform.elements[0].value <= 0)
-    { alert("Please provide a positive value in the 'Starting wavelength' field");
-      return false }
-  if (document.bottomform.elements[1].value.length == 0)
-    { alert("Please enter a value in the 'Ending wavelength' field");
-      return false }
-  if (document.bottomform.elements[1].value <= 0)
-    { alert("Please provide a positive value in the 'Ending wavelength' field");
-      return false }
-  if (document.bottomform.elements[1].value - document.bottomform.elements[0].value <= 0)
-    { alert("The 'Ending wavelength' cannot be smaller than or equal to the 'Starting wavelength'");
-      return false }
-  if (document.bottomform.elements[2].value.length == 0)
-    { alert("Please enter a value in the 'Element + ionization' field");
-      return false }
-  else { elmion = document.bottomform.elements[2].value.split(" ");
-         if (elmion.length > 1)
-           { if ( (elmion[1].length > 0) && (isNaN(parseInt(elmion[1]))) )
-             { alert("Please express the ionization stage as an arabic number");
-               return false }
-           }
-       }
-  if ((document.bottomform.elements[1].value - document.bottomform.elements[0].value > 50)
-     && (document.bottomform.elements[6].checked == false))
-    { alert("The maximum wavelength range that can be requested by email is 50 A. Select FTP method!");
-      return false }
-  document.bottomform.submit();
-  return true;
-}
-function resetIt() {
-  document.bottomform.reset();
-}
 var wavelabel1 = "wavelength";
 var wavelabel2 = "&Aring;";
 if (("{{ waveunit }}" == "angstrom") && ("{{ medium }}" == "air")   ) {wavelabel2 = "&Aring; (air)"}
@@ -57,56 +21,47 @@ if (("{{ waveunit }}" == "1/cm")                               ) {wavelabel1 = "
 <hr><h3>Extract Element</h3><hr>
 
 <p><tr><td>Starting <script>document.write(wavelabel1);</script> :
-<td><input name="stwvl" type="text" size=10> <script>document.write(wavelabel2);</script>
+<td>{{ form.stwvl }} <script>document.write(wavelabel2);</script>
 
 <tr><td>Ending <script>document.write(wavelabel1);</script> :
-<td><input name="endwvl" type="text" size=10> <script>document.write(wavelabel2);</script>
+<td>{{ form.endwvl }} <script>document.write(wavelabel2);</script>
 
-<tr><td>Element [ + ionization ] : <td><input name="elmion" type="text"
-size=5>
+<tr><td>Element [ + ionization ] : <td>{{ form.elmion }}
 
 <tr><td>Extraction format : <td>
-<input type="radio" name="format" value="short" checked> Short format
-<tr><td><td><input type="radio" name="format" value="long"> Long format
+{% for radio in form.format %}<div>{{ radio }}</div>{% endfor %}
 
 <tr><td>Retrieve data via
-<td><input type="radio" name="viaftp" value="" checked> Email
-<tr><td><td><input type="radio" name="viaftp" value="via ftp"> FTP
+<td>{% for radio in form.viaftp %}<div>{{ radio }}</div>{% endfor %}
 <tr><td colspan=2><hr>
-<tr><td>Hyperfine structure<td><input type="checkbox" name="hfssplit" value="HFS splitting"> Include HFS splitting
+<tr><td>Hyperfine structure<td>{{ form.hfssplit }} Include HFS splitting
 <tr><td colspan=2><hr>
 <tr><td>Require lines to have a known value of : <td>
-<input type="checkbox" name="hrad" value="have rad"> Radiative damping constant
+{{ form.hrad }} Radiative damping constant
 
-<tr><td><td><input type="checkbox" name="hstark" value="have stark"> Stark
-damping constant
+<tr><td><td>{{ form.hstark }} Stark damping constant
 
-<tr><td><td><input type="checkbox" name="hwaals" value="have waals"> Van
-der Waals damping constant
+<tr><td><td>{{ form.hwaals }} Van der Waals damping constant
 
-<tr><td><td><input type="checkbox" name="hlande" value="have lande">
-Land&eacute; factor
+<tr><td><td>{{ form.hlande }} Land&eacute; factor
 
-<tr><td><td><input type="checkbox" name="hterm" value="have term"> Term
-designation
+<tr><td><td>{{ form.hterm }} Term designation
 
 <tr><td colspan=2><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td><input type="radio" name="pconf" value="default" checked> Default
-<tr><td><td><input type="radio" name="pconf" value="personal"> Custom
+<td>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
 
 <tr><td colspan=2><hr>
 <tr><td><a href="{% url 'vald:unitselection' %}">Unit selection</a>
 <td><i>Energy unit: {{ energyunit }} - Medium: {{ medium }} - Wavelength unit: {{ waveunit }} - VdW syntax: {{ vdwformat }}</i>
 <tr><td colspan=2><hr>
-<tr><td>Optional comment for request<td><input type="text" name="subject"
-size=40>
+<tr><td>Optional comment for request<td>{{ form.subject }}
 <tr><td colspan=2><hr>
 
 <tr>
 <input type="hidden" name="reqtype" value="extractelement">
-<td><input type="button" value="Submit request" onClick="sendIt()">
-<td><input type="button" value="Reset form" onClick="resetIt()">
+<td><input type="submit" value="Submit request">
+<td><input type="reset" value="Reset form">
 
 </table>
 </form>

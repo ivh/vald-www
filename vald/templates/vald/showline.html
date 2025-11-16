@@ -1,52 +1,5 @@
 {% extends "vald/base.html" %}
 
-{% block extra_head %}
-<script>
-function sendIt() {
-  var go = false;
-  for (var i=0; i < 5; i++) {
-    var j = 3 * i;
-    if ( (document.bottomform.elements[j].value.length != 0)
-        | (document.bottomform.elements[j].value.length != 0)
-        | (document.bottomform.elements[j].value.length != 0)
-        | (go == false) ) {
-      if (document.bottomform.elements[j].value.length == 0)
-         { alert("Please enter a value in the 'Approximate wavelength' field");
-           return false }
-      if (document.bottomform.elements[j].value <=0 )
-         { alert("Please provide a positive value in the 'Approximate wavelength' field");
-           return false }
-      if (document.bottomform.elements[j+1].value.length == 0)
-         { alert("Please enter a value in the 'Wavelength window' field");
-           return false }
-      if (document.bottomform.elements[j+1].value <=0 )
-         { alert("Please provide a positive value in the 'Wavelength window' field");
-           return false }
-      if (document.bottomform.elements[j+1].value >5 )
-         { alert("Maximum wavelength window size allowed is 5 A");
-           return false }
-      if (document.bottomform.elements[j+2].value.length == 0)
-         { alert("Please enter a value in the 'Element + ionization' field");
-           return false }
-      else { elmion = document.bottomform.elements[j+2].value.split(" ");
-         if (elmion.length > 1)
-         { if ( (elmion[1].length > 0) && (isNaN(parseInt(elmion[1]))) )
-              { alert("Please express the ionization stage as an arabic number");
-            return false }
-         }
-           }
-      go = true;
-    }
-  }
-  document.bottomform.submit();
-  return true;
-}
-function resetIt() {
-  document.bottomform.reset();
-}
-</script>
-{% endblock %}
-
 {% block content %}
 <form name="bottomform" method="post" action="{% url 'vald:submit_request' %}">
 {% csrf_token %}
@@ -57,58 +10,47 @@ function resetIt() {
 
 <tr><td>Approximate wavelength<td>Wavelength window<td>Element [ +
 ionization ]
-<tr><td><input name="wvl0" type="text" size=10>  &Aring; (air)
-<td><input name="win0" type="text" size=10>  &Aring; (air)
-<td><input name="el0" type="text" size=5>
-<tr><td><input name="wvl1" type="text" size=10>  &Aring; (air)
-<td><input name="win1" type="text" size=10>  &Aring; (air)
-<td><input name="el1" type="text" size=5>
-<tr><td><input name="wvl2" type="text" size=10>  &Aring; (air)
-<td><input name="win2" type="text" size=10>  &Aring; (air)
-<td><input name="el2" type="text" size=5>
-<tr><td><input name="wvl3" type="text" size=10>  &Aring; (air)
-<td><input name="win3" type="text" size=10>  &Aring; (air)
-<td><input name="el3" type="text" size=5>
-<tr><td><input name="wvl4" type="text" size=10>  &Aring; (air)
-<td><input name="win4" type="text" size=10>  &Aring; (air)
-<td><input name="el4" type="text" size=5>
+<tr><td>{{ form.wvl0 }}  &Aring; (air)
+<td>{{ form.win0 }}  &Aring; (air)
+<td>{{ form.el0 }}
+<tr><td>{{ form.wvl1 }}  &Aring; (air)
+<td>{{ form.win1 }}  &Aring; (air)
+<td>{{ form.el1 }}
+<tr><td>{{ form.wvl2 }}  &Aring; (air)
+<td>{{ form.win2 }}  &Aring; (air)
+<td>{{ form.el2 }}
+<tr><td>{{ form.wvl3 }}  &Aring; (air)
+<td>{{ form.win3 }}  &Aring; (air)
+<td>{{ form.el3 }}
+<tr><td>{{ form.wvl4 }}  &Aring; (air)
+<td>{{ form.win4 }}  &Aring; (air)
+<td>{{ form.el4 }}
 
 <tr><td colspan=3><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td><input type="radio" name="pconf" value="default" checked> Default
-<tr><td><td><input type="radio" name="pconf" value="personal"> Custom
+<td>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
 
 <tr><td colspan=3><hr>
 <tr><td>Isotopic scaling of oscillator strength
-<td><input type="radio" name="isotopic_scaling" value="on" checked> On
+<td><input type="radio" name="isotopic_scaling" value="on" {% if isotopic_scaling == 'on' %}checked{% endif %}> On
 <td>
 <i>(Takes precendence over the default value set in the
 <a href="{% url 'vald:unitselection' %}">unit selection</a> dialog)</i>
 <tr><td>
-<td><input type="radio" name="isotopic_scaling" value="off"> Off
+<td><input type="radio" name="isotopic_scaling" value="off" {% if isotopic_scaling == 'off' %}checked{% endif %}> Off
 <tr><td colspan=3><hr>
 <tr><td>Hyperfine structure<td><input type="checkbox" name="hfssplit" value="HFS splitting"> Include HFS splitting
 <td><i>(Only those HFS components that fall into selected window will be shown)</i>
 
 <tr><td colspan=3><hr>
-<tr><td>Optional comment for request<td colspan=2><input type="text" name="subject"
-size=40>
+<tr><td>Optional comment for request<td colspan=2>{{ form.subject }}
 <tr><td colspan=3><hr>
 
 <tr>
 <input type="hidden" name="reqtype" value="showline">
-<td><input type="button" value="Submit request" onClick="sendIt()">
-<td><input type="button" value="Reset form" onClick="resetIt()">
+<td><input type="submit" value="Submit request">
+<td><input type="reset" value="Reset form">
 
 </table>
-
-<script>
-  for (var i = 0; i < document.bottomform.elements.isotopic_scaling.length; i++) {
-         document.bottomform.elements.isotopic_scaling[i].checked = false;
-         if(document.bottomform.elements.isotopic_scaling[i].value == "{{ isotopic_scaling }}") {
-                 document.bottomform.elements.isotopic_scaling[i].checked = true;
-         }
-  }
-</script>
 </form>
 {% endblock %}
