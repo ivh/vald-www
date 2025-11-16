@@ -1,0 +1,10 @@
+{% extends "vald/base.html" %}
+
+{% block content %}
+{% if content_html %}
+{{ content_html|safe }}
+{% else %}
+<h3>About VALD</h3>
+<p>Welcome to the VALD (Vienna Atomic Line Database) web interface.
+{% endif %}
+{% endblock %}

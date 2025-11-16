@@ -1,0 +1,106 @@
+{% extends "vald/base.html" %}
+
+{% block extra_head %}
+<script>
+
+if (document.getElementsByClassName == undefined) {
+    document.getElementsByClassName = function(className)
+    {
+        var hasClassName = new RegExp("(?:^|\\s)" + className + "(?:$|\\s)");
+        var allElements = document.getElementsByTagName("*");
+        var results = [];
+
+        var element;
+        for (var i = 0; (element = allElements[i]) != null; i++) {
+            var elementClass = element.className;
+            if (elementClass && elementClass.indexOf(className) != -1 && hasClassName.test(elementClass))
+                results.push(element);
+        }
+
+        return results;
+    }
+}
+
+function setTextColor(classname, givencolor) {
+    var objs = document.getElementsByClassName(classname);
+    for (var i = 0; (element = objs[i]) != null; i++) {
+      element.style.color = givencolor;
+    }
+}
+
+function checkConsistency() {
+  if (document.bottomform.waveunit[2].checked) {
+    document.bottomform.medium[1].checked = true;
+    document.bottomform.medium[0].disabled = true;
+    document.bottomform.medium[1].disabled = true;
+    setTextColor('medium', 'grey');
+  } else {
+    document.bottomform.medium[0].disabled = false;
+    document.bottomform.medium[1].disabled = false;
+    setTextColor('medium', 'black');
+  }
+}
+
+function sendIt() {
+  document.bottomform.medium[0].disabled = false;
+  document.bottomform.medium[1].disabled = false;
+  document.bottomform.submit();
+  return true;
+}
+
+function resetIt() {
+  document.bottomform.reset();
+}
+
+</script>
+{% endblock %}
+
+{% block content %}
+<form name="bottomform" method="post" action="{% url 'vald:save_units' %}" onLoad="prepForm()">
+{% csrf_token %}
+<table border=0 cellpadding=0 width="80%">
+
+<tr><td colspan=2>
+<hr><h3>Unit selection</h3><hr>
+
+<tr><td>Energy level units :
+<td><input type="radio" name="energyunit" value="eV" {% if energyunit == 'eV' %}checked{% endif %}> eV
+<tr><td><td><input type="radio" name="energyunit" value="1/cm" {% if energyunit == '1/cm' %}checked{% endif %}> cm-1
+
+<tr><td colspan=2><hr>
+<tr><td class="medium">Give wavelenghts in medium :
+<td class="medium"><input type="radio" name="medium" value="air" {% if medium == 'air' %}checked{% endif %}> air
+<tr><td><td class="medium"><input type="radio" name="medium" value="vacuum" {% if medium == 'vacuum' %}checked{% endif %}> vacuum
+
+<tr><td colspan=2><hr>
+<tr><td>Wavelength units :
+<td><input type="radio" name="waveunit" value="angstrom" onChange='checkConsistency();' {% if waveunit == 'angstrom' %}checked{% endif %}> &Aring;ngstr&ouml;m
+<tr><td><td><input type="radio" name="waveunit" value="nm" onChange='checkConsistency();' {% if waveunit == 'nm' %}checked{% endif %}> nm
+<tr><td><td><input type="radio" name="waveunit" value="1/cm" onChange='checkConsistency();' {% if waveunit == '1/cm' %}checked{% endif %}> cm-1
+
+<tr><td colspan=2><hr>
+<tr><td>Van der Waals syntax
+<td><input type="radio" name="vdwformat" value="default" {% if vdwformat == 'default' %}checked{% endif %}> Default
+<tr><td><td><input type="radio" name="vdwformat" value="extended" {% if vdwformat == 'extended' %}checked{% endif %}> Extended
+
+<tr><td colspan=2><hr>
+<tr><td>Isotopic scaling
+<td><input type="radio" name="isotopic_scaling" value="on" {% if isotopic_scaling == 'on' %}checked{% endif %}> On
+<tr><td><td><input type="radio" name="isotopic_scaling" value="off" {% if isotopic_scaling == 'off' %}checked{% endif %}> Off
+<tr><td colspan=2><hr>
+
+<tr>
+{% if unitsupdated %}
+<tr><td colspan=2><b>Settings saved!</b><p><input type="button" value="Save again" onClick="sendIt()">
+{% else %}
+<td colspan=2><input type="button" value="Save settings" onClick="sendIt()">
+{% endif %}
+<p><i>The choices you make above are persistent and will be saved to your user profile.</i>
+
+</table>
+
+<script>
+  checkConsistency();
+</script>
+</form>
+{% endblock %}

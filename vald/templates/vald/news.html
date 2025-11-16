@@ -1,0 +1,20 @@
+{% extends "vald/base.html" %}
+
+{% block content %}
+<h4>Latest news from the VALD consortium :</h4>
+<p><hr><p>
+
+<p>More news items :
+<p>
+{% for i, filename in enumerate news_files %}
+  <a href="{% url 'vald:news' i %}">{{ filename }}</a>{% if not forloop.last %},&nbsp;{% endif %}
+  {% if forloop.counter|divisibleby:5 %}<p>{% endif %}
+{% endfor %}
+</p>
+
+<hr><p>
+
+{{ news_content|safe }}
+
+<p><hr>
+{% endblock %}

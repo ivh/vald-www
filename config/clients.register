@@ -1,0 +1,10 @@
+# VALD Client Register
+# Format:
+# #$ Full Name
+# email@domain.com
+
+#$ Test User
+test@example.com
+
+#$ John Doe
+john.doe@university.edu

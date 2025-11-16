@@ -53,3 +53,16 @@ public_html/FTP/
 data/
 *.sqlite
 *.db
+*.sqlite3
+
+# Django
+__pycache__/
+*.py[cod]
+*$py.class
+db.sqlite3
+.venv/
+venv/
+*.pyc
+
+# Personal configs
+config/personal_configs/*.cfg

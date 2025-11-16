@@ -1,0 +1,174 @@
+{% load static %}<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+    <title>VALD WWW interface</title>
+    <style type="text/css">
+body {
+  background-color:    #e4e4ee;
+  color:               #000000;
+  background-position: top right;
+  background-repeat:   no-repeat;
+  font-family:         arial;
+  font-size:           12px;
+  font-style:          normal;
+  font-weight:         300;
+  background-position: top left;
+  background-repeat: no-repeat;
+}
+a {
+  text-decoration: none;
+  font-weight:     600;
+  color:           #202090;
+}
+b {
+  font-size:   12px;
+  font-weight: 900;
+}
+b.heading {
+  font-size:   14px;
+  font-weight: 900;
+}
+table {
+  table-layout: fixed;
+  text-align:   left;
+  font-family:  arial;
+  font-size:    12px;
+  font-style:   normal;
+  font-weight:  300;
+}
+td.navigate {
+  height:              600px;
+  width:               200px;
+  text-align:          left;
+  vertical-align:      top;
+  background-position: top left;
+  background-repeat:   repeat-y;
+}
+td.navigateitem {
+  height:              25px;
+  text-align:          left;
+  vertical-align:      middle;
+  background-position: center left;
+  background-repeat:   no-repeat;
+}
+td.topframe {
+  text-align:          left;
+  vertical-align:      top;
+  background-position: top right;
+  background-repeat:   no-repeat;
+  padding-left:        10px;
+}
+td.version {
+  color:               #202090;
+  height:              150px;
+  width:               200px;
+  text-align:          left;
+  vertical-align:      top;
+  background-position: top left;
+  background-repeat:   no-repeat;
+}
+td.content {
+  text-align:          left;
+  vertical-align:      top;
+  padding-left:        10px;
+}
+th {
+  text-align:          center;
+  vertical-align:      top;
+}
+td.hspace   { width:  10px; }
+td.vspace   { height: 10px; }
+input {
+  font-size:    12px;
+}
+select {
+  font-size:    12px;
+}
+.modified_data {
+  background-color: #ff5555;
+}
+.new_data {
+  background-color: #ff9955;
+}
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<table border="0" cellspacing="0" cellpadding="5px" width="100%">
+<tr>
+<td class="version" valign="top">
+    <h3>Server: {{ sitename }}</h3>
+    <p>Django Version
+</td>
+<td class="topframe">
+    {% block topframe %}
+    {% if user_email %}
+    <h2>Welcome to VALD3</h2>
+    <table border="0" cellspacing="0" cellpadding="0">
+      <tr><td>Logged in as:  &nbsp; <td><em>{{ user_name }}</em><br>
+      <tr><td>Email address:    &nbsp; <td><em>{{ user_email }}</em> <br>
+    </table>
+
+    <br><p><form action="{% url 'vald:index' %}" method="post" name="topform">
+      {% csrf_token %}
+      <input type="hidden" name="page" value="none">
+
+      <table border="0" cellspacing="1" cellpadding="0">
+
+        <tr><td><input type="button" value="Show Line" onClick="page.value='showline'; submit();">
+            <td><input type="button" value="Show Line ONLINE" onClick="page.value='showline-online'; submit();">
+            <td><input type="button" value="Extract All" onClick="page.value='extractall'; submit();">
+            <td><input type="button" value="Extract Element" onClick="page.value='extractelement'; submit();">
+            <td><input type="button" value="Extract Stellar" onClick="page.value='extractstellar'; submit();">
+            <td><input type="button" value="Logout" onClick="page.value='logout'; submit();">
+
+      </table>
+
+    </form>
+    {% else %}
+    <h2>Welcome to VALD3</h2>
+    <form name="regform" method="post" action="{% url 'vald:login' %}">
+      {% csrf_token %}
+      <table border="0" cellspacing="0" cellpadding="0">
+        <tr><td nowrap>Please enter your registered email address :
+            <td nowrap>
+        <tr><td><br><input type="text" name="user" value="" size=45>
+        <tr><td><input type="submit" value="Login">
+                <input type="reset"  value="Reset">
+      </table>
+    </form>
+    {% endif %}
+    {% endblock %}
+</td>
+</tr>
+
+<tr>
+<td class="navigate">
+    <table class="navigate" width="100%" border="0" cellspacing="0" cellpadding="0">
+      <tr><td height="10px"> </td></tr>
+      <tr><td height="10px"><b>Documentation</b> </td></tr>
+      <tr><td height="10px"> </td></tr>
+      <tr><td class="navigateitem"> <a href="{% url 'vald:documentation' 'about_vald.html' %}">&nbsp; About VALD       </a> </td></tr>
+      <tr><td class="navigateitem"> <a href="http://www.astro.uu.se/valdwiki">&nbsp; Documentation    </a> </td></tr>
+      <tr><td class="navigateitem"> <a href="{% url 'vald:news' 0 %}">&nbsp; News </a> </td></tr>
+      <tr><td height="10px"> </td></tr>
+      <tr><td height="10px"><b>VALD3 Mirror Servers</b> </td></tr>
+      <tr><td height="10px"> </td></tr>
+      <tr><td class="navigateitem"> <a href="http://vald.astro.uu.se/~vald/php/vald.php">&nbsp; VALD3 Mirror Uppsala </a> </td></tr>
+      <tr><td class="navigateitem"> <a href="http://vald.oreme.org/~vald/php/vald.php">&nbsp; VALD3 Mirror Montpellier </a> </td></tr>
+      <tr><td class="navigateitem"> <a href="http://vald.inasan.ru/~vald3/php/vald.php">&nbsp; VALD3 Mirror Moscow </a> </td></tr>
+      <tr><td height="10px"> </td></tr>
+      <tr><td height="10px"><b>Contact / Registration</b> </td></tr>
+      <tr><td height="10px"> </td></tr>
+      <tr><td class="navigateitem"> <a href="{% url 'vald:documentation' 'contact.html' %}">&nbsp; Contact form </a> </td></tr>
+      <tr><td height="10px"> </td></tr>
+    </table>
+</td>
+<td class="content">
+    {% block content %}
+    {% endblock %}
+</td>
+</tr>
+</table>
+</body>
+</html>

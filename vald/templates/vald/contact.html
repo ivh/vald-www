@@ -1,0 +1,74 @@
+{% extends "vald/base.html" %}
+
+{% block extra_head %}
+<script>
+  function sendIt() {
+    if ( document.contactform.contactemail.value.length == 0 ) {
+      alert("Please enter your email address"); return false;
+    }
+    substr = document.contactform.contactemail.value.split("@");
+    if ( substr.length != 2 ) {
+       alert("Your email address should at least contain a '@'!"); return false;
+    }
+    if ( document.contactform.message.value.length == 0 ) {
+      alert("The message field is empty!"); return false;
+    }
+    if ( document.contactform.permission.checked == false ) {
+      alert("Please check accept the conditions stated in the form"); return false;
+    }
+    document.contactform.submit();
+    return true;
+  }
+</script>
+{% endblock %}
+
+{% block content %}
+<hr><h3>Contact form (for {{ sitename }})</h3><hr>
+
+<p>If you would like to <b>register as a new user for the {{ sitename }} server</b>, or for any other reason would
+like to <b>contact one of the managers of VALD</b>, please complete the form below.
+<p>When registering, please provide the following information:
+<ol><li> The email address at which you would like to receive the results of
+         your VALD database queries
+    <li> Your full name and affiliation
+</ol>
+<i>Note that your registration will only be valid for the server you are registering for ({{ sitename }}).
+If you want to use the service on other servers, you will need to register for each server separately.</i>
+<p>If you intend to access VALD-EMS from different computers/accounts, send <b>all</b>
+e-mail addresses that you intend to use.
+
+<p><form name="contactform" method="post" action="{% url 'vald:submit_request' %}">
+  {% csrf_token %}
+  <table>
+    <input type="hidden" name="reqtype" value="contact">
+    <input type="hidden" name="subject" value="VALD contact request">
+    <tr><td colspan=2><hr>
+    <tr><td>Your email : <td><input type="text" name="contactemail" value="" size=50>
+    <tr><td>Full name : <td><input type="text" name="contactname" value="" size=50> (required for registration)
+    <tr><td>Affiliation : <td><input type="text" name="affiliation" value="" size=50> (required for registration)
+    <tr><td>Current position : <td><input type="text" name="position" value="" size=50> (for statistics only)
+    <tr><td>To : <td><select name="manager">
+                       <option value="valdadministrator" selected>VALD Administrator (registration, questions, general issues, support)
+                       <option value="valdwebmanager">VALD Web manager (issues concerning this mirror)
+                     </select>
+    <tr><td valign="top">Your message :
+        <td><textarea name="message" cols="50" rows="8"></textarea>
+    <tr><td colspan=2><hr>
+    <tr><td><input type="checkbox" name="permission" value="User agrees to privacy statement"><td>
+    By submitting a request for information or registration through the form<br>
+    above, you give us permission to process and store your personal data to<br>
+    comply with your request. In case of registration, your name, email address<br>
+    and affiliation will be stored on our servers, which are distributed around
+    the world.
+    <input type="hidden" name="privacy_statement" value="
+    By submitting a request for information or registration through the form
+    above, you give us permission to process and store your personal data to
+    comply with your request. In case of registration, your name, email address
+    and affiliation will be stored on our servers, which are distributed around
+    the world.">
+    <tr><td colspan=2><hr>
+    <tr><td><input type="button" value="Send message" onClick="sendIt()">
+        <td><input type="reset" value="Clear">
+    </table>
+</form>
+{% endblock %}
