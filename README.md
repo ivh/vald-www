@@ -130,7 +130,10 @@ Edit `vald_web/settings.py` to configure site-specific settings:
 # VALD-specific configuration
 SITENAME = 'VALD'                    # Site name shown in header
 MAINTENANCE = False                   # Set to True to show maintenance page
+VALD_BIN_PATH = BASE_DIR / 'bin' / 'showline4.1'  # Path to showline binary
 ```
+
+**Note:** For Show Line ONLINE to work, you need the `showline4.1` binary at the configured path. If you don't have this binary, the feature will show an error. The other features (email-based requests) will still work.
 
 ### Directory Structure
 
@@ -154,6 +157,8 @@ vald-www/
 │   └── showline-req.txt
 ├── style/
 │   └── style.css                 # Original CSS (auto-included)
+├── bin/
+│   └── showline4.1               # VALD binary (optional, for Show Line ONLINE)
 ├── vald/                         # Django app
 ├── vald_web/                     # Django project
 ├── manage.py
@@ -193,6 +198,8 @@ This will print emails to the console instead of sending them.
 ### Implemented Features
 
 - ✅ All 5 main forms (Extract All, Extract Element, Extract Stellar, Show Line, Contact)
+- ✅ Show Line ONLINE (direct execution with results displayed on page)
+- ✅ Personal Configuration (linelist editing with save/restore/cancel)
 - ✅ File-based email authentication
 - ✅ User preferences (units, medium, wavelength)
 - ✅ Email submission of requests
@@ -204,8 +211,6 @@ This will print emails to the console instead of sending them.
 
 ### Not Yet Implemented
 
-- ⏳ Personal Configuration (linelist editing) - placeholder exists
-- ⏳ Show Line Online (direct execution) - placeholder exists
 - ⏳ SVN version display
 
 ### Key Changes
