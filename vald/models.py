@@ -1,6 +1,81 @@
 from django.db import models
 from django.contrib.auth.hashers import make_password, check_password
 import secrets
+import uuid
+
+
+class Request(models.Model):
+    """Track all extraction/query requests - works for all request types"""
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('complete', 'Complete'),
+        ('failed', 'Failed'),
+    ]
+
+    # Unique identifier for URLs
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+
+    # User and request info
+    user_email = models.EmailField(db_index=True)
+    user_name = models.CharField(max_length=255)
+    request_type = models.CharField(max_length=20, db_index=True)  # extractall, extractelement, etc.
+
+    # All request parameters stored as JSON (flexible for different request types)
+    parameters = models.JSONField()
+
+    # Status tracking
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
+    queue_position = models.IntegerField(null=True, blank=True)  # Position in queue (optional)
+
+    # Output file tracking (set by at-job when processing completes)
+    output_file = models.CharField(max_length=500, blank=True, null=True)
+    error_message = models.TextField(blank=True, null=True)
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Request"
+        verbose_name_plural = "Requests"
+
+    def __str__(self):
+        return f"{self.request_type} by {self.user_email} ({self.status})"
+
+    def is_complete(self):
+        """Check if request has completed"""
+        return self.status == 'complete'
+
+    def is_failed(self):
+        """Check if request has failed"""
+        return self.status == 'failed'
+
+    def is_pending(self):
+        """Check if request is still pending"""
+        return self.status in ['pending', 'processing']
+
+    def output_exists(self):
+        """Check if output file exists on filesystem"""
+        if not self.output_file:
+            return False
+        from pathlib import Path
+        return Path(self.output_file).exists()
+
+    def get_output_size(self):
+        """Get size of output file in human-readable format"""
+        if not self.output_exists():
+            return None
+        from pathlib import Path
+        size_bytes = Path(self.output_file).stat().st_size
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
 
 
 class User(models.Model):

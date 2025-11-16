@@ -28,6 +28,11 @@ urlpatterns = [
     # Personal configuration
     path('persconf/', views.persconf, name='persconf'),
 
+    # Request tracking
+    path('my-requests/', views.my_requests, name='my_requests'),
+    path('request/<uuid:uuid>/', views.request_detail, name='request_detail'),
+    path('request/<uuid:uuid>/download/', views.download_request, name='download_request'),
+
     # Documentation and news
     path('doc/<str:docpage>', views.documentation, name='documentation'),
     path('news/<int:newsitem>/', views.news, name='news'),

@@ -1,5 +1,34 @@
 from django.contrib import admin
-from .models import User, UserEmail, UserPreferences, PersonalConfig, LineList
+from .models import Request, User, UserEmail, UserPreferences, PersonalConfig, LineList
+
+
+@admin.register(Request)
+class RequestAdmin(admin.ModelAdmin):
+    list_display = ('uuid', 'request_type', 'user_email', 'status', 'created_at', 'has_output')
+    list_filter = ('status', 'request_type', 'created_at')
+    search_fields = ('uuid', 'user_email', 'user_name')
+    readonly_fields = ('uuid', 'created_at', 'updated_at')
+    fieldsets = (
+        ('Request Information', {
+            'fields': ('uuid', 'request_type', 'user_email', 'user_name')
+        }),
+        ('Parameters', {
+            'fields': ('parameters',),
+            'classes': ('collapse',)
+        }),
+        ('Status', {
+            'fields': ('status', 'queue_position', 'output_file', 'error_message')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at', 'completed_at')
+        }),
+    )
+
+    def has_output(self, obj):
+        """Show if output file exists"""
+        return obj.output_exists()
+    has_output.boolean = True
+    has_output.short_description = 'Output File'
 
 
 class UserEmailInline(admin.TabularInline):

@@ -1,0 +1,72 @@
+{% extends "vald/base.html" %}
+
+{% block extra_head %}
+{% if req.is_pending %}
+<meta http-equiv="refresh" content="10">
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<h2>Request Details</h2>
+<hr>
+
+<table border="0" cellpadding="5">
+<tr><td><b>Request ID:</b></td><td>{{ req.uuid }}</td></tr>
+<tr><td><b>Type:</b></td><td>{{ req.request_type }}</td></tr>
+<tr><td><b>Status:</b></td><td>
+    {% if req.status == 'complete' %}
+    <span style="color: green; font-weight: bold;">✓ Complete</span>
+    {% elif req.status == 'failed' %}
+    <span style="color: red; font-weight: bold;">✗ Failed</span>
+    {% elif req.status == 'processing' %}
+    <span style="color: orange; font-weight: bold;">⟳ Processing</span>
+    {% else %}
+    <span style="color: gray;">⋯ Pending</span>
+    {% endif %}
+</td></tr>
+<tr><td><b>Submitted:</b></td><td>{{ req.created_at|date:"Y-m-d H:i:s" }}</td></tr>
+{% if req.completed_at %}
+<tr><td><b>Completed:</b></td><td>{{ req.completed_at|date:"Y-m-d H:i:s" }}</td></tr>
+{% endif %}
+{% if queue_position %}
+<tr><td><b>Queue Position:</b></td><td>#{{ queue_position }}</td></tr>
+{% endif %}
+</table>
+
+<hr>
+
+{% if req.is_complete and output_ready %}
+    <h3>✓ Results Ready</h3>
+    <p>Your results are ready for download ({{ output_size }}).</p>
+    <p><a href="{% url 'vald:download_request' req.uuid %}"><button>Download Results</button></a></p>
+{% elif req.is_complete %}
+    <p><i>Request completed but output file not found. Please contact support.</i></p>
+{% elif req.is_failed %}
+    <h3>Request Failed</h3>
+    {% if req.error_message %}
+    <p>Error: {{ req.error_message }}</p>
+    {% else %}
+    <p>The request failed during processing. Please try again or contact support.</p>
+    {% endif %}
+{% else %}
+    <h3>Request in Progress</h3>
+    <p>Your request is being processed. This page will automatically refresh every 10 seconds.</p>
+    {% if queue_position %}
+    <p>Estimated queue position: <b>#{{ queue_position }}</b></p>
+    {% endif %}
+    <p><i>Processing typically takes a few minutes. You can close this page and return later.</i></p>
+{% endif %}
+
+<hr>
+
+<h3>Request Parameters</h3>
+<details>
+<summary>Click to show/hide parameters</summary>
+<pre>{{ req.parameters|pprint }}</pre>
+</details>
+
+<hr>
+
+<p><a href="{% url 'vald:my_requests' %}">← Back to My Requests</a></p>
+
+{% endblock %}

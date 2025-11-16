@@ -7,7 +7,7 @@ from django.views.decorators.http import require_http_methods
 from pathlib import Path
 import glob
 
-from .models import UserPreferences, PersonalConfig, LineList
+from .models import Request, UserPreferences, PersonalConfig, LineList
 from .forms import (
     ExtractAllForm,
     ExtractElementForm,
@@ -441,6 +441,7 @@ def handle_extract_request(request):
     subject = form.cleaned_data.get('subject', f'VALD {reqtype} request')
 
     try:
+        # Send email (existing behavior)
         send_mail(
             subject if subject else f'VALD {reqtype} request',
             mail_content,
@@ -448,8 +449,20 @@ def handle_extract_request(request):
             [settings.VALD_REQUEST_EMAIL],
             fail_silently=False,
         )
+
+        # Create Request record for tracking
+        req_obj = Request.objects.create(
+            user_email=user_email,
+            user_name=request.session.get('name', user_email),
+            request_type=reqtype,
+            parameters=form.cleaned_data,
+            status='pending'
+        )
+
+        # Redirect to request detail page
         messages.success(request, 'Your request has been submitted successfully.')
-        return render(request, 'vald/confirmsubmitted.html', context)
+        return redirect('vald:request_detail', uuid=req_obj.uuid)
+
     except Exception as e:
         messages.error(request, f'A problem occurred when processing your input: {e}')
         context['form'] = form
@@ -622,3 +635,114 @@ def persconf(request):
     })
 
     return render(request, 'vald/persconf.html', context)
+
+@require_login
+def my_requests(request):
+    """Show all requests for the current user"""
+    context = get_user_context(request)
+    user_email = request.session.get('email')
+
+    # Get all requests for this user
+    requests = Request.objects.filter(user_email=user_email).order_by('-created_at')
+
+    # Count by status
+    pending_count = requests.filter(status__in=['pending', 'processing']).count()
+    complete_count = requests.filter(status='complete').count()
+    failed_count = requests.filter(status='failed').count()
+
+    context.update({
+        'requests': requests,
+        'pending_count': pending_count,
+        'complete_count': complete_count,
+        'failed_count': failed_count,
+    })
+
+    return render(request, 'vald/my_requests.html', context)
+
+
+@require_login
+def request_detail(request, uuid):
+    """Show details of a specific request"""
+    context = get_user_context(request)
+    user_email = request.session.get('email')
+
+    try:
+        req_obj = Request.objects.get(uuid=uuid)
+
+        # Security: only allow user to view their own requests
+        if req_obj.user_email != user_email:
+            messages.error(request, 'You do not have permission to view this request.')
+            return redirect('vald:my_requests')
+
+        # Check if output file exists
+        output_ready = req_obj.output_exists()
+        output_size = req_obj.get_output_size() if output_ready else None
+
+        # Calculate queue position (rough estimate)
+        if req_obj.status == 'pending':
+            queue_position = Request.objects.filter(
+                status='pending',
+                created_at__lt=req_obj.created_at
+            ).count() + 1
+        else:
+            queue_position = None
+
+        context.update({
+            'req': req_obj,
+            'output_ready': output_ready,
+            'output_size': output_size,
+            'queue_position': queue_position,
+        })
+
+        return render(request, 'vald/request_detail.html', context)
+
+    except Request.DoesNotExist:
+        messages.error(request, 'Request not found.')
+        return redirect('vald:my_requests')
+
+
+@require_login
+def download_request(request, uuid):
+    """Download the output file for a completed request"""
+    from django.http import FileResponse, Http404
+    import mimetypes
+
+    user_email = request.session.get('email')
+
+    try:
+        req_obj = Request.objects.get(uuid=uuid)
+
+        # Security: only allow user to download their own requests
+        if req_obj.user_email != user_email:
+            messages.error(request, 'You do not have permission to download this file.')
+            return redirect('vald:my_requests')
+
+        # Check that output file exists
+        if not req_obj.output_exists():
+            messages.error(request, 'Output file not found.')
+            return redirect('vald:request_detail', uuid=uuid)
+
+        # Serve the file
+        file_path = Path(req_obj.output_file)
+
+        # Determine content type
+        content_type, _ = mimetypes.guess_type(file_path.name)
+        if not content_type:
+            content_type = 'application/octet-stream'
+
+        # Open and serve the file
+        response = FileResponse(
+            open(file_path, 'rb'),
+            content_type=content_type,
+            as_attachment=True,
+            filename=file_path.name
+        )
+
+        return response
+
+    except Request.DoesNotExist:
+        messages.error(request, 'Request not found.')
+        return redirect('vald:my_requests')
+    except Exception as e:
+        messages.error(request, f'Error downloading file: {e}')
+        return redirect('vald:request_detail', uuid=uuid)

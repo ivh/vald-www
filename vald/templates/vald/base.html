@@ -151,6 +151,8 @@ select {
             <td><input type="button" value="Extract All" onClick="page.value='extractall'; submit();">
             <td><input type="button" value="Extract Element" onClick="page.value='extractelement'; submit();">
             <td><input type="button" value="Extract Stellar" onClick="page.value='extractstellar'; submit();">
+
+        <tr><td><a href="{% url 'vald:my_requests' %}"><input type="button" value="My Requests"></a>
             <td><input type="button" value="Logout" onClick="page.value='logout'; submit();">
 
       </table>

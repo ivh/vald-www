@@ -1,0 +1,47 @@
+{% extends "vald/base.html" %}
+
+{% block content %}
+<h2>My Requests</h2>
+<hr>
+
+<p>
+<b>Summary:</b>
+{{ pending_count }} pending,
+{{ complete_count }} complete,
+{{ failed_count }} failed
+</p>
+
+{% if requests %}
+<table border="1" cellpadding="5" cellspacing="0" width="100%">
+<tr>
+    <th>Request Type</th>
+    <th>Status</th>
+    <th>Submitted</th>
+    <th>Actions</th>
+</tr>
+{% for req in requests %}
+<tr>
+    <td>{{ req.request_type }}</td>
+    <td>
+        {% if req.status == 'complete' %}
+        <span style="color: green; font-weight: bold;">✓ Complete</span>
+        {% elif req.status == 'failed' %}
+        <span style="color: red; font-weight: bold;">✗ Failed</span>
+        {% elif req.status == 'processing' %}
+        <span style="color: orange; font-weight: bold;">⟳ Processing</span>
+        {% else %}
+        <span style="color: gray;">⋯ Pending</span>
+        {% endif %}
+    </td>
+    <td>{{ req.created_at|date:"Y-m-d H:i" }}</td>
+    <td>
+        <a href="{% url 'vald:request_detail' req.uuid %}">View Details</a>
+    </td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<p><i>You have no requests yet.</i></p>
+{% endif %}
+
+{% endblock %}

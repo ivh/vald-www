@@ -37,3 +37,12 @@ def get_mod_flag(linelist, index):
         return linelist.get_mod_flag(int(index))
     except (ValueError, AttributeError):
         return False
+
+@register.filter(name='pprint')
+def pprint_filter(value):
+    """Pretty-print JSON/dict data"""
+    import json
+    try:
+        return json.dumps(value, indent=2, sort_keys=True)
+    except (TypeError, ValueError):
+        return str(value)
