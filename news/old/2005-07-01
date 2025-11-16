@@ -1,0 +1,64 @@
+<b>VALD news 1st July 2005</b>
+<br><br>
+The DREAM line data base has been made accessible via VALD.
+Since the two databases are not merged, the DREAM files are
+not included in the VALD default configuration . Individual 
+users can access them  by changing their personal configuration
+accordingly. 
+<br><br>
+To provide proper referencing , users are requested to
+acknowledge the usage of the  DREAM database via VALD  by the
+following sentence:
+<br><br>
+  *********************************************************<br>
+  Atomic data compiled in the DREAM data base (E. Biemont, 
+  P. Palmeri &amp; P. Quinet, Astrophys. Space Sci. 269-270,
+  635 (1999)) were extracted via VALD (Kupka et al., 1999,
+  A&amp;AS 138, 119, and references therein).<br>
+  *********************************************************
+<br><br>
+When quoting data extracted from DREAM  for a specific ion,
+the users are  kindly requested  to mention  the references 
+given in the DREAM database for each ion. This will allow a
+correct referencing.
+<br><br>
+For all second ions of the rare-earth elements and for CeII
+Lande factors  are now available  thanks to calculations of
+the DREAM-team. <br>
+Reference:<br>
+  P. Quinet &amp; E. Bi&#233;mont, At. Data Nucl. Data Tables 87,
+  207-230 (2004)
+<br><br>
+Additional new line lists available for users:
+<br><br>
+1. Orthogonal-operator method calculations for  Cr2 , Fe2 ,
+   Co2 by Raassen &amp; Uylings.<br> 
+   Reference:<br>
+   Raassen, A.J.J. &amp; Uylings P.H.M. 1998, A&A, 340, 300
+   ftp://ftp.wins.uva.nl/pub/orth - database
+<br><br>
+2. Experimental  oscillator  strength  for  Ca1  by Smith &amp;
+   Raggett.<br>
+   Reference:<br>
+   Smith G. &amp; Raggett D.St.J. 1981, J.Phys.B: At.Mol.Phys.,
+   14, 4015
+<br><br>
+3. Experimental  oscillator strengths for  Sr1  by Garcia &amp;
+   Campos.<br>
+   Reference:<br>
+   Garcia G. &amp; Campos J. 1988, JQSRT, 39, 477
+<br><br>
+4. Experimental oscillator strengths  for 708 Nd2 lines  by
+   Den Hartog et al.<br>
+   Reference:<br>
+   Den Hartog, E.A., Lawler, J.E., Sneden, C., &amp; Cowan, J.J.
+   2003, ApJS, 148, 543
+<br><br>
+All these files are  not included in the default VALD configuration,
+therefor we ask all users to modify their personal
+configuration if necessary.
+<br><br>
+Please use the Vienna VALD service to access these new data,
+the Uppsala VALD mirror is currently updated.
+<br><br>
+Best regards<br>The VALD team<br>

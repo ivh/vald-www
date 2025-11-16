@@ -1,0 +1,54 @@
+<p><b>Show Line</b>
+
+This request must have the following format
+<pre>
+  begin request
+  show line
+  &lt;approximate wavelength 1&gt;,&lt;wavelength window 1&gt;
+  &lt;element 1&gt; [spectral number 1]
+  &lt;approximate wavelength 2&gt;,&lt;wavelength window 2&gt;
+  &lt;element 2&gt; [spectral number 2]
+  ...
+  end request
+</pre>
+where  &lt;approximate wavelength&gt; is the central wavelength of the line in
+Angstroems. &lt;wavelength window&gt; determines the spectral range (it must not
+exceed 1 Angstroem) from
+
+<p> &lt;approximate wavelength&gt; &nbsp;-&nbsp; &lt;wavelength window&gt;
+ <br />to<br />
+ &lt;approximate wavelength&gt; &nbsp;+&nbsp; &lt;wavelength window&gt;
+<br /><br />
+where VALD will search for the line. &lt;element&gt; and 
+&lt;spectral number&gt; are defined in a conventional way. 
+&lt;spectral number&gt; = 1 corresponds to neutral atoms, 
+2 to singly ionized, etc.
+
+<p>Show line requests for multiple spectral intervals may be combined in the same 
+request. The current limit for multiple spectral intervals in one show line 
+request is 100.
+
+<p>Example:
+<pre>
+   begin request          # Start the request
+   default configuration  # No special configuration
+   show line              # Select request type
+   4491.405, 0.02         # Search line between 4491.385
+                          # and 4491.425 Angstroems
+   Fe 2                   # The line is formed by singly ionized iron
+                          # Next request starts below
+   6439.07, 0.01          # Search line between 6439.06
+                          # and 6439.08 Angstroems
+   Ca1                    # The line is formed by neutral calcium
+   end request            # The end of the request
+</pre>
+The reply mail from VALD will contain the following table
+<a href="$thisscript?docpage=reqshowlin.txt">reqshowlin.txt</a>
+
+<p>0 in place of a damping parameter and 99 in place of a Lande factor
+mark the absence of the corresponding data in VALD. The label given after
+the parameters for each line indicates the source of the data. For the
+section of SHOW LINE output following 'lines found' all quantities for
+one line originate from the same source. The last section of SHOWLINE
+output shows the combination of all sources, as it will appear for all
+the other types of VALD request. 

@@ -1,0 +1,118 @@
+<pre>
+ ============= job.005492 =============
+ # begin request
+ # default configuration
+ # show line
+ # 4491.405, 0.02,
+ # Fe 2
+ # 6439.07, 0.01,
+ # Ca1
+ #    
+ # end request
+ ===============================================================================
+ Central wavelength:         4491.405 [A]ngstroem
+ Wavelength range:              0.020 [A]
+ Size of scan window:           0.050 [A]
+ Highest ion number allowed:    5
+ Maximum excitation potential
+     for lower energy level:   50.000 [eV]
+ Species requested:            Fe 2
+--------------------------------------------------------------------------------
+ Configuration file used:      default.cfg
+ Date and time of extraction:  1999-02-24 at 12:53 (+01:00 relative to UTC)
+================================================================================
+
+
+Spectral lines found (4 text lines per transition listed in a given source, the
+VALD internal ranking parameter is provided in parentheses next to each value):
+
+================================================================================
+1) Database reference for the line
+2) Wavelength[A]  Element/Ion   log gf     E(low)[eV] J(low) E(high)[eV] J(high)
+3) Lande: eff.    low   high  Gamma.Rad     Gamma.Stark        Gamma.VdW
+4)      term design. (lower -> upper)      accuracy  (multiplet or comments)
+--------------------------------------------------------------------------------
+NBS: Iron
+  4491.400 ( 0)   Fe 2       -2.700 ( 5)    2.855 ( 0)   1.5   5.615 ( 0)   1.5
+     99.00 ( 0)  99.00 99.00  0.000 ( 0)    0.000 ( 0)         0.000 ( 0)
+                 b 4F         z 4F*        C    (37)        ( 2)
+ 
+GFIRON obs. energy level: Fe
+  4491.405 ( 3)   Fe 2       -2.684 ( 3)    2.856 ( 3)   1.5   5.615 ( 3)   1.5
+      0.42 ( 3)   0.40  0.44  8.481 ( 3)   -6.599 ( 3)        -7.946 ( 3)
+                 (3F)4s b4F   (5D)4p z4F                    ( 3)
+
+VALD 2: Fe
+  4491.405 ( 4)   Fe 2       -2.700 ( 6)    2.856 ( 4)   1.5   5.615 ( 4)   1.5
+      0.42 ( 0)   0.40  0.44  8.481 ( 0)   -6.599 ( 0)        -7.946 ( 0)
+                 (3F)4s b4F   (5D)4p z4F    0   .10  KK     ( 4)
+================================================================================
+
+
+  These data should be combined to the following set of lines (the output for
+  long format without lower and upper Lande factors etc. is displayed):
+
+================================================================================
+1) Wl[A]  El/Ion log(gf)  Ei[eV]   Ji  Ek[eV]   Jk   gl   gam.r   gam.s   gam.w
+2) term designation i -> k               references (except for El/Ion, Ji & Jk)
+--------------------------------------------------------------------------------
+  4491.405  Fe 2  -2.700   2.856  1.5   5.615  1.5  0.42  8.481  -6.599  -7.946
+        (3F)4s b4F(5D)4p z4F 0.10  KK    1   1   1   1   2   2   2   2   1
+--------------------------------------------------------------------------------
+Key to references:
+--------------------------------------------------------------------------------
+  1. VALD 2: Fe
+  2. GFIRON obs. energy level: Fe
+================================================================================
+================================================================================
+ Central wavelength:         6439.070 [A]ngstroem
+ Wavelength range:              0.010 [A]
+ Size of scan window:           0.050 [A]
+ Highest ion number allowed:    5
+ Maximum excitation potential
+     for lower energy level:   50.000 [eV]
+ Species requested:            Ca 1
+--------------------------------------------------------------------------------
+ Configuration file used:      default.cfg
+ Date and time of extraction:  1999-02-24 at 12:55 (+01:00 relative to UTC)
+================================================================================
+
+
+Spectral lines found (4 text lines per transition listed in a given source, the
+VALD internal ranking parameter is provided in parentheses next to each value):
+
+================================================================================
+1) Database reference for the line
+2) Wavelength[A]  Element/Ion   log gf     E(low)[eV] J(low) E(high)[eV] J(high)
+3) Lande: eff.    low   high  Gamma.Rad     Gamma.Stark        Gamma.VdW
+4)      term design. (lower -> upper)      accuracy  (multiplet or comments)
+--------------------------------------------------------------------------------
+NLTE lines: Ca
+  6439.075 ( 2)   Ca 1        0.470 ( 2)    2.526 ( 2)   3.0   4.451 ( 2)   4.0
+     99.00 ( 0)  99.00 99.00  7.730 ( 1)   -5.350 ( 1)         0.000 ( 1)
+                 3d4s 3D      3d4p 3F           NBS         ( 3)
+
+GFIRON obs. energy level: Ca
+  6439.075 ( 3)   Ca 1        0.394 ( 3)    2.526 ( 3)   3.0   4.451 ( 3)   4.0
+      1.12 ( 3)   1.33  1.25  7.649 ( 3)   -6.072 ( 3)        -7.788 ( 3)
+                 3d4s 3D      3d4p 3F                       ( 3)
+================================================================================
+
+
+ These data should be combined to the following set of lines (the output for
+ long format without lower and upper Lande factors etc. is displayed):
+
+================================================================================
+1) Wl[A]  El/Ion log(gf)  Ei[eV]   Ji  Ek[eV]   Jk   gl   gam.r   gam.s   gam.w
+2) term designation i -> k               references (except for El/Ion, Ji & Jk)
+--------------------------------------------------------------------------------
+  6439.075  Ca 1   0.394   2.526  3.0   4.451  4.0  1.12  7.649  -6.072  -7.788
+        3d4s 3D   3d4p 3F                1   1   1   1   1   1   1   1   1
+--------------------------------------------------------------------------------
+Key to references:
+--------------------------------------------------------------------------------
+  1. GFIRON obs. energy level: Ca
+================================================================================
+================================================================================
+
+</pre>

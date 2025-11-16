@@ -1,0 +1,95 @@
+<script>
+function sendIt() {
+  var go = false;
+  for (var i=0; i < 1; i++) {
+    var j = 3 * i;
+    if ( (document.bottomform.elements[j].value.length != 0)
+        | (document.bottomform.elements[j].value.length != 0)
+        | (document.bottomform.elements[j].value.length != 0)
+        | (go == false) ) {
+      if (document.bottomform.elements[j].value.length == 0)
+         { alert("Please enter a value in the 'Approximate wavelength' field");
+           return false }
+      if (document.bottomform.elements[j].value <=0 )
+         { alert("Please provide a positive value in the 'Approximate wavelength' field");
+           return false }
+      if (document.bottomform.elements[j+1].value.length == 0)
+         { alert("Please enter a value in the 'Wavelength window' field");
+           return false }
+      if (document.bottomform.elements[j+1].value <=0 )
+         { alert("Please provide a positive value in the 'Wavelength window' field");
+           return false }
+      if (document.bottomform.elements[j+1].value >5 )
+         { alert("Maximum wavelength window size allowed is 5 A");
+           return false }
+      if (document.bottomform.elements[j+2].value.length == 0)
+         { alert("Please enter a value in the 'Element + ionization' field");
+           return false }
+      else { elmion = document.bottomform.elements[j+2].value.split(" ");
+	     if (elmion.length > 1)
+	     { if ( (elmion[1].length > 0) && (isNaN(parseInt(elmion[1]))) )
+	          { alert("Please express the ionization stage as an arabic number");
+		    return false }
+ 	     }
+           }
+      go = true;
+    }
+  }
+  document.bottomform.submit();
+  return true;
+}
+function resetIt() {
+  document.bottomform.reset();
+}
+</script>
+ 
+<form name="bottomform" method="post" action="$thisscript">
+<table border=0 cellpadding=0 width="100%">
+
+<tr><td colspan=3>
+<hr><h3>Show Line - ONLINE EXTRACTION - EXPERIMENTAL</h3><hr>
+
+<tr><td>Approximate wavelength<td>Wavelength window<td>Element [ +
+ionization ]
+<tr><td><input name="wvl0" type="text" size=10>  &Aring; (air)
+<td><input name="win0" type="text" size=10>  &Aring; (air)
+<td><input name="el0" type="text" size=5>
+
+<tr><td colspan=3><hr>
+<tr><td><a href="$thisscript?page=persconf">Linelist configuration</a>
+<td><input type="radio" name="pconf" value="default" checked> Default
+<tr><td><td><input type="radio" name="pconf" value="personal"> Custom
+
+<tr><td colspan=3><hr>
+<tr><td>Isotopic scaling of oscillator strength
+<td><input type="radio" name="isotopic_scaling" value="on" checked> On
+<td>
+<i>(Takes precendence over the default value set in the
+<a href="$thisscript?page=unitselection.html">unit selection</a> dialog)</i>
+<tr><td><td><input type="radio" name="isotopic_scaling" value="off"> Off
+
+<!--
+<tr><td colspan=3><hr>
+<tr><td><a href="$thisscript?page=unitselection.html">Unit selection</a>
+<td colspan=2><i>Energy unit: $energyunit - Medium: $medium - Wavelength unit: $waveunit - VdW syntax: $vdwformat</i>
+-->
+<tr><td colspan=3><hr>
+
+<tr>
+<input type="hidden" name="reqtype" value="showline-online">
+<td><input type="button" value="Submit request" onClick="sendIt()">
+<td><input type="button" value="Reset form" onClick="resetIt()">
+
+</table>
+
+<script>
+
+  for (var i = 0; i < document.bottomform.elements.isotopic_scaling.length; i++) {
+         document.bottomform.elements.isotopic_scaling[i].checked = false;
+         if(document.bottomform.elements.isotopic_scaling[i].value == "$isotopic_scaling") {
+                 document.bottomform.elements.isotopic_scaling[i].checked = true;
+         }
+  }
+
+</script>
+

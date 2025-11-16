@@ -1,0 +1,44 @@
+<hr>
+<h3>Personal Configuration of $fullname</h3>
+<hr>
+In the form below you can change the selection of linelists and the
+weights that are being used when extracting from the VALD database.
+The higher the weight, the more emphasis is given on that aspect during
+extraction. It is also possible to disable some of the linelists.
+
+<p>Use the 'Edit' links to modify the parameters of a certain linelist.
+Parameters that are different from the VALD default values are shown on a <span
+class="modified_data">RED</span> background. You can also revert the parameters
+to the default VALD values.
+
+<p>Any linelists that were recently added to VALD will automatically appear in
+your personal configuration file below. However, these linelists will be listed
+as inactive. Similarly, linelists that no longer are part of VALD will
+automatically be removed for your personal configuration.
+
+<p>For a list of references, please consult the <a
+href="http://www.astro.uu.se/valdwiki/VALD3linelists"
+target="_top">table of line lists with links to references.</a>
+
+
+
+<form action="$thisscript" method="post" name="thisform">
+<input type="hidden" name="editid"   value="-1">
+<input type="hidden" name="action"    value="none">
+<input type="hidden" name="page"      value="persconf">
+
+<input type="button" value="Revert to VALD default values"
+onclick="if (confirm('This will load the default VALD configuration file and all changes will be lost.\nAre you sure?')) {thisform.action.value='restore_all';
+thisform.submit();}; return false;"> (Note that you can also restore individual
+linelists using the 'Edit' links below).
+
+<p>
+<table border=1 cellpadding=1 cellspacing=0 name="preftable">
+<tr><th rowspan=3>Number
+<th rowspan=3>Active?<th rowspan=3>Name<th colspan=9>Weights
+<th rowspan=3 colspan=3>Actions
+<tr><th rowspan=2>Wvl<th rowspan=2>log gf
+<th colspan=2>Excitation potential<th rowspan=2>Land&eacute;<br>factor
+<th colspan=3>Broadening<th rowspan=2>Term<br>design.
+<tr><th>Upper<th>Lower<th>Rad<th>Stark<th>VdW
+

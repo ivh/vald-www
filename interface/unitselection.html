@@ -1,0 +1,138 @@
+<script>
+
+if (document.getElementsByClassName == undefined) {
+	document.getElementsByClassName = function(className)
+	{
+		var hasClassName = new RegExp("(?:^|\\s)" + className + "(?:$|\\s)");
+		var allElements = document.getElementsByTagName("*");
+		var results = [];
+
+		var element;
+		for (var i = 0; (element = allElements[i]) != null; i++) {
+			var elementClass = element.className;
+			if (elementClass && elementClass.indexOf(className) != -1 && hasClassName.test(elementClass))
+				results.push(element);
+		}
+
+		return results;
+	}
+}
+
+function setTextColor(classname, givencolor) {
+    var objs = document.getElementsByClassName(classname);
+    for (var i = 0; (element = objs[i]) != null; i++) {
+      element.style.color = givencolor;
+    }
+}
+
+function checkConsistency() {
+  if (document.bottomform.waveunit[2].checked) {
+    document.bottomform.medium[1].checked = true;
+    document.bottomform.medium[0].disabled = true;
+    document.bottomform.medium[1].disabled = true;
+    setTextColor('medium', 'grey');
+  } else {
+    document.bottomform.medium[0].disabled = false;
+    document.bottomform.medium[1].disabled = false;
+    setTextColor('medium', 'black');
+  }
+}
+
+function sendIt() {
+  document.bottomform.medium[0].disabled = false;
+  document.bottomform.medium[1].disabled = false;
+  document.bottomform.submit();
+  return true;
+}
+
+function resetIt() {
+  document.bottomform.reset();
+}
+
+</script>
+
+
+<form name="bottomform" method="post" action="$thisscript" onLoad="prepForm()">
+<table border=0 cellpadding=0 width="80%">
+
+<tr><td colspan=2>
+<hr><h3>Unit selection</h3><hr>
+
+<tr><td>Energy level units :
+<td><input type="radio" name="energyunit" value="eV" checked> eV
+<tr><td><td><input type="radio" name="energyunit" value="1/cm"> cm-1
+
+<tr><td colspan=2><hr>
+<tr><td class="medium">Give wavelenghts in medium :
+<td class="medium"><input type="radio" name="medium" value="air" checked> air
+<tr><td><td class="medium"><input type="radio" name="medium" value="vacuum"> vacuum
+
+<tr><td colspan=2><hr>
+<tr><td>Wavelength units :
+<td><input type="radio" name="waveunit" value="angstrom" checked onChange='checkConsistency();'> &Aring;ngstr&ouml;m
+<tr><td><td><input type="radio" name="waveunit" value="nm" onChange='checkConsistency();'> nm
+<tr><td><td><input type="radio" name="waveunit" value="1/cm" onChange='checkConsistency();'> cm-1
+
+<tr><td colspan=2><hr>
+<tr><td>Van der Waals syntax
+<td><input type="radio" name="vdwformat" value="default" checked> Default
+<tr><td><td><input type="radio" name="vdwformat" value="extended"> Extended
+
+<tr><td colspan=2><hr>
+<tr><td>Isotopic scaling
+<td><input type="radio" name="isotopic_scaling" value="on" checked> On
+<tr><td><td><input type="radio" name="isotopic_scaling" value="off"> Off
+<tr><td colspan=2><hr>
+
+<tr>
+<input type="hidden" name="page" value="saveunits">
+<script>
+  if ("$unitsupdated" == "True") { document.write('<tr><td colspan=2><b>Settings saved!</b><p><input type="button" value="Save again" onClick="sendIt()">');}
+  else { document.write('<td colspan=2><input type="button" value="Save settings" onClick="sendIt()">'); }
+</script>
+<p><i>The choices you make above are persistent and will be saved to your user profile.</i>
+
+
+</table>
+
+
+<script>
+
+  for (var i = 0; i < document.bottomform.elements.energyunit.length; i++) {
+	 document.bottomform.elements.energyunit[i].checked = false;
+	 if(document.bottomform.elements.energyunit[i].value == "$energyunit") {
+		 document.bottomform.elements.energyunit[i].checked = true;
+	 }
+  }
+
+  for (var i = 0; i < document.bottomform.elements.medium.length; i++) {
+	 document.bottomform.elements.medium[i].checked = false;
+	 if(document.bottomform.elements.medium[i].value == "$medium") {
+		 document.bottomform.elements.medium[i].checked = true;
+	 }
+  }
+
+  for (var i = 0; i < document.bottomform.elements.waveunit.length; i++) {
+	 document.bottomform.elements.waveunit[i].checked = false;
+	 if(document.bottomform.elements.waveunit[i].value == "$waveunit") {
+		 document.bottomform.elements.waveunit[i].checked = true;
+	 }
+  }
+
+  for (var i = 0; i < document.bottomform.elements.vdwformat.length; i++) {
+	 document.bottomform.elements.vdwformat[i].checked = false;
+	 if(document.bottomform.elements.vdwformat[i].value == "$vdwformat") {
+		 document.bottomform.elements.vdwformat[i].checked = true;
+	 }
+  }
+
+  for (var i = 0; i < document.bottomform.elements.isotopic_scaling.length; i++) {
+	 document.bottomform.elements.isotopic_scaling[i].checked = false;
+	 if(document.bottomform.elements.isotopic_scaling[i].value == "$isotopic_scaling") {
+		 document.bottomform.elements.isotopic_scaling[i].checked = true;
+	 }
+  }
+
+  checkConsistency();
+
+</script>

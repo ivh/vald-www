@@ -1,0 +1,25 @@
+<h3>Hyperfine Structure splitting is now in VALD3</h3>
+
+<p>From now on VALD3 has the option to include the HFS splitting into the extraction
+result. The new option is supported by the Web interface (look for HFS splitting
+button) or via new extraction option "HFS splitting" to be included into the EMS
+request. The splitting constants and the corresponding bibliography were
+collected by Yuri Pakhomov and presented in
+<!--
+<a href="https://arxiv.org/pdf/1911.03189.pdf">
+-->
+<a href="https://link.springer.com/article/10.1134/S1063772919120047">
+Pakhomov, Ryabchikova and Piskunov, 2019, Astronomy Reports, 63, 1010</a>.
+
+<p>The output stream is sorted in wavelengths so that the HFS components may appear
+interleaved by other transitions. At this point we fully support the following
+extraction modes: <i>Extract All</i>, <i>Extract Element</i> and
+<i>Extract Stellar</i>. <i>Showline</i> will follow in a few days.
+
+<p>We have decided to start with HFS splitting as an option. Once we get your
+feedback and check that things are working fine (even though we spent several
+months testing this option) we will add HFS splitting to default extraction.
+Then, to turn HFS splitting off you would have to uncheck the corresponding box in the
+Web interface or specify "no HFS splitting" in the EMS request. 
+
+<p>Enjoy! 

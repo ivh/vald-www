@@ -1,0 +1,12 @@
+<b>VALD news, 2008 April 23 (default configuration) </b>
+<br />
+<br />
+The default configuration for the VALD ems service was updated.
+Certain high excitation lines where not extracted because
+of their lower excitation potential being higher than the
+internal (historical) limit of 50eV. 
+Thus we raised the maximum allowed excitation potential for
+the lower level to 100eV.
+<br />
+<br />Best Regards
+<br />The VALD Team

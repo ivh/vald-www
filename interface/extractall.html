@@ -1,0 +1,90 @@
+<script>
+function sendIt() {
+  if (document.bottomform.elements[0].value.length == 0)
+    { alert("Please enter a value in the 'Starting wavelength' field");
+      return false }
+  if (document.bottomform.elements[0].value <= 0)
+    { alert("Please provide a positive value in the 'Starting wavelength' field");
+      return false }
+  if (document.bottomform.elements[1].value.length == 0)
+    { alert("Please enter a value in the 'Ending wavelength' field");
+      return false }
+  if (document.bottomform.elements[1].value <= 0)
+    { alert("Please provide a positive value in the 'Ending wavelength' field");
+      return false }
+  if (document.bottomform.elements[1].value - document.bottomform.elements[0].value <= 0)
+    { alert("The 'Ending wavelength' cannot be smaller than or equal to the 'Starting wavelength'");
+      return false }
+  if ((document.bottomform.elements[1].value - document.bottomform.elements[0].value > 50)
+     && (document.bottomform.elements[5].checked == false))
+    { alert("The maximum wavelength range that can be requested by email is 50 A. Select FTP method!");
+      return false }
+  document.bottomform.submit();
+  return true;
+}
+function resetIt() {
+  document.bottomform.reset();
+}
+var wavelabel1 = "wavelength";
+var wavelabel2 = "&Aring;";
+if (("$waveunit" == "angstrom") && ("$medium" == "air")   ) {wavelabel2 = "&Aring; (air)"}
+if (("$waveunit" == "angstrom") && ("$medium" == "vacuum")) {wavelabel2 = "&Aring; (vacuum)"}
+if (("$waveunit" == "nm")       && ("$medium" == "air")   ) {wavelabel2 = "nm (air)"}
+if (("$waveunit" == "nm")       && ("$medium" == "vacuum")) {wavelabel2 = "nm (vacuum)"}
+if (("$waveunit" == "1/cm")                               ) {wavelabel1 = "wavenumber"; wavelabel2 = "1/cm (vacuum)"}
+</script>
+
+
+<form name="bottomform" method="post" action="$thisscript" onLoad="prepForm()">
+<table border=0 cellpadding=0 width="100%">
+
+<tr><td colspan=2>
+<hr><h3>Extract All</h3><hr>
+<p><tr><td>Starting <script>document.write(wavelabel1);</script> :
+<td><input name="stwvl" type="text" size=10> <script>document.write(wavelabel2);</script>
+
+<tr><td>Ending <script>document.write(wavelabel1);</script> :
+<td><input name="endwvl" type="text" size=10> <script>document.write(wavelabel2);</script>
+
+<tr><td>Extraction format :
+<td><input type="radio" name="format" value="short" checked> Short format
+<tr><td><td><input type="radio" name="format" value="long"> Long format
+
+<tr><td>Retrieve data via 
+<td><input type="radio" name="viaftp" value="" checked> Email
+<tr><td><td><input type="radio" name="viaftp" value="via ftp"> FTP
+<tr><td colspan=2><hr>
+<tr><td>Hyperfine structure<td><input type="checkbox" name="hfssplit" value="HFS splitting"> Include HFS splitting 
+<tr><td colspan=2><hr>
+<tr><td>Require lines to have a known value of : <td>
+<input type="checkbox" name="hrad" value="have rad"> Radiative damping constant
+<tr><td><td><input type="checkbox" name="hstark" value="have stark"> Stark
+damping constant
+<tr><td><td><input type="checkbox" name="hwaals" value="have waals"> Van
+der Waals damping constant
+<tr><td><td><input type="checkbox" name="hlande" value="have lande">
+Land&eacute; factor
+<tr><td><td><input type="checkbox" name="hterm" value="have term"> Term
+designation
+
+<tr><td colspan=2><hr>
+<tr><td><a href="$thisscript?page=persconf">Linelist configuration</a>
+<td><input type="radio" name="pconf" value="default" checked> Default
+<tr><td><td><input type="radio" name="pconf" value="personal"> Custom
+
+<tr><td colspan=2><hr>
+<tr><td><a href="$thisscript?page=unitselection.html">Unit selection</a>
+<td><i>Energy unit: $energyunit - Medium: $medium - Wavelength unit: $waveunit - VdW syntax: $vdwformat</i>
+<tr><td colspan=2><hr>
+<tr><td>Optional comment for request<td><input type="text" name="subject"
+size=40>
+<tr><td colspan=2><hr>
+
+<tr>
+<input type="hidden" name="reqtype" value="extractall">
+<td><input type="button" value="Submit request" onClick="sendIt()">
+<td><input type="button" value="Reset form" onClick="resetIt()">
+
+</table>
+
+

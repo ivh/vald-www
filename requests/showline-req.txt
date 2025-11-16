@@ -1,0 +1,20 @@
+begin request
+show line
+$pconf configuration
+waveunit $waveunit
+energyunit $energyunit
+medium $medium
+isotopic scaling $isotopic_scaling
+$vdwformat waals
+$hfssplit
+$wvl0, $win0,
+$el0
+$wvl1, $win1,
+$el1
+$wvl2, $win2,
+$el2
+$wvl3, $win3,
+$el3
+$wvl4, $win4,
+$el4
+end request

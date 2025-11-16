@@ -1,0 +1,22 @@
+<?php
+
+# Local mirror configuration file for VALD Web interface - the following
+# statements should be placed in the same directory, in a separate file called
+# 'site_config_local.php'. This is the *only* file that differs between the 
+# VALD mirrors.
+#
+$config['sitename']		= "Your sitename";
+$config['thisscript']		= "/~vald/php/vald.php";
+$config['htmlroot']		= "http://localhost/~vald";
+
+$config['VALD_root']		= "/home/vald";
+
+$config['send_request_to']	= "stempels@localhost";
+$config['valdadministrator']	= "stempels@localhost";
+$config['valdwebmanager']	= "stempels@localhost";
+
+$config['clients_register_local'] = "{$config['VALD_root']}/EMS/clients.register_local";
+
+$config['maintenance']	= False;
+
+?>

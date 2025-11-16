@@ -1,0 +1,44 @@
+<p align="left"><b>The VALD interface</b>
+
+<p>On top of the VALD-EMS, a World-Wide-Web interface was developed. This
+interface allows interactive creation of the request and will notify the
+user of inconsistencies or omissions in the request before converting the
+request to an ordinary VALD-EMS request.
+
+<p>Another addition to the user interface is the personal configuration
+file which was primarily dictated by the quick evolution of the content
+of our data base. With the addition of new line data of higher accuracy
+it is often impossible to reproduce the same selection with the standard
+VALD configuration file that controls the merging of different line lists
+according to the ranking system. One can still get the same selection
+with the old configuration file, but until VALD2 a user had no control
+over the content of the configuration file when using the EMS interface
+to access the data base. Now each client can choose between the standard
+configuration, created by VALD experts, or a personal configuration file
+that is modified only by the owner. A personal configuration file is
+first created as a copy of the standard configuration in response to a
+VALD-EMS request that contains the 'personal configuration' option or via
+the WWW interface. The WWW interface also provides a convenient editing
+tool. The VALD client can select a subset of the line lists that will be
+searched for extraction requests, set the ranking of different parameters
+that determines the merging procedure etc. (see Piskunov et al. 1995,
+Ryabchikova et al. 1999, Kupka et al. 1999). The latest copies of the
+personal configuration files are automatically distributed to all VALD
+servers as part of the synchronization procedure (see below).
+
+<p>The use of mirror sites is a logical way to distribute the work load
+and reduce VALD response time. It is particularly important for massive
+extraction that is performed, e.g. for model atmosphere calculations.
+There are currently three VALD mirror sites in operation, in Vienna,
+Uppsala and Moscow. In order to achieve coherence of all VALD servers we
+developed an additional layer of the software that runs automatically on
+top of the VALD email service and ensures the synchronization of all
+sites. Currently, synchronization is performed twice a day which means
+that within less than a day after registration a new client will have EMS
+access to all VALD sites.
+
+<p>Due to the massive increase off spam mail we recommend that you also
+use the  <a href="$thisscript?docpage=contact.html">contact page</a> of
+the WWW interface when contacting the VALD staff, since we cannot
+guarantee that emails sent the traditional way will pass our spam
+filters.

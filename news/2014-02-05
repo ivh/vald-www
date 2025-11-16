@@ -1,0 +1,26 @@
+<h3>VALD3 at first release</h3>
+
+<p>VALD3 has now left the testing stage, and we are releasing this service to 
+the community with full functionality. VALD3 can now be used by any user that
+already had access to VALD2
+
+<p>At this moment we feel confident that the service is stable, and that it
+works to expectations. Compared to VALD2, there are several updated features:
+
+<ul>
+<li> More and extended line lists, including lists with molecular transitions
+(TiO, MgH, CN, CO, C2, OH and more). See the
+<a href="http://www.astro.uu.se/valdwiki">online documentation</a> for more
+details.
+<li> A new interactive extraction mode, <b>showline-online,</b> that will immediately
+list all data from VALD3 available in a certain wavelength interval and species.
+<li> Completely overhauled routines throughout the entire interface.
+<li> Possibilities for users to set their own default units for data extraction.
+<li> Full bibliography of the extracted data in BibTeX format.
+<li> Automatic synchronization across all available sites.
+</ul>
+
+While we have taken every effort to make this new release as enjoyable as
+possible, we welcome any comment, such as missing data, problems with the software,
+or suggestions of new features. Please leave your comments to the VALD administrator
+through our  <a href="$thisscript?docpage=contact.html">contact page.</a>

@@ -1,0 +1,44 @@
+<p><b>VALD EMS requests</b>
+
+<p>VALD-EMS requests are ordinary electronic mails, sent via INTERNET to
+<pre>
+       vald@vald.astro.univie.ac.at 
+       vald@astro.uu.se        
+       vald@inasan.ru
+</pre>
+An e-mail for VALD-EMS can either be prepared and sent to any of these VALD 
+sites using a standard e-mail program or by using one of the VALD Web 
+interfaces (which submit the e-mail to a fixed site, usually that one
+running the Web interface).
+
+<p>Each mail can include <b>only one</b> request. The request consists of 
+a number of lines. <b>only the first 80 characters of each line are 
+interpreted by</b> VALD-EMS. The request starts with a line containing 
+a string
+<pre>       begin request </pre>
+and ends with a line
+<pre>       end request </pre>
+Spaces are ignored and VALD is case insensitive, so the line
+<pre>       EndRequest </pre>
+is also a valid termination for the request. All characters on a line of text
+in a request to VALD following the symbol # are ignored by VALD. This can be 
+used for comments. For example
+<pre>       Begin request   # this is a comment for the first line</pre>
+All mail is processed at certain times of the day and valid requests
+are interpreted and submitted for execution in the order of arrival.
+After the request has been processed, the output file is mailed back
+to the client. This file contains: VALD-EMS REQUEST NUMBER, all
+diagnostic information (syntactic errors, wrong parameter values, etc.)
+and the extracted parameters. 
+If the client has difficulty identifying the problem with his request, 
+he should address the VALD administrator and supply the VALD-EMS request number, 
+which appears on the first line of the reply mail.
+
+<p>For the case of larger requests, up to 20000 atomic lines at once, the feature
+'via ftp' is available. To invoke it add the line 
+<pre>       via ftp</pre>
+below the request type. Now the returning e-mail will contain a link where the
+resultant data file (gzipped) can be downloaded. Currently this link will be
+active for 48 hours.
+
+<p>See examples in Section <a href="$thisscript?docpage=reqextall.html">extract all</a>.

@@ -1,0 +1,50 @@
+<p><b>Customization Options</b>
+
+<p>For all VALD-EMS requests there are some options to customize the request. 
+These options can be inserted in the request after the request type statement.
+The options are
+
+<p><table align="center" border="0" cellpadding="0" cellspacing="0">
+  <tr><td width="150px" align="left" valign="top">short format</td>
+      <td align="justify">the output will be in compressed form. For the 
+          extract all, extract element and extract stellar this means that only
+          one entry per line is displayed.</td></tr>
+  <tr><td width="150px" align="left" valign="top">long format</td>
+      <td align="justify">the output will be in extended form. 
+          This includes for each
+          line the term designation, upper and lower Lande factors,
+          quality estimate and additional reference data.</td></tr>
+</table>
+
+<p><table align="center" border="0" cellpadding="0" cellspacing="0">
+ <tr><td width="150px" align="left" valign="top">default configuration</td>
+     <td align="justify">use the VALD default configuration of quality ratings
+			  and selection of the atomic line lists.</td></tr>
+ <tr><td width="150px" align="left" valign="top">personal configuration&nbsp;</td>
+     <td align="justify">use individual preferences. Each user can maintain
+			  his/her own list of quality ratings and line list
+			  selections, and VALD-EMS will store this information
+			  in a personal file. It can be edited through the VALD
+			  Web interface.</td></tr>
+ </table>
+
+<p> If no format and/or configuration is entered, VALD-EMS defaults to short format
+ and default configuration.
+
+<p> It is possible to force VALD to include only lines for which certain atomic
+ parameters are known. If the parameter is not present, then the line
+ is simply not included. These options are not applicable to the show line 
+ request The options are
+
+<p><table align="left" border="0" cellpadding="0" cellspacing="0">
+ <tr><td width="100px" align="left" valign="top">have rad</td>
+     <td align="justify">require a value of the radiation damping</td></tr>
+ <tr><td width="100px" align="left" valign="top">have stark</td>
+     <td align="justify">require a value of the Stark broadening</td></tr>
+ <tr><td width="100px" align="left" valign="top">have waals</td>
+     <td align="justify">require a value of the Van der Waals broadening</td></tr>
+ <tr><td width="100px" align="left" valign="top">have lande</td>
+     <td align="justify">require a Lande factor</td></tr>
+ <tr><td width="100px" align="left" valign="top">have term</td>
+     <td align="justify">require a term designation</td></tr>
+ </table>

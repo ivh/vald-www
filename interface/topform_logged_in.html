@@ -1,0 +1,26 @@
+<h2>Welcome to VALD3</h2>
+<table border="0" cellspacing="0" cellpadding="0">
+  <tr><td>Logged in as:  &nbsp; <td><em>$fullname</em><br>
+  <tr><td>Email address:    &nbsp; <td><em>$email</em> <br>
+</table>
+
+<br><p><form action="$thisscript" method="post" name="topform">
+  <input type="hidden" name="page" value="none">
+
+  <table border="0" cellspacing="1" cellpadding="0">
+  
+    <tr><td><input type="button" value="Show Line" onClick="page.value='showline.html'; submit();">
+        <td><input type="button" value="Show Line ONLINE" onClick="page.value='showline-online.html'; submit();">
+	<td><input type="button" value="Extract All" onClick="page.value='extractall.html'; submit();">
+	<td><input type="button" value="Extract Element" onClick="page.value='extractelement.html'; submit();">
+	<td><input type="button" value="Extract Stellar" onClick="page.value='extractstellar.html'; submit();">
+
+<!--
+        <td><input type="button" value="Edit personal configuration" onClick="page.value='persconf'; submit();">
+-->
+
+        <td><input type="button" value="Logout"	onClick="page.value='logout'; submit();">
+
+  </table>
+
+</form>

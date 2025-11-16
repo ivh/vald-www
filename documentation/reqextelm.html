@@ -1,0 +1,34 @@
+<p><b>Extract element</b>
+
+<p>This request must have the following format
+<pre>
+  begin request
+  extract element
+  [long format]
+  [short format]
+  &lt;wavelength 1&gt;,&lt;wavelength 2&gt;
+  &lt;element&gt; [spectral number]
+  end request
+</pre>
+where &lt;wavelength 1&gt;,&lt;wavelength 2&gt; are again the limits of the spectral
+interval in Angstroem. Only the lines formed by &lt;element&gt; in one or all
+ionization stages will be extracted. [spectral number] defines the
+ionization stage: 1 stands for neutral atoms, 2 for singly ionized, etc.
+
+<p>Currently VALD includes mostly lines up to the spectral number 5. If
+[spectral number] is omitted, the extraction is done for lines up to the
+four times ionized atom.
+
+<p>Example
+<pre>
+   begin request   # Start of the request
+   extract element # Request type
+   5700, 5720      # Wavelength range in Angstroems
+   Fe 3            # Extract all lines of doubly ionized iron
+   end request     # End of the request
+</pre>
+returns: <a href="$thisscript?docpage=reqextelm.txt">reqextelm.txt</a>
+
+<p>The mail reply will look similar to the one above, except that only
+lines of doubly ionized iron are included and each transition is
+supplemented with term designation (short format).

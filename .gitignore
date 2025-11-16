@@ -1,0 +1,55 @@
+# PDFs
+*.pdf
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+
+# Logs
+logs/
+*.log
+
+# PHP local configuration
+config/site_config_local.php
+
+# PHP session and cache files
+sessions/
+cache/
+tmp/
+temp/
+
+# Backup files
+*.bak
+*.old
+*.tmp
+
+# Uploads directory
+uploads/
+public_html/uploads/
+FTP/
+public_html/FTP/
+
+# Data files
+data/
+*.sqlite
+*.db

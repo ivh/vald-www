@@ -1,0 +1,18 @@
+The following was submitted through the VALD contact page :
+
+From	: $contactemail ($contactname)
+
+$message
+
+--------------------
+
+#$ $contactname
+#    $affiliation
+#
+$contactemail
+
+--------------------
+
+$permission
+
+$privacy_statement

@@ -1,0 +1,10 @@
+<b>VALD news, January 2007 (new service 'via ftp') </b>
+<br />
+<br />
+For the case of larger requests, up to 20000 atomic lines at once, 
+the feature 'via ftp' has been developed. When invoked the returning
+e-mail will contain a link where the resultant data file (gzipped) 
+can be downloaded. Currently this link will be active for 48 hours.
+<br />
+<br />Best Regards
+<br />The VALD Team

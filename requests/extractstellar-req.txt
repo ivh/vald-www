@@ -1,0 +1,21 @@
+begin request
+extract stellar
+$pconf configuration
+$viaftp
+$format format
+waveunit $waveunit
+energyunit $energyunit
+medium $medium
+isotopic scaling $isotopic_scaling
+$vdwformat waals
+$hrad
+$hstark
+$hwaals
+$hlande
+$hterm
+$hfssplit
+$stwvl, $endwvl,
+$dlimit, $micturb,
+$teff, $logg,
+$chemcomp
+end request

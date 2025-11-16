@@ -1,0 +1,57 @@
+<p><b>Extract Stellar</b>
+
+<p>This request must have the following format
+<pre>
+   begin request
+   extract stellar
+   [long format]
+   [short format]
+   &lt;wavelength 1&gt;,&lt;wavelength 2&gt;
+   &lt;detection-limit&gt;,&lt;microturbulence&gt;
+   &lt;Teff&gt;,&lt;logg&gt;
+   [chemical composition]
+   ......................
+   end request
+</pre>
+where &lt;wavelength 1&gt;,&lt;wavelength 2&gt; are again the limits of the spectral
+interval in Angstroem. Effective temperature &lt;Teff&gt; and gravity &lt;logg&gt;
+are used to select a solar abundant model atmosphere for estimating the
+central depth of spectral lines; &lt;detection-limit&gt; contains the user's lower 
+limit to the central depth, ignoring line blending and expressed as a 
+fraction of the continuum (broadening mechanisms not affecting the 
+equivalent width such as stellar rotation or instrumental broadening are
+not accounted for). Thus, &lt;detection-limit&gt; of 0.05 rejects all the 
+lines with central depths less than 5% of the continuum. VALD has the latest 
+models computed by R.L. Kurucz (Kurucz CDROM 13, June 23, 1993 edition) 
+covering a temperature range from 3500K to 50000K and log g from 0.0 to 5.0. 
+The chemical composition is set as a log10 of the ratio of atomic number 
+density to the total number of atoms. The default values are solar. The 
+abundance value must be separated from the element name with a column (for 
+example, Fe:-4.7). Several values can be set on the same line, separated
+with commas. The request mail can contain as many lines as needed to set 
+the chemical composition.
+
+<p>Example
+<pre>
+   begin request          #  Start of the request
+   extract stellar        #  Request type
+   5700.,5703.            #  Specify wavelength range in Angstroems,
+   0.05, 2.               #  Look for lines reaching more than 0.05
+                          #  central depth and use microturbulence
+                          #  of 2 km/s
+   8000, 4.5              #  Teff and log g
+   Sr: -4.67, Cr: -3.37,  #  Setup specific chemical composition
+   Eu: -5.53               
+   end request            #  End of the request
+</pre>
+The return mail will contain the following table
+<a href="$thisscript?docpage=reqextstar.txt">reqextstar.txt</a>
+
+<p>Note that for this request type the output table includes also the
+microturbulence (Vmic) in km/s and the estimated central line depth
+relative to continuum. We also provide the name of model atmosphere
+file in the format '&lt;Teff&gt;g&lt;10*logg&gt;.&lt;source&gt;' 
+and the abundances of the first 99 elements. The abundances of three 
+elements have been substituted from the request data. However the 
+model atmosphere used is <b>not</b> affected by the change in 
+composition.

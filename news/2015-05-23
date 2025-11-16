@@ -1,0 +1,20 @@
+<h3>Improved Fe I line data in VALD</h3>
+
+<p>Recently, new line data for Fe I has become available (Kurucz, 2014). These
+data are based on observed (measured) and predicted (calculated) energy
+levels, and are a significant improvement over earlier line data (Kurucz, 2007).
+
+<p>At the moment the new line data are not offered by default, but any user
+can include these in their extractions by enabling these lists in their
+personalized <a
+href="http://vald.astro.uu.se/~vald/php/vald.php?page=persconf">linelist
+configuration</a>. To obtain the new observed line data the user should enable
+list 721 and disable list 720. For predicted line data, one should use list 3621
+instead of list 3620.
+
+<p>From July 1st, the VALD database will change its internal settings and offer
+the new linelists by default.
+
+<p>Other recent developments are the inclusion of new
+experimental data for V I, VII and Ni I (source: Wisconsin laboratory).
+

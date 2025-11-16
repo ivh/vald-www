@@ -1,0 +1,167 @@
+<b>VALD news 3rd of January 2008 (Major Update)</b></a>
+<p align=justify>
+A major update of VALD-2 is provided. It includes a number of new data as well as 
+corrections to previous files. As most of you noticed there were abnormally strong 
+Si I lines which have never been observed in stellar spectra. On our request 
+Dr. Robert Kurucz recalculated Si I data and a new file is included in VALD. 
+Accordingly, we removed old Si I data from 'Si.nlt' file, saving the remaining Si II 
+data unders the name 'Si2.nlt'. Also, we switched to more precise wavelengths measurements 
+of Cr I lines, and corrected wavelengths of Cr I lines in all files correspondingly to 
+avoid double extraction of a line. We also corrected a few typos in the energy levels which
+resulted in wrong Ritz wavelengths in the Raassen & Uylings transition probabilities 
+calculations for Cr II and Fe II. 
+</p><p align=justify>
+Improved wavelengths and oscillator strengths for Ti II are available from the group at 
+Imperial College, London. The DREAM Nd III datafile as well as the Nd III data in file 
+'Nd' are removed and replaced by the transition probablities calculations based on the 
+reclassification of Nd III energy levels. 
+The old 'gf26_obs' file which contained calculations of the atomic data for Fe lines from 
+Kurucz88 is replaced by new Kurucz calculations from 2006-07 which are based on the extended 
+analysis of the term structure of Fe ions. At present this file contains 241420 spectral lines 
+of Fe I - Fe VI.
+</p><p align=justify>
+A collection of the Ca I and Ca II atomic parameters has been created after the detailed study 
+of the NLTE Ca lines formation (see Mashonkina et al. 2007, A\&A, 461, 261). New experimental 
+oscillator strength mesurements with error estimates are available due to excellent work of 
+our colleagues from the Lund and Wisconsin Universities. They provide us with the data for 
+Zr II, Mo II, Ni II, Pt I, Hf II and most rare-earth elements from La to Lu. A set of reliable 
+transition probabilities for Th II and U II are available, which are based on the combination 
+of experimental lifetimes and theoretical branching ratios.
+</p><p align=justify>
+Below you find a list of the new data included in VALD-2 with the corresponding references. 
+Please, do not forget to make explicit references to the source of the data when using them 
+in your studies. Note, that information on the source abbreviations as well as on the error 
+estimates is available only via the 'show line' request as well as via the 'long format' 
+option of the 'extract all' and 'extract element' requests. The default configuration has been
+changed accordingly, but all old files have been saved. You may reuse them as well as define 
+your own selection of source lists and quality weights by using the "Personal Configuration" 
+function of the VALD Web interface.
+</p>
+
+<b>New input:</b>
+
+<ol type=I>
+ <li> 
+  <br>Si I new calculations - file 'Si 1: Kurucz_2007' #'si1_kur07'
+  <br>K07:   http://cfaku5.cfa.harvard.edu/ATOMS/1400
+  <br></li>
+ <li>
+  <br>Ca I lines with the experimental oscillator strengths and Ca II from TOPBASE   - file 'recommended: Ca 1,2' #'Ca_recommend'
+  <br>Ca I
+  <br>SR:    Smith G., Raggett D.St.J. 1981, J. Phys., B14, 4015
+  <br>S:     Smith G. 1988, J. Phys. B. At. Mol. Opt. Phys., 21, 2827-2834
+  <br>SN:    Smith G., O'Neil J.A. 1975, A&A, 38, 1
+  <br>ABH:   Ahmad I., Baig M.A., Hormes J. 1994, Phys. Rev., A49, 3419
+  <br>Sh:    Shabanova L.N. 1963, Opt. Spektrosk., 15, 829
+  <br>SG:    Smith G., Gallagher A. 1966, Phys. Rev., 145, 26
+  <br>DIKH:  Drozdowski R., Ignaciuk M., Kwela J., Heldt J. 1977, Z. Phys., D41, 125
+  <br>Sm:    Smith G. 1981, A&A, 103, 351 (VdW constants)
+  <br>Ca II
+  <br>Td:    Theodosiou, C.E. 1989, Phys. Rev., A39, 4880
+  <br>TB:    Cunto, W., \& Mendoza, C. 1992, Rev. Mex. Astrofis., 23, 107 (TOPBASE)
+  <br></li>
+ <li>
+  <br>Fe I to Fe VI - file 'GFIRON obs. energy level: Fe (2007)' #'gf26_obs_07'
+  <br>K06, K07: http://cfaku5.cfa.harvard.edu/ATOMS/26XX
+  <br></li>
+ <li>
+  <br>Ti II wavelengths measurements and oscillator strengths calculations - file 'IC: Ti 2' #'Ti2_IC'
+  <br>PTP - Pickering J.C., Thorne A.P., Perez R. 2001, ApJS 132, 403
+  <br></li>
+ <li>
+  <br>Mn II experimental data - file 'Kling, Schnabel, Griesmann: Mn 2' #'mn2_KSG'
+  <br>KG:   Kling, R., Griesmann, U., 2000, ApJ 531, 1173-1178
+  <br>KSG:  Kling, R., Schnabel, R., Griesmann, U., 2001, ApJS 134, 173-178
+  <br></li>  
+ <li>  
+  <br>Experimental data from Lund group - file 'Lund: Zr 2, Mo 2, Th 2, U 2' #'lund_Zr-Mo-Th-U'
+  <br>Zr II data
+  <br>SLW:   Sikstr\"{o}m C.M., Lundberg H., Wahlgren G.M., Li Z.S., Lyng\aa\ C., Johansson, S., & Leckrone D.S. 1999, A\&A 343, 297
+  <br>LNAJ:  Ljung G., Nilsson H., Asplund M., & Johansson  S. 2006, A\&A 456, 1181
+  <br>Mo II data
+  <br>SPN:   Sikstrom C. M., Pihlemark H., Nilsson H., Litzen U., Johansson S., Li Z. S., Lundberg H.  2001, J. Phys. B34, 477, 490
+  <br>Th II data
+  <br>NZL:   Nilsson H., Zhang Z.G., Lundberg H., Johansson S., Nordstr\"om B., 2002, A\&A 382, 368
+  <br>U II data
+  <br>NIJL:  Nilsson H., Ivarsson S., Johansson S., Lundberg H. 2002, A\&A 381, 1090
+  <br></li> 
+ <li>
+  <br>Experimental data from Wisconsin group - file 'Wisconsin' #'wisc_vald2_new'
+  <br>Ni II
+  <br>FW:    Fedchak J.A., Wiese L.M., & Lawler J.E. 2000, ApJ 538, 773
+  <br>FL:    Fedchak J.A., & Lawler J.E. 1999, ApJ 523, 734
+  <br>La II
+  <br>ZZZ:   Zhiguo, Z., Zhongshan, L., Zhankuia, J., 1999, EPJD 7, 499-502
+  <br>LBS:   Lawler, J. E., Bonvallet, G., Sneden, C., 2001, ApJ 556, 452-460
+  <br>Nd II
+  <br>HLSC:  Den Hartog, E. A., Lawler, J. E., Sneden, C., Cowan, J. J., 2003, ApJS 148, 543
+  <br>Sm II
+  <br>LD-HS: Lawler, J. E., Den Hartog, E. A., Sneden, C., Cowan, J. J., 2006, ApJS 162, 227
+  <br>Eu I
+  <br>DHWL:  Den Hartog, E. A., Wickliffe,  M. E., Lawler, J. E., 2002, ApJS 141, 255-165
+  <br>Eu II
+  <br>ZLLZ:  Zhiguo, Z., Li, Z. S., Lundberg, H., Zhang, K. Y., Dai, Z. W., Zhankui, J., Svanberg, S., 2000, Jour. Phys. B33, 521-526
+  <br>LWHS:  Lawler, J. E., Wickliffe, M. E., Den Hartog, E. A., Sneden, C., 2001, ApJ 563, 1075-1088
+  <br>Gd II
+  <br>DLSC:  Den Hartog, E. A., Lawler, J .E., Sneden, C., Cowan, J. J., 2006, ApJS 167, 292
+  <br>Tb II
+  <br>LWCS:  Lawler, J. E., Wickliffe, M. E., Cowley, C. R., Sneden, C., 2001, ApJS 137, 341-349
+  <br>Dy I, Dy II
+  <br>WLN:   Wickliffe, M. E., Lawler, J. E., Nave, G., 2000, JQSRT  66, 363
+  <br>Ho II
+  <br>LSC:   Lawler, J. E., Sneden, C., Cowan, J. J., 2004, ApJ 604, 850-860
+  <br>Tm I, Tm II
+  <br>WL:    Wickliffe, M. E., Lawler, J. E., 1997, JOSA B14, 737
+  <br>Lu I
+  <br>FDLP:  Fedchak, J. A., Den Hartog, E. A., Lawler, J. E., Palmeri, P., Quinet, P., Biemont, E., 2000, ApJ 542, 1109-1118
+  <br>Hf II
+  <br>LDLS:  Lawler, J. E., Den Hartog, E. A., Labby, Z. E., Sneden, C., Cowan, J. J., Ivans I. I., 2007, ApJS 169, 120
+  <br>Pt I
+  <br>DHL:   Den Hartog, E. A., Herd, M. T., Lawler, J. E.,  Sneden, C., Cowan, J. J., Beers, T. C., 2005, ApJ 619, 639
+  <br></li>
+ <li> 
+  <br>New VdW - file 'VALD 2: VanderWaals_new_corCr' #'vdw-barklem-99-07-corCr'
+  <br>Barklem, P. S.; Piskunov, N.; O'Mara, B. J. 2000, A&AS 142, 467
+  <br>Barklem, P.S., \& Aspelund-Johansson, J. 2005, A\&A 435, 373
+  <br>with new data for Cr (unpublished)
+  <br></li>
+ <li>
+  <br>Corrections
+  <ol type=a>
+   <li> 
+    <br>Cr I corrected energies and wavelengths - file 'Kurucz-Murray: Cr 1' #'cr1_Murray_kur'
+    <br>J.E Murray, "High Resolution Spectrophotometry of Neutral Chromium using a 
+    <br>Fourier Transform Spectrometer", PhD thesis, Imperial College, London (1992).
+    </li>
+   <li> 
+    <br>Corrections to RU Cr II and Fe II files - files 'Raassen & Uylings: Cr 2 corrected' #'cr2_RU_cor', 
+    <br>'Raassen & Uylings: Fe 2 corrected' # 'fe2_RU_cor'
+   </li>
+   <li> 
+    <br>Nd III - file 'Nd 3 New_class' #'nd3_vald2' (new classification and oscillator strength calculations for Nd III lines)
+    <br>RRKB:  Ryabchikova, T., Ryabtsev, A., Kochukhov, O., Bagnulo, S. 2006, A\&A 456, 329-338
+   </li>
+  </ol>
+ <br></li>
+ <li>
+ <br>Supplements
+ <ol type=a> 
+  <li>
+   <br>Experimental Lande factors are added for Y II lines - file 'Y 2 Lande' #'y2_lande'
+  </li>
+  <li> 
+   <br>Experimental Lande factors are added for Zr II lines - file 'Zr 2 Lande' #z'r2_lande'
+  </li>
+ </ol>
+ <br></li>
+</ol>
+<p align=justify> 
+Some of the data of the new release were already present in the previous release, for example the
+'Ca1_SR' file with some of Ca I lines or the 'nd2_exp' file with experimental data from Wisconsin group. 
+These data are included in the new files 'Ca_recommend' and 'wisc_vald2_new', the old files 'Ca1_SR' 
+and 'nd2_exp' are removed from the configuration file.
+<p>
+
+<br> Best Regards
+<br> The VALD team
+

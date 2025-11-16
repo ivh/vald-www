@@ -1,0 +1,232 @@
+<pre>
+-------------------------------------------------------------------------------------------
+  Source     ;  Elements      ; Number   ; abbr. ;  meth. ; References
+  List       ;  Ions	      ; of Lines ;       ;        ;
+-------------------------------------------------------------------------------------------
+  Bell light: ; Li to K       ;    66794 ;       ;        ; Kurucz CDROM 18 (1993)
+  Bell heavy: ; Cu to U       ;    38453 ;       ;        ; Kurucz CDROM 18 (1993)
+              ;               ;          ;       ;        ; Reader & Sansonetti (1986, 
+              ;               ;          ;       ;        ;   WL corrections for HgII lines)
+  DREAM:      ; LaIII, CeII,  ;    64210 ;  DRMa ;    exp ; Biemont, Palmeri & Quinet (1999),
+              ; CeIII, PrII,  ;          ;  DRMb ;   calc ; Quinet & Biemont (2004)
+              ; PrIII, Nd II, ;          ;       ;        ;
+              ; NdIII, SmII,  ;          ;       ;        ;
+              ; EuIII, GdIII, ;          ;       ;        ;
+              ; TbIII, DyIII, ;          ;       ;        ;
+              ; HoIII, ErII,  ;          ;       ;        ;
+              ; ErIII, TmII,  ;          ;       ;        ;
+              ; TmIII, YbII,  ;          ;       ;        ;
+              ; YbIII, LuI,   ;          ;       ;        ;
+              ; LuII,LuIII    ;          ;       ;        ;
+              ; Th III        ;          ;       ;        ;
+  Garcia &    ; SrI           ;       55 ;    GC ;    exp ; Garcia & Campos (1988)
+  Campos: Sr1 ;               ;          ;       ;        ;
+  GFIRON ext.:; Ca to Ni      ;   406889 ;       ;        ; Kurucz CDROM 20-22 (1994)
+  Nd2 Wisconsin: ; NdII       ;      708 ;  HLSC ;    exp ; Den Hartog et al. (2003)
+  NLTE lines: ; H, He, B, C,  ;    39791 ;       ;        ; Kurucz CDROM 18 (1993)
+              ; O, Na, Mg, Al,;          ;       ;        ;
+              ; Si, K, Ca     ;          ;       ;        ;
+  NBS/NIST:  ; Sc to Ni       ;     8124 ;       ;        ; Martin, Fuhr & Wiese (1988), 
+             ;                ;          ;       ;        ; A. Gulliver (included in Kurucz, 1993),
+             ;                ;          ;       ;        ; Fuhr, Martin & Wiese (1988)
+  NIST (JPCR 7) ; C, N, O     ;    11545 ;       ;        ; Wiese, Fuhr & Deters (1996)
+  NBS Mono 145: ; LaII, CeII, ;     4367 ;       ;        ; Meggers et al. (1975),
+                ; PrII, NdII, ;          ;       ;        ; Magazzu & Cowley (1986-CeII calibration),
+                ; SmII, ErII  ;          ;       ;        ; Cowley (1994-PrII,NdII,SmII,ErII calibration),
+                ;             ;          ;       ;        ; Bord et al. (1996-LaII calibration)
+  Smith &      ; CaI          ;       37 ;    SR ;    exp ; Smith & Raggett (1981)
+  Raggett: Ca1 ;              ;          ;       ;        ;
+  Raassen &  ; FeII, CrII,    ;    75785 ;    RU ;   calc ; Raassen & Uyling (1998)
+  Uyling:    ; CoII           ;          ;       ;        ;
+  VALD2: Si2 ; SiII           ;       35 ;   CSB ;    exp ; Calamai et al. (1993)
+             ;                ;          ;   BBC ;    exp ; Blanco et al. (1995)
+             ;                ;          ;   BLa ;    exp ; Bergeson & Lawler (1993)
+             ;                ;          ;       ;        ; Lanz et al. (1988, Stark damp. const.)
+  VALD2: P1  ; PI             ;       27 ;   BSB ;    exp ; Berzinsh et al. (1997)
+  VALD2: Ca2 ; CaII           ;       23 ;     T ;   calc ; Theodosiou (1989)
+  VALD2: Sc  ; ScI, ScII      ;      246 ;    LD ;    exp ; Lawler & Dakin (1989)
+  VALD2: Ti  ; TiII, TiIII    ;      281 ;   BHN ;    exp ; Bizzarri et al. (1993, Ti2)
+             ;                ;          ;   BMP ;    exp ; Blackwell et al. (1982, Ti2)
+             ;                ;          ;   RHL ;    ast ; Ryabchikova et al. (1994, Ti2)
+             ;                ;          ;    RU ;   calc ; Raassen & Uylings (1997, Ti3)
+  VALD2: V2  ; VII            ;      147 ;   BGF ;    exp ; Biemont et al. (1989)
+  VALD2: Cr  ; CrII, CrIII    ;     1961 ;    BL ;    exp ; Bergeson & Lawler (1993b, Cr2)
+             ;                ;          ;    SL ;    ast ; Sigut & Landstreet (1990, Cr2)
+             ;                ;          ;  PGBH ;    exp ; Pinnington et al. (1993, Cr2)
+             ;                ;          ;     E ;   calc ; Ekberg (1997, Cr3)
+  VALD2: Mn3 ; MnIII          ;     7442 ;    UR ;   calc ; Uylings & Raassen (1997)
+  VALD2: Fe  ; FeI, FeII      ;     3483 ;       ;        ; for details see text
+  VALD2: Co  ; CoI, CoII      ;      104 ;   LWG ;    exp ; Lawler et al. (1990, Co1)
+             ;                ;          ;  CUNJ ;    exp ; Crespo L.-Urrutia et al. (1994b, Co2)
+             ;                ;          ;   SLW ;    exp ; Salih et al. (1985, Co2)
+             ;                ;          ;   MCL ;    exp ; Mullman et al. (1998, Co2)
+  VALD2: Ni1 ; NiI            ;      151 ;   WLa ;    exp ; Wickliffe & Lawler (1997a)
+             ;                ;          ;  BBPL ;    exp ; Blackwell et al. (1989)
+  VALD2: Cu2 ; CuII           ;       71 ;  CKNJ ;    exp ; Crespo Lopez-Urrutia et al. (1994a)
+  VALD2: Zn2 ; ZnII           ;        2 ;    BL ;    exp ; Bergeson & Lawler (1993b)
+  VALD2: Ga2 ; GaII           ;       16 ;   RSb ;    e+a ; Ryabchikova & Smirnov (1994)
+             ;                ;          ;  LADM ;   calc ; Lanz et al. (1993)
+  VALD2: Y3  ; YIII           ;       39 ;     R ;   calc ; Redfors (1991)
+             ;                ;          ;   MCT ;    exp ; Maniak et al. (1994)
+  VALD2: Zr3 ; ZrIII          ;      493 ;     R ;   calc ; Redfors (1991)
+             ;                ;          ;    RA ;   calc ; Reader & Acquista (1997)
+  VALD2: Ru  ; RuI, RuII      ;      502 ;   WSL ;    exp ; Wickliffe et al. (1994, Ru1)
+             ;                ;          ;   JJL ;    exp ; Johansson et al. (1994a, Ru2)
+  VALD2: Xe2 ; XeII           ;       33 ;   RSa ;    exp ; Ryabchikova & Smirnov (1989)
+             ;                ;          ;    WM ;        ; Wiese & Martin (1980)
+             ;                ;          ;    HP ;        ; Hansen & Persson (1987)
+  VALD2: Ce  ; CeII, CeIII    ;       73 ;   sol ;    sol ; solar averaged gf-values 
+             ;                ;          ;       ;        ; (Ce 2, sol., cf. Piskunov et al. 1995)
+             ;                ;          ;   BCN ;   calc ; Bord et al. (1997, Ce3)
+  VALD2: Pr  ; PrI, PrII      ;       52 ;     K ;    exp ; Komarovskij (1991)
+  VALD2: Nd  ; NdI, NdII,     ;      121 ;     K ;    exp ; Komarovskij (1991, Nd 1 & Nd2)
+             ; NdIII          ;          ;    CB ;   calc ; Cowley & Bord (1998, Nd3)
+  VALD2: Sm  ; SmI, SmII      ;      367 ;     K ;    exp ; Komarovskij (1991)
+  VALD2: Eu  ; EuI, EuII      ;       74 ;     K ;    exp ; Komarovskij (1991, Eu1 & Eu2)
+             ; EuIII          ;          ;   RPS ;    ast ; Ryabchikova et al. (1999, Eu3)
+  VALD2: Gd  ; GdI, GdII      ;      110 ;   KSa ;    exp ; Komarovskij & Smirnov (1992, Gd1)
+             ;                ;          ;  BBLP ;    exp ; Bergstrom et al. (1988, Gd2)
+  VALD2: Dy  ; DyI, DyII      ;      105 ;    BL ;    exp ; Biemont & Lowe (1993, Dy2)
+             ;                ;          ;   KSc ;    exp ; Komarovskij & Smirnov (1994)
+  VALD2: Ho2 ; HoII           ;        4 ;     K ;    exp ; Komarovskij (1991)
+  VALD2: Er  ; ErI, Er II,    ;      427 ;   KSb ;    exp ; Komarovskij & Smirnov (1993, Er1)
+             ; ErIII          ;          ;     K ;    exp ; Komarovskij (1991, Er2)
+             ;                ;          ;  WBBC ;   calc ; Wyart et al.(1997, Er3)
+  VALD2: Tm  ; TmI, TmII      ;      522 ;   WLb ;    exp ; Wickliffe & Lawler (1997b)
+  VALD2: Yb1 ; YbI            ;       19 ;     K ;    exp ; Komarovskij (1991)
+  VALD2: Lu  ; LuI, LuII      ;       31 ;     K ;    exp ; Komarovskij (1991, Lu 1)
+             ;                ;          ;   BCM ;   calc ; Bord et al. (1998, Lu 2)
+             ;                ;          ;  DCWL ;    exp ; Den Hartog et al. (1998, Lu2)
+  VALD2: Re2 ; ReII           ;        1 ;   WJL ;    exp ; Wahlgren et al. (1997) \\
+  VALD2: Pt  ; PtI, PtII,     ;      799 ;   WLJ ;   calc ; Wahlgren et al. (1995, Pt1)
+             ; PtIII          ;          ;    WB ;   calc ; Wyart & Blaise (1995, Pt2)
+             ;                ;          ;   DSJ ;    ast ; Dworetsky et al. (1984, Pt2)
+             ;                ;          ;    WL ;        ; Blaise & Wyart (1992, Pt2)
+             ;                ;          ;   RWJ ;   calc ; Ryabtsev et al. (1993, Pt3)
+  VALD2: Au  ; AuII, AuIII    ;      672 ;    RW ;   calc ; Rosberg & Wyart (1997, Au2)
+             ;                ;          ;   WLJ ;    L+c ; Wahlgren et al. (1995, Au2, LIF & calc)
+             ;                ;          ;   WJT ;   calc ; Wyart et al. (1996, Au 3)
+  VALD2: Hg3 ; HgIII          ;       42 ;   URJ ;   calc ; Uylings et al. (1993)
+  VALD2: Pb2 ; PbII           ;       37 ;   AMa ;    exp ; Alonso-Medina (1996)
+             ;                ;          ;   AMb ;    exp ; Alonso-Medina (1997)
+             ;                ;          ;    WL ;        ; Reader & Corliss (1980)       
+  VALD2: VanderWaals ; Be to Ba ;    280 ;       ;   calc ; Van-der-Waals constants from
+                     ;          ;        ;       ;        ; P. Barklem, see Kupka et al. (1999)
+-------------------------------------------------------------------------------------------
+  Source     ; Elements /     ; Number   ; abbr. ;  meth. ; References 
+  List       ; Ions           ; of Lines ;       ;        ; (Update Jan.2008)
+-------------------------------------------------------------------------------------------
+  New Kuruz: Si I             ;    10610 ;   K07 ;   calc ; http://cfaku5.cfa.harvard.edu /ATOMS/1400 
+  Ca I                        ;       89 ;    SR ;    exp ; Smith G., Raggett D.St.J. 1981, J. Phys., B14, 4015 
+  Ca I                        ;          ;     S ;    exp ; Smith G. 1988, J. Phys. B. At. Mol. Opt. Phys., 21, 2827-2834 
+  Ca I                        ;          ;    SN ;    exp ; Smith G., O'Neil J.A. 1975, A&A, 38, 1 
+  Ca I                        ;          ;   ABH ;    exp ; Ahmad I., Baig M.A., Hormes J. 1994, Phys. Rev., A49, 3419 
+  Ca I                        ;          ;    Sh ;    exp ; Shabanova L.N. 1963, Opt. Spektrosk., 15, 829 
+  Ca I                        ;          ;    SG ;    exp ; Smith G., Gallagher A. 1966, Phys. Rev., 145, 26 
+  Ca I                        ;          ;  DIKH ;    exp ; Drozdowski R., Ignaciuk M., Kwela J., Heldt J. 1977, Z. Phys., D41, 125 
+  Ca I                        ;          ;    Sm ;    exp ; Smith G. 1981, A&A, 103, 351 (VdW constants) 
+  Ca II                       ;          ;    Td ;    exp ; Theodosiou, C.E. 1989, Phys. Rev., A39, 4880 
+  Ca II                       ;          ;    TB ;    exp ; Cunto, W., & Mendoza, C. 1992, Rev. Mex. Astrofis., 23, 107 (TOPBASE) 
+  New Kurucz: Fe I to Fe VI   ;   241415 ;K06,K07;    exp ; http://cfaku5.cfa.harvard.edu /ATOMS/26XX 
+  Ti II                       ;     1034 ;   PTP ;    exp ; Pickering J.C., Thorne A.P., Perez R. 2001, ApJS 132, 403 
+  Mn II                       ;      187 ;    KG ;    exp ; Kling, R., Griesmann, U., 2000, ApJ 531, 1173-1178 
+                              ;          ;   KSG ;    exp ; Kling, R., Schnabel, R., Griesmann, U., 2001, ApJS 134, 173-178 
+  Lund: Zr II                 ;      617 ;   SLW ;    exp ; Sikström C.M., et al. 1999, A&A 343, 297 
+  Lund: Zr II                 ;          ;  LNAJ ;    exp ; Ljung G., Nilsson H., Asplund M., & Johansson S. 2006, A&A 456, 1181 
+  Lund: Mo II                 ;          ;   SPN ;    exp ; Sikstrom C. M., et al. 2001, J. Phys. B34, 477, 490 
+  Lund: Th II                 ;          ;   NZL ;    exp ; Nilsson H., et al., 2002, A&A 382, 368 
+  Lund: U II                  ;          ;  NIJL ;    exp ; Nilsson H., Ivarsson S., Johansson S., Lundberg H. 2002, A&A 381, 1090 
+  Wisconsin: Ni II            ;     4611 ;    FW ;    exp ; Fedchak J.A., Wiese L.M., & Lawler J.E. 2000, ApJ 538, 773 
+                              ;          ;    FL ;    exp ; Fedchak J.A., & Lawler J.E. 1999, ApJ 523, 734 
+  Wisconsin: La II            ;          ;   ZZZ ;    exp ; Zhiguo, Z., Zhongshan, L., Zhankuia, J., 1999, EPJD 7, 499-502 
+                              ;          ;   LBS ;    exp ; Lawler, J. E., Bonvallet, G., Sneden, C., 2001, ApJ 556, 452-460 
+  Wisconsin: Nd II            ;          ;  HLSC ;    exp ; Den Hartog, et al., 2003, ApJS 148, 543 
+  Wisconsin: Sm II            ;          ; LD-HS ;    exp ; Lawler, Den Hartog, et al., 2006, ApJS 162, 227 
+  Wisconsin: Eu I             ;          ;  DHWL ;    exp ; Den Hartog, et al., 2002, ApJS 141, 255-165 
+  Wisconsin: Eu II            ;          ;  ZLLZ ;    exp ; Zhiguo, et al., 2000, Jour. Phys. B33, 521-526 
+                              ;          ;  LWHS ;    exp ; Lawler, et al., 2001, ApJ 563, 1075-1088 
+  Wisconsin: Gd II            ;          ;  DLSC ;    exp ; Den Hartog, et al., 2006, ApJS 167, 292 
+  Wisconsin: Tb II            ;          ;  LWCS ;    exp ; Lawler, et al., 2001, ApJS 137, 341-349 
+  Wisconsin: Dy I , Dy II     ;          ;   WLN ;    exp ; Wickliffe, M. E., Lawler, J. E., Nave, G., 2000, JQSRT 66, 363 
+  Wisconsin: Ho II            ;          ;   LSC ;    exp ; Lawler, J. E., Sneden, C., Cowan, J. J., 2004, ApJ 604, 850-860 
+  Wisconsin: Tm I, Tm II      ;          ;    WL ;    exp ; Wickliffe, M. E., Lawler, J. E., 1997, JOSA B14, 737 
+  Wisconsin: Lu I             ;          ;  FDLP ;    exp ; Fedchak, et al., 2000, ApJ 542, 1109-1118 
+  Wisconsin: Hf II            ;          ;  LDLS ;    exp ; Lawler, et al., 2007, ApJS 169, 120 
+  Wisconsin: Pt I             ;          ;   DHL ;    exp ; Den Hartog, et al., 2005, ApJ 619, 639 
+  VanderWaals: Cr             ;    41776 ;       ;   calc ; Barklem, P. S.; Piskunov, N.; O'Mara, B. J. 2000, A&AS 142, 467 
+                              ;          ;       ;        ; Barklem, P.S., & Aspelund-Johansson, J. 2005, A&A 435, 373 
+                              ;          ;       ;        ; plus new unpublished data 
+
+  
+ Data for lines of FeI and II have been compiled from numerous lists.
+ Fe I data has been distributed in VALD 'FeI NMT Whaling and Bard & Kock'
+ and is now part of the new Fe list of VALD2. Here, we summarize the
+ abbreviations used
+
+    BWL:  O'Brian T.R., Wicklife M.E., Lawler J.E., Whaling W., Brault J.W., 1991, JOSA B8, 1185 
+                                                                                     (Fe 1, exp)
+    BKK:  Bard A., Kock A., Kock M., 1991, A&A 248, 315 (Fe 1, exp)
+    BK:   Bard A., Kock M., 1994, A&A 282, 1014 (Fe 1, exp)
+    JNG:  Johansson S., Nave G., Geller M., Sauval A.J., Grevesse N., Schoenfeld W.G., Chang E.S., 
+                                                       Farmer C.B. 1994b, ApJ 429, 419 (Fe1, calc)
+    SCG:  Shoenfeld W.G., Chung E.S., Geller M., Johansson S., Nave G., Sauval A.J., Grevesse N., 1995, 
+                                                                          A&A, 301, 593-601 (Fe1, calc)
+    BML:  Bergeson S.D., Mullman K.L., Lawler J.E. 1994, ApJ 435, L157-L159 (Fe2, exp)
+    BMW:  Bergeson S.D., Mullman K.L., Wickliffe M.E., Lawler J.E., Litzen U., Johansson S., 1996, 
+                                                                    ApJ 464, 1044-1049 (Fe2, exp)
+    MSL:  Mullman K.L., Sakai M., Lawler J.E., 1997, A&AS 122, 157 (Fe2, exp)
+    JBL:  Johansson S., Brage T., Lecrone D., Nave G., Wahlgren G.M., 1995,
+                     ApJ 446, 361-370 (Fe2, improved gf for a few UV lines)
+    BJP:  Biemont E., Johansson S., Palmeri P., 1997, Phys. Scripta 55, 559-564 (Fe2, calc IR)
+     RJ:  Rosberg M., Johansson S., 1992, Phys. Scripta 45, 590-597 (Fe2, calc)
+      W:  Whaling W., 1983, Technical Report 84 A, Calif. Inst. of Techn., Pasadena (USA) 
+                                                       (Fe2, exp, corrected by +0.04 dex)
+    PGH:  Pauls U., Grevesse N., Huber M.C.E., 1990, A&A 231, 536 (Fe2, exp)
+     KK:  Kroll S., Kock M., 1987, A&AS 67, 225 (Fe2, exp)
+     HK:  Heise C., Kock M., 1990, A&A 230, 244 (Fe2, exp)
+   HLGN:  Hannaford P., Lowe R.M., Grevesse N., Noels A., 1992, A&A 259, 301-306 (Fe2, exp)
+    BSS:  Blackwell D.E., Shallis M.J., Simmons G.J., 1980, A&A 81, 340-343 
+                                       (Fe2, solar, corrected by +0.19 dex)
+      B:  Bridges J.M., 1973, in Int. Conf. on Phenom. in Ionezed Gases, 11th, ed. I. Stoll, 
+                                  Czech. Acad. Sci., Inst. Phys., Prague, p. 418 (Fe 2, exp)
+   BGHR:  Baschek B., Garz T., Holweger H., Richter J., 1970, A&A 4, 229 
+                                       (Fe2 exp, corrected by +0.16 dex)
+     av:  data averaged from 2 to 4 above cited references for Fe2
+                              (see VALD2 paper, Kupka et al. 1999)
+     GC:  Garcia G. & Campos J., 1988, JQSRT 39, 477  
+   HLSC:  Den Hartog E.A., Lawler J.E., Sneden C. & Cowan J.J., 2003, ApJS, 148, 543 
+     SR:  Smith G. & Raggett D.St.J., 1981, J. Phys. B. At. Mol. Phys., 14, 4015
+     RU:  Raassen A.J.J. & Uylings P.H.M., 1998, A\;A, 340, 300
+   DRMa:  Biemont E., Palmeri P. & Quinet P., 1999, Astrophys. Space Sci. 269-270, 635
+   DRMb:  Quinet P. & Biemont E., 2004, At. Data Nucl. Data Tables 87, 207-230
+
+ For FeI lines wavelengths, energies, classification and multiplet numbers or
+ any of these values are taken from New FeI Multiplet Tables
+
+    Nave, G., Johansson, S., Learner, R.C.M., Torne, A.P.,
+    Brault, J.W., 1994, Astron. Astrophys. Suppl., 94, 221
+
+ If a spectral line does not exist in NMT, its multiplet number is taken from 
+ Moore MT and put in {}. For cases where the accuracy from BWL, BKK and BK 
+ differs by less than 2%, gf-values for the same line are averaged in the 
+ final list.
+
+ All the linelists for REE elements are supplemented by experimental
+ Lande factors taken from
+
+   Blaise, J., Wyart, J.-F. 1984, Physica Scripta, 29, 119 - NdII lines
+   Ginibre, A. 1989, Physica Scripta, 39, 694 - PrII lines
+   Martin, W.C., Zalubas, R., Hagan, L. 1978, NSRDS-NBS 60 - other
+   REE elements (from NIST atomic line database, AEL section) 
+
+For all second ions of the rare-earth elements and for CeII 
+Lande factors  are now available  thanks to calculations of 
+the DREAM-team
+
+  P. Quinet & E. Biémont, At. Data Nucl. Data Tables 87, 207-230 (2004)
+
+ For Pb II lines Lande factors are taken from
+
+   Moore C.E. 1958, NSRDS-NBS 35, Vol. III
+ 
+</pre>

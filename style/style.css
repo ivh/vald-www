@@ -1,0 +1,90 @@
+body {
+  background-color:    #e4e4ee;
+  color:               #000000;
+  background-position: top right;
+  background-repeat:   no-repeat;
+  font-family:         arial;
+  font-size:           12px;
+  font-style:          normal;
+  font-weight:         300;
+  background-position: top left;
+  background-image:    url('$htmlroot/pictures/VALD3_bg-navigate.png');
+  background-repeat: no-repeat;
+}
+a {
+  text-decoration: none;
+  font-weight:     600;
+  color:           #202090;
+}
+b {
+  font-size:   12px;
+  font-weight: 900;
+}
+b.heading {
+  font-size:   14px;
+  font-weight: 900;
+}
+table { 
+  table-layout: fixed; 
+  text-align:   left;
+  font-family:  arial;
+  font-size:    12px;
+  font-style:   normal;
+  font-weight:  300;
+}
+td.navigate { 
+  height:              600px;
+  width:               200px;
+  text-align:          left;
+  vertical-align:      top;
+  background-position: top left;
+  background-repeat:   repeat-y;
+}
+td.navigateitem { 
+  height:              25px;
+  text-align:          left;
+  vertical-align:      middle;
+  background-image:    url('$htmlroot/pictures/VALD3_td-navigate.png');
+  background-position: center left;
+  background-repeat:   no-repeat;
+}
+td.topframe { 
+  text-align:          left;
+  vertical-align:      top;
+  background-image:    url('$htmlroot/pictures/VALD3_logo.png');
+  background-position: top right;
+  background-repeat:   no-repeat;
+  padding-left:        10px;
+}
+td.version { 
+  color:               #202090;
+  height:              150px;
+  width:               200px;
+  text-align:          left;
+  vertical-align:      top;
+  background-position: top left;
+  background-repeat:   no-repeat;
+}
+td.content { 
+  text-align:          left;
+  vertical-align:      top;
+  padding-left:        10px;
+}
+th { 
+  text-align:          center;
+  vertical-align:      top;
+}
+td.hspace   { width:  10px; }
+td.vspace   { height: 10px; }
+input {
+  font-size:    12px;
+}
+select {
+  font-size:    12px;
+}
+.modified_data { 
+  background-color: #ff5555;
+}
+.new_data { 
+  background-color: #ff9955;
+}

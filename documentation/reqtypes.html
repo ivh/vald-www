@@ -1,0 +1,28 @@
+<p><b>Types of request</b>
+
+VALD-EMS  currently supports 4 types of requests
+
+<p><table align="center" border="0" cellpadding="0" cellspacing="0">
+ <tr><td width="120px" valign="top" align="left">show line</td>
+       <td align="justify">extracts all information, available in VALD, 
+           about a specific spectral line (or rather, the same species) in 
+           a small wavelength window (several spectral lines from the
+           same species could appear in the output).</td></tr>
+ <tr><td width="120px" valign="top" align="left">extract all</td>
+       <td align="justify">extracts best atomic parameters for all spectral 
+           lines in a given spectral window.</td></tr>
+ <tr><td width="120px" valign="top" align="left">extract element</td>
+       <td align="justify">extracts best atomic parameters for all 
+           spectral lines of the particular chemical element or ion in a given
+           spectral window.</td></tr>
+ <tr><td width="120px" valign="top" align="left">extract stellar</td>
+       <td align="justify">extracts all spectral lines (with their best 
+           parameters), which produce significant absorption in a stellar
+           atmosphere with given effective temperature and gravity.</td></tr>
+</table>
+
+<p>The type of the request is indicated by one of the keywords, listed above,
+placed in the second line of the request. The content of the request
+depends on its type as described in the following sections.  Compulsory
+parameters are inclosed in angle brackets <...> while optional parameters
+are put in square brackets [...].

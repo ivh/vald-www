@@ -1,0 +1,56 @@
+<p><b>Extract All</b>
+
+<p>This request must have the following format
+<pre>
+   begin request
+   extract all
+   [via ftp]
+   [long format]
+   [short format]
+   &lt;wavelength 1&gt;,&lt;wavelength 2&gt;
+   end request
+</pre>
+where &lt;wavelength 1&gt;,&lt;wavelength 2&gt; are the limits of the spectral interval 
+in Angstroems. Note that VALD limits the total number of lines per single 
+mail to 1000, therefore the actual extraction may end somewhat shorter 
+of &lt;wavelength 2&gt;. [via ftp] allows the extraction of more lines, but the data
+will not be sent via e-mail. It has to be downloaded within a certain time span.
+[long format] tells VALD to include an extra line of data
+with term designation, Lande factors, and accuracy description into the output 
+file. [short format] does not include these data and is the default.
+
+<p>Example
+<pre>
+   begin request          # Start of the request
+   extract all            # Request type
+   default configuration  # No special configuration
+   short format           # Dislay each transition on only one line
+   5700, 5701             # Wavelength range in Angstroems
+   end request            # End of the request
+</pre>
+As the result VALD will mail back to the client VALD-EMS request number,
+the copy of the request and a subset of spectral lines between 5700 and
+5701 Angstroems as shown in the example
+<a href="$thisscript?docpage=reqextall.txt">reqextall.txt</a>
+
+<p>Example using the 'via ftp' option.
+<pre>
+   begin request          # Start of the request
+   extract all            # Request type
+   via ftp
+   default configuration  # No special configuration
+   short format           # Dislay each transition on only one line
+   5700, 5701             # Wavelength range in Angstroems
+   end request            # End of the request
+</pre>
+
+<p>The output columns contain element and ionization stage, central wavelength
+in Angstroem, excitation in electron--Volts, log(gf), 3 damping constants
+in logarithm (radiative, quadratic Stark and van der Waals) per sec
+and per perturber at 10000K (in the case of Stark and van der Waals
+constants), mean Lande factor and reference labels. Zero in place of a
+damping parameter and 99 in place of the Lande factor marks the absence of
+the corresponding data in VALD. The labels at the end of each line show
+the source of the respective output column. The SHOW LINE request may be
+used to find out all values of transition parameters from different VALD
+lists and their corresponding ranking, assigned by the VALD team.
