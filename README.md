@@ -10,9 +10,12 @@ This is a Django replacement for the original PHP-based VALD (Vienna Atomic Line
   - Extract Element
   - Extract Stellar
   - Show Line
+  - Show Line ONLINE (direct execution with results)
   - Contact form (public access)
 - User preferences (energy units, wavelength units, medium, etc.)
-- Email submission of requests via SMTP
+- **Request tracking system** - track all submissions with status updates
+- **Direct backend submission** - bypass email system, call VALD binaries directly
+- **Hybrid architecture** - supports both email-based and direct submission modes
 - Session-based authentication
 - Re-uses original HTML structure and CSS
 
@@ -135,12 +138,85 @@ VALD_BIN_PATH = BASE_DIR / 'bin' / 'showline4.1'  # Path to showline binary
 
 **Note:** For Show Line ONLINE to work, you need the `showline4.1` binary at the configured path. If you don't have this binary, the feature will show an error. The other features (email-based requests) will still work.
 
+### Request Submission Modes
+
+The application supports two submission modes:
+
+#### Email-Based Submission (Legacy)
+
+```python
+VALD_DIRECT_SUBMISSION = False  # Use email system
+```
+
+Requests are sent via email to the backend processor, which:
+1. Parses emails from mail spool
+2. Assigns sequential request IDs
+3. Processes extraction requests
+4. Emails results back to users
+5. Saves files as `{ClientName}.{RequestID}.gz` in FTP directory
+
+#### Direct Backend Submission (New)
+
+```python
+VALD_DIRECT_SUBMISSION = True  # Bypass email, call binaries directly
+```
+
+Requests are processed immediately by calling VALD binaries directly:
+1. Django creates `request.{UUID}` file in working directory
+2. Calls `parserequest` binary to generate job script
+3. Executes job script (calls extraction binaries)
+4. Saves output as `{ClientName}.{UUID}.gz` in FTP directory
+5. Updates Request model status in real-time
+
+**Key Differences:**
+- Email mode: Sequential IDs (`000123`), async processing via at-jobs
+- Direct mode: UUIDs, synchronous processing, immediate status updates
+- Both can run in parallel without conflicts (different filename patterns)
+
+**Configuration for Direct Mode:**
+
+```python
+# Backend processing configuration
+VALD_PARSEREQUEST_BIN = BASE_DIR / 'bin' / 'parserequest'
+VALD_WORKING_DIR = BASE_DIR / 'EMS' / 'DJANGO_WORKING'
+VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'
+VALD_DIRECT_SUBMISSION = True
+```
+
+**Requirements for Direct Mode:**
+- All VALD binaries must be available in `$VALD_HOME/bin/`:
+  - `parserequest` - Request parser and job generator
+  - `preselect` - Line preselection
+  - `format` - Output formatting
+  - `hfs_split` - Hyperfine structure splitting
+  - Other VALD extraction tools
+
+### Request Tracking
+
+All requests (both email and direct) are tracked in the database:
+
+- **My Requests** page shows all user submissions
+- Status tracking: pending → processing → complete/failed
+- Auto-refresh on detail page while pending
+- Download link when complete
+- Queue position for pending requests
+- Uses UUID-based URLs for security
+
 ### Directory Structure
 
 The application expects the following directory structure:
 
 ```
 vald-www/
+├── backend/                      # Backend C sources (for reference only)
+│   ├── parsemail.c               # Email parser
+│   └── parserequest.c            # Request parser
+├── bin/                          # VALD binaries (when deployed)
+│   ├── parserequest              # Required for direct submission
+│   ├── preselect                 # Line preselection
+│   ├── format                    # Output formatting
+│   ├── showline4.1               # For Show Line ONLINE
+│   └── ...                       # Other VALD tools
 ├── config/
 │   ├── clients.register          # Main user register
 │   ├── clients.register.local    # Local user register
@@ -148,7 +224,12 @@ vald-www/
 │   ├── htmldefault.cfg           # Default HTML preferences
 │   └── personal_configs/         # User-specific configs (auto-created)
 ├── documentation/                # Documentation HTML files
+├── EMS/
+│   ├── DJANGO_WORKING/           # Working dir for direct submission (auto-created)
+│   └── TMP_WORKING/              # Working dir for email-based system
 ├── news/                         # News items
+├── public_html/
+│   └── FTP/                      # Output files directory (auto-created)
 ├── requests/                     # Email templates for requests
 │   ├── contact-req.txt
 │   ├── extractall-req.txt
@@ -157,10 +238,14 @@ vald-www/
 │   └── showline-req.txt
 ├── style/
 │   └── style.css                 # Original CSS (auto-included)
-├── bin/
-│   └── showline4.1               # VALD binary (optional, for Show Line ONLINE)
 ├── vald/                         # Django app
+│   ├── backend.py                # Direct submission logic
+│   ├── forms.py                  # Django Forms
+│   ├── models.py                 # Request, User, UserPreferences models
+│   ├── views.py                  # View handlers
+│   └── ...
 ├── vald_web/                     # Django project
+│   └── settings.py               # Configuration
 ├── manage.py
 └── pyproject.toml
 ```
@@ -202,16 +287,23 @@ This will print emails to the console instead of sending them.
 - ✅ Personal Configuration (linelist editing with save/restore/cancel)
 - ✅ File-based email authentication
 - ✅ User preferences (units, medium, wavelength)
+- ✅ Request tracking system (My Requests page, status updates, download links)
+- ✅ Direct backend submission (bypass email, call binaries directly)
+- ✅ Hybrid architecture (email mode + direct mode)
 - ✅ Email submission of requests
 - ✅ Documentation pages
 - ✅ News items
 - ✅ Session management
+- ✅ Django Messages framework
+- ✅ Django Admin interface (User, Request, Preferences management)
+- ✅ Management commands (sync_register_files)
 - ✅ Original HTML + CSS layout
-- ✅ Form validation (JavaScript + server-side)
+- ✅ Form validation (server-side, removed buggy JavaScript)
 
 ### Not Yet Implemented
 
 - ⏳ SVN version display
+- ⏳ User password activation flow
 
 ### Key Changes
 
