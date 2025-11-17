@@ -72,6 +72,10 @@
 
 <hr>
 
-<p><a href="{% url 'vald:my_requests' %}">← Back to My Requests</a></p>
+<p>
+    <a href="{% url 'vald:my_requests' %}">← Back to My Requests</a>
+    |
+    <a href="{% url 'vald:'|add:req.request_type %}?modify={{ req.uuid }}">Modify Request</a>
+</p>
 
 {% endblock %}

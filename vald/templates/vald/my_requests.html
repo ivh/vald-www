@@ -47,6 +47,8 @@
     </td>
     <td>
         <a href="{% url 'vald:request_detail' req.uuid %}">View Details</a>
+        |
+        <a href="{% url 'vald:'|add:req.request_type %}?modify={{ req.uuid }}">Modify</a>
     </td>
 </tr>
 {% endfor %}

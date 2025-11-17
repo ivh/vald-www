@@ -135,7 +135,24 @@ def require_login(view_func):
 def extractall(request):
     """Extract All form"""
     context = get_user_context(request)
-    context['form'] = ExtractAllForm()
+
+    # Check if modifying an existing request
+    modify_uuid = request.GET.get('modify')
+    initial_data = {}
+
+    if modify_uuid:
+        try:
+            req_obj = Request.objects.get(uuid=modify_uuid)
+            # Security: only allow user to modify their own requests
+            if req_obj.user_email == request.session.get('email'):
+                initial_data = req_obj.parameters
+                messages.info(request, 'Form pre-filled with previous request values.')
+            else:
+                messages.error(request, 'You do not have permission to modify this request.')
+        except Request.DoesNotExist:
+            messages.error(request, 'Request not found.')
+
+    context['form'] = ExtractAllForm(initial=initial_data)
     return render(request, 'vald/extractall.html', context)
 
 
@@ -143,7 +160,24 @@ def extractall(request):
 def extractelement(request):
     """Extract Element form"""
     context = get_user_context(request)
-    context['form'] = ExtractElementForm()
+
+    # Check if modifying an existing request
+    modify_uuid = request.GET.get('modify')
+    initial_data = {}
+
+    if modify_uuid:
+        try:
+            req_obj = Request.objects.get(uuid=modify_uuid)
+            # Security: only allow user to modify their own requests
+            if req_obj.user_email == request.session.get('email'):
+                initial_data = req_obj.parameters
+                messages.info(request, 'Form pre-filled with previous request values.')
+            else:
+                messages.error(request, 'You do not have permission to modify this request.')
+        except Request.DoesNotExist:
+            messages.error(request, 'Request not found.')
+
+    context['form'] = ExtractElementForm(initial=initial_data)
     return render(request, 'vald/extractelement.html', context)
 
 
@@ -151,7 +185,24 @@ def extractelement(request):
 def extractstellar(request):
     """Extract Stellar form"""
     context = get_user_context(request)
-    context['form'] = ExtractStellarForm()
+
+    # Check if modifying an existing request
+    modify_uuid = request.GET.get('modify')
+    initial_data = {}
+
+    if modify_uuid:
+        try:
+            req_obj = Request.objects.get(uuid=modify_uuid)
+            # Security: only allow user to modify their own requests
+            if req_obj.user_email == request.session.get('email'):
+                initial_data = req_obj.parameters
+                messages.info(request, 'Form pre-filled with previous request values.')
+            else:
+                messages.error(request, 'You do not have permission to modify this request.')
+        except Request.DoesNotExist:
+            messages.error(request, 'Request not found.')
+
+    context['form'] = ExtractStellarForm(initial=initial_data)
     return render(request, 'vald/extractstellar.html', context)
 
 
@@ -159,7 +210,24 @@ def extractstellar(request):
 def showline(request):
     """Show Line form"""
     context = get_user_context(request)
-    context['form'] = ShowLineForm()
+
+    # Check if modifying an existing request
+    modify_uuid = request.GET.get('modify')
+    initial_data = {}
+
+    if modify_uuid:
+        try:
+            req_obj = Request.objects.get(uuid=modify_uuid)
+            # Security: only allow user to modify their own requests
+            if req_obj.user_email == request.session.get('email'):
+                initial_data = req_obj.parameters
+                messages.info(request, 'Form pre-filled with previous request values.')
+            else:
+                messages.error(request, 'You do not have permission to modify this request.')
+        except Request.DoesNotExist:
+            messages.error(request, 'Request not found.')
+
+    context['form'] = ShowLineForm(initial=initial_data)
     return render(request, 'vald/showline.html', context)
 
 
