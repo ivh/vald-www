@@ -329,10 +329,20 @@ def format_request_file(request_obj):
         lines.append(f"{params['vdwformat']} waals")
 
     # Flags (hrad, hstark, hwaals, hlande, hterm, hfssplit)
-    for flag in ['hrad', 'hstark', 'hwaals', 'hlande', 'hterm', 'hfssplit']:
-        if params.get(flag):
-            # These are stored as their label values in parameters
-            lines.append(params[flag])
+    # Map flag names to their VALD request format strings (matching email system)
+    flag_labels = {
+        'hfssplit': 'HFS splitting',
+        'hrad': 'have rad',
+        'hstark': 'have stark',
+        'hwaals': 'have waals',
+        'hlande': 'have lande',
+        'hterm': 'have term',
+    }
+    for flag, label in flag_labels.items():
+        flag_value = params.get(flag)
+        # Handle both boolean and string values
+        if flag_value is True or (isinstance(flag_value, str) and flag_value):
+            lines.append(label if flag_value is True else flag_value)
 
     # Request-specific parameters
     if reqtype == 'extractall':
