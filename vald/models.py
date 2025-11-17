@@ -77,6 +77,39 @@ class Request(models.Model):
             size_bytes /= 1024.0
         return f"{size_bytes:.1f} TB"
 
+    def get_bib_output_file(self):
+        """Get path to .bib.gz file if it exists"""
+        if not self.output_file:
+            return None
+        from pathlib import Path
+        # Replace .gz with .bib.gz
+        output_path = Path(self.output_file)
+        if output_path.suffix == '.gz':
+            bib_path = output_path.with_suffix('.bib.gz')
+            return str(bib_path)
+        return None
+
+    def bib_output_exists(self):
+        """Check if .bib.gz output file exists on filesystem"""
+        bib_file = self.get_bib_output_file()
+        if not bib_file:
+            return False
+        from pathlib import Path
+        return Path(bib_file).exists()
+
+    def get_bib_output_size(self):
+        """Get size of .bib.gz output file in human-readable format"""
+        if not self.bib_output_exists():
+            return None
+        from pathlib import Path
+        bib_file = self.get_bib_output_file()
+        size_bytes = Path(bib_file).stat().st_size
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+
 
 class User(models.Model):
     """User model for authentication - supports multiple emails per user"""

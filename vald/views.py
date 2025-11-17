@@ -707,6 +707,10 @@ def request_detail(request, uuid):
         output_ready = req_obj.output_exists()
         output_size = req_obj.get_output_size() if output_ready else None
 
+        # Check if bib output file exists
+        bib_output_ready = req_obj.bib_output_exists()
+        bib_output_size = req_obj.get_bib_output_size() if bib_output_ready else None
+
         # Calculate queue position (rough estimate)
         if req_obj.status == 'pending':
             queue_position = Request.objects.filter(
@@ -720,6 +724,8 @@ def request_detail(request, uuid):
             'req': req_obj,
             'output_ready': output_ready,
             'output_size': output_size,
+            'bib_output_ready': bib_output_ready,
+            'bib_output_size': bib_output_size,
             'queue_position': queue_position,
         })
 
@@ -753,6 +759,53 @@ def download_request(request, uuid):
 
         # Serve the file
         file_path = Path(req_obj.output_file)
+
+        # Determine content type
+        content_type, _ = mimetypes.guess_type(file_path.name)
+        if not content_type:
+            content_type = 'application/octet-stream'
+
+        # Open and serve the file
+        response = FileResponse(
+            open(file_path, 'rb'),
+            content_type=content_type,
+            as_attachment=True,
+            filename=file_path.name
+        )
+
+        return response
+
+    except Request.DoesNotExist:
+        messages.error(request, 'Request not found.')
+        return redirect('vald:my_requests')
+    except Exception as e:
+        messages.error(request, f'Error downloading file: {e}')
+        return redirect('vald:request_detail', uuid=uuid)
+
+
+@require_login
+def download_bib_request(request, uuid):
+    """Download the .bib.gz output file for a completed request"""
+    from django.http import FileResponse, Http404
+    import mimetypes
+
+    user_email = request.session.get('email')
+
+    try:
+        req_obj = Request.objects.get(uuid=uuid)
+
+        # Security: only allow user to download their own requests
+        if req_obj.user_email != user_email:
+            messages.error(request, 'You do not have permission to download this file.')
+            return redirect('vald:my_requests')
+
+        # Check that bib output file exists
+        if not req_obj.bib_output_exists():
+            messages.error(request, 'Bibliography file not found.')
+            return redirect('vald:request_detail', uuid=uuid)
+
+        # Serve the file
+        file_path = Path(req_obj.get_bib_output_file())
 
         # Determine content type
         content_type, _ = mimetypes.guess_type(file_path.name)

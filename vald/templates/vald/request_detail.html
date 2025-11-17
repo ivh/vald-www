@@ -37,8 +37,13 @@
 
 {% if req.is_complete and output_ready %}
     <h3>✓ Results Ready</h3>
-    <p>Your results are ready for download ({{ output_size }}).</p>
-    <p><a href="{% url 'vald:download_request' req.uuid %}"><button>Download Results</button></a></p>
+    <p>Your results are ready for download.</p>
+    <p>
+        <a href="{% url 'vald:download_request' req.uuid %}"><button>Download Results ({{ output_size }})</button></a>
+        {% if bib_output_ready %}
+        <a href="{% url 'vald:download_bib_request' req.uuid %}"><button>Download Bibliography ({{ bib_output_size }})</button></a>
+        {% endif %}
+    </p>
 {% elif req.is_complete %}
     <p><i>Request completed but output file not found. Please contact support.</i></p>
 {% elif req.is_failed %}

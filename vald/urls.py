@@ -32,6 +32,7 @@ urlpatterns = [
     path('my-requests/', views.my_requests, name='my_requests'),
     path('request/<uuid:uuid>/', views.request_detail, name='request_detail'),
     path('request/<uuid:uuid>/download/', views.download_request, name='download_request'),
+    path('request/<uuid:uuid>/download-bib/', views.download_bib_request, name='download_bib_request'),
 
     # Documentation and news
     path('doc/<str:docpage>', views.documentation, name='documentation'),
