@@ -135,7 +135,7 @@ DEFAULT_FROM_EMAIL = 'vald@tmy.se'
 VALD_REQUEST_EMAIL = 'vald@tmy.se'  # Where to send requests
 
 # VALD-specific configuration
-VALD_HOME = Path(os.getenv('VALD_HOME', ''))
+VALD_HOME = Path(os.getenv('VALD_HOME', '/home/tom/VALD3'))
 CLIENTS_REGISTER = BASE_DIR / 'config' / 'clients.register'
 CLIENTS_REGISTER_LOCAL = BASE_DIR / 'config' / 'clients.register.local'
 PERSCONFIG_DIR = BASE_DIR / 'config' / 'personal_configs'

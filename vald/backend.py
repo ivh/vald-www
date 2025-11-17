@@ -113,11 +113,15 @@ def uuid_to_6digit(uuid_obj):
     Returns:
         int: 6-digit number (0-999999)
     """
+    import hashlib
+
     uuid_str = str(uuid_obj)
-    # Hash the UUID string and take modulo 1000000
-    hash_val = hash(uuid_str)
-    # Ensure positive number
-    return abs(hash_val) % 1000000
+    # Use SHA256 for deterministic hashing (unlike Python's hash())
+    hash_bytes = hashlib.sha256(uuid_str.encode()).digest()
+    # Convert first 4 bytes to integer
+    hash_val = int.from_bytes(hash_bytes[:4], byteorder='big')
+    # Return 6-digit number
+    return hash_val % 1000000
 
 
 def get_client_name(user_email):
@@ -201,6 +205,18 @@ def submit_request_direct(request_obj):
     job_file = working_dir / f"job.{backend_id:06d}"
     if not job_file.exists():
         return (False, f"job script not created: {job_file}")
+
+    # Fix race condition: replace shared err.log with unique filename
+    # parserequest generates scripts that use hardcoded "err.log"
+    # When multiple jobs run in parallel, they conflict on this file
+    try:
+        with open(job_file, 'r') as f:
+            job_script = f.read()
+        job_script = job_script.replace('err.log', f'err.{backend_id:06d}.log')
+        with open(job_file, 'w') as f:
+            f.write(job_script)
+    except Exception as e:
+        return (False, f"Failed to fix job script: {e}")
 
     # Define job execution function for queue
     def execute_job():

@@ -467,6 +467,7 @@ def handle_extract_request(request):
             else:
                 # Processing failed
                 req_obj.status = 'failed'
+                req_obj.error_message = result
                 req_obj.save()
                 messages.error(request, f'Request processing failed: {result}')
 
