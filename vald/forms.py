@@ -25,8 +25,8 @@ class ExtractAllForm(forms.Form):
     )
     viaftp = forms.ChoiceField(
         label='Retrieve data via',
-        choices=[('email', 'Email'), ('via ftp', 'FTP')],
-        initial='email',
+        choices=[('via ftp', 'Download'), ('email', 'Email')],
+        initial='via ftp',
         widget=forms.RadioSelect
     )
     hfssplit = forms.BooleanField(
@@ -81,7 +81,7 @@ class ExtractAllForm(forms.Form):
             # Check wavelength range limit for email delivery
             if (endwvl - stwvl) > 50 and viaftp != 'via ftp':
                 raise ValidationError(
-                    "The maximum wavelength range that can be requested by email is 50 Å. Select FTP method!"
+                    "The maximum wavelength range that can be requested by email is 50 Å. Select Download method!"
                 )
 
         return cleaned_data
@@ -115,8 +115,8 @@ class ExtractElementForm(forms.Form):
     )
     viaftp = forms.ChoiceField(
         label='Retrieve data via',
-        choices=[('email', 'Email'), ('via ftp', 'FTP')],
-        initial='email',
+        choices=[('via ftp', 'Download'), ('email', 'Email')],
+        initial='via ftp',
         widget=forms.RadioSelect
     )
     hfssplit = forms.BooleanField(
@@ -185,7 +185,7 @@ class ExtractElementForm(forms.Form):
             # Check wavelength range limit for email delivery
             if (endwvl - stwvl) > 50 and viaftp != 'via ftp':
                 raise ValidationError(
-                    "The maximum wavelength range that can be requested by email is 50 Å. Select FTP method!"
+                    "The maximum wavelength range that can be requested by email is 50 Å. Select Download method!"
                 )
 
         return cleaned_data
@@ -245,8 +245,8 @@ class ExtractStellarForm(forms.Form):
     )
     viaftp = forms.ChoiceField(
         label='Retrieve data via',
-        choices=[('email', 'Email'), ('via ftp', 'FTP')],
-        initial='email',
+        choices=[('via ftp', 'Download'), ('email', 'Email')],
+        initial='via ftp',
         widget=forms.RadioSelect
     )
     hfssplit = forms.BooleanField(
@@ -301,7 +301,7 @@ class ExtractStellarForm(forms.Form):
             # Check wavelength range limit for email delivery
             if (endwvl - stwvl) > 50 and viaftp != 'via ftp':
                 raise ValidationError(
-                    "The maximum wavelength range that can be requested by email is 50 Å. Select FTP method!"
+                    "The maximum wavelength range that can be requested by email is 50 Å. Select Download method!"
                 )
 
         return cleaned_data

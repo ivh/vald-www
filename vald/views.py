@@ -421,6 +421,75 @@ def handle_contact_request(request):
         return render(request, 'vald/contact.html', context)
 
 
+def send_results_email(req_obj):
+    """
+    Send email to user with result files attached.
+
+    Args:
+        req_obj: Request model instance with completed extraction
+    """
+    from django.core.mail import EmailMessage
+    from pathlib import Path
+
+    # Build download URLs
+    request_url = f"{settings.SITENAME}/request/{req_obj.uuid}/"
+    download_url = f"{settings.SITENAME}/request/{req_obj.uuid}/download/"
+    bib_download_url = f"{settings.SITENAME}/request/{req_obj.uuid}/download-bib/"
+    my_requests_url = f"{settings.SITENAME}/my-requests/"
+
+    # Email body
+    subject = f"VALD {req_obj.request_type} results ready"
+    body = f"""Your VALD extraction request has completed successfully.
+
+Request Type: {req_obj.request_type}
+Submitted: {req_obj.created_at.strftime('%Y-%m-%d %H:%M:%S')}
+
+Your results are attached to this email and are also available for download:
+
+Main results: {download_url}
+Bibliography: {bib_download_url}
+Request details: {request_url}
+
+You can modify and resubmit this request with different parameters from:
+{my_requests_url}
+
+Files are available for download for 48 hours.
+
+---
+Vienna Atomic Line Database (VALD)
+{settings.SITENAME}
+"""
+
+    # Create email with attachments
+    email = EmailMessage(
+        subject=subject,
+        body=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[req_obj.user_email],
+    )
+
+    # Attach main result file
+    if req_obj.output_exists():
+        output_path = Path(req_obj.output_file)
+        with open(output_path, 'rb') as f:
+            email.attach(output_path.name, f.read(), 'application/gzip')
+
+    # Attach bib file if it exists
+    if req_obj.bib_output_exists():
+        bib_path = Path(req_obj.get_bib_output_file())
+        with open(bib_path, 'rb') as f:
+            email.attach(bib_path.name, f.read(), 'application/gzip')
+
+    # Send email
+    try:
+        email.send(fail_silently=False)
+    except Exception as e:
+        # Log error but don't fail the request
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to send results email for request {req_obj.uuid}: {e}")
+
+
 def handle_extract_request(request):
     """Handle extract/showline form submissions"""
     context = get_user_context(request)
@@ -514,44 +583,34 @@ def handle_extract_request(request):
     )
 
     try:
-        # Check if direct submission is enabled
-        if getattr(settings, 'VALD_DIRECT_SUBMISSION', False):
-            # Direct submission - bypass email system
-            from .backend import submit_request_direct
+        # Direct submission - call backend directly
+        from .backend import submit_request_direct
 
-            # Update status to processing
-            req_obj.status = 'processing'
+        # Update status to processing
+        req_obj.status = 'processing'
+        req_obj.save()
+
+        # Submit directly to backend
+        success, result = submit_request_direct(req_obj)
+
+        if success:
+            # Update request with output file
+            req_obj.status = 'complete'
+            req_obj.output_file = result
             req_obj.save()
+            messages.success(request, 'Your request has been processed successfully.')
 
-            # Submit directly to backend
-            success, result = submit_request_direct(req_obj)
-
-            if success:
-                # Update request with output file
-                req_obj.status = 'complete'
-                req_obj.output_file = result
-                req_obj.save()
-                messages.success(request, 'Your request has been processed successfully.')
-            else:
-                # Processing failed
-                req_obj.status = 'failed'
-                req_obj.error_message = result
-                req_obj.save()
-                messages.error(request, f'Request processing failed: {result}')
+            # Send email if user selected email delivery
+            viaftp = form.cleaned_data.get('viaftp', 'email')
+            if viaftp == 'email':
+                send_results_email(req_obj)
 
         else:
-            # Email-based submission (legacy)
-            mail_content = render_request_template(reqtype, email_context)
-            subject = form.cleaned_data.get('subject', f'VALD {reqtype} request')
-
-            send_mail(
-                subject if subject else f'VALD {reqtype} request',
-                mail_content,
-                user_email,
-                [settings.VALD_REQUEST_EMAIL],
-                fail_silently=False,
-            )
-            messages.success(request, 'Your request has been submitted successfully.')
+            # Processing failed
+            req_obj.status = 'failed'
+            req_obj.error_message = result
+            req_obj.save()
+            messages.error(request, f'Request processing failed: {result}')
 
         # Redirect to request detail page
         return redirect('vald:request_detail', uuid=req_obj.uuid)
