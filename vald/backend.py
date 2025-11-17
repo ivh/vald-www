@@ -206,18 +206,28 @@ def submit_request_direct(request_obj):
     if not job_file.exists():
         return (False, f"job script not created: {job_file}")
 
-    # Fix race conditions: replace shared filenames with unique ones
-    # parserequest generates scripts that use hardcoded "err.log" and "selected.bib"
-    # When multiple jobs run in parallel, they conflict on these files
+    # Create isolated subdirectory for this job to avoid race conditions
+    # When multiple jobs run in parallel, they conflict on shared files like
+    # err.log, selected.bib, etc. Running each in its own dir fixes this.
+    job_dir = working_dir / f"{backend_id:06d}"
     try:
-        with open(job_file, 'r') as f:
-            job_script = f.read()
-        job_script = job_script.replace('err.log', f'err.{backend_id:06d}.log')
-        job_script = job_script.replace('selected.bib', f'selected.{backend_id:06d}.bib')
-        with open(job_file, 'w') as f:
-            f.write(job_script)
+        job_dir.mkdir(exist_ok=True)
+
+        # Move all job-related files into the subdirectory
+        # parserequest creates: job.NNNNNN, pres_in.NNNNNN (for extract requests)
+        import shutil
+        shutil.move(str(request_file), str(job_dir / request_file.name))
+        shutil.move(str(job_file), str(job_dir / job_file.name))
+
+        # Move pres_in file if it exists (created for extract requests)
+        pres_in_file = working_dir / f"pres_in.{backend_id:06d}"
+        if pres_in_file.exists():
+            shutil.move(str(pres_in_file), str(job_dir / pres_in_file.name))
+
+        # Update job_file path to point to subdirectory
+        job_file = job_dir / job_file.name
     except Exception as e:
-        return (False, f"Failed to fix job script: {e}")
+        return (False, f"Failed to create job directory: {e}")
 
     # Define job execution function for queue
     def execute_job():
@@ -225,11 +235,10 @@ def submit_request_direct(request_obj):
         # Make job executable
         os.chmod(job_file, 0o755)
 
-        # Execute job script
-        # Note: job script expects to run in working directory
+        # Execute job script in its isolated subdirectory
         result = subprocess.run(
             [str(job_file)],
-            cwd=working_dir,
+            cwd=job_dir,
             capture_output=True,
             text=True,
             timeout=300  # 5 minute timeout for extraction
