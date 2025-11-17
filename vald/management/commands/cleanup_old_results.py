@@ -184,6 +184,50 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f"\n{action} {deleted_count} temporary file(s)")
                 )
 
+            # Clean up job subdirectories (each job runs in its own subdirectory)
+            self.stdout.write("\n=== Checking job subdirectories ===")
+            deleted_dirs = 0
+
+            # Job subdirectories are named with 6-digit backend IDs
+            # Pattern: working_dir/123456/
+            for dir_path in working_dir.iterdir():
+                if dir_path.is_dir() and re.match(r'^\d{6}$', dir_path.name):
+                    # Check modification time of directory
+                    mtime = datetime.datetime.fromtimestamp(
+                        dir_path.stat().st_mtime,
+                        tz=timezone.get_current_timezone()
+                    )
+
+                    if mtime < cutoff_time:
+                        if dry_run:
+                            self.stdout.write(
+                                f"  [DRY RUN] Would delete directory: {dir_path.name}/ (modified: {mtime})"
+                            )
+                        else:
+                            try:
+                                import shutil
+                                shutil.rmtree(dir_path)
+                                self.stdout.write(
+                                    self.style.SUCCESS(
+                                        f"  Deleted directory: {dir_path.name}/ (modified: {mtime})"
+                                    )
+                                )
+                            except Exception as e:
+                                self.stdout.write(
+                                    self.style.ERROR(f"  Error deleting directory {dir_path.name}/: {e}")
+                                )
+                                continue
+
+                        deleted_dirs += 1
+
+            if deleted_dirs == 0:
+                self.stdout.write("  No old job directories found")
+            else:
+                action = "Would delete" if dry_run else "Deleted"
+                self.stdout.write(
+                    self.style.SUCCESS(f"\n{action} {deleted_dirs} job director{'y' if deleted_dirs == 1 else 'ies'}")
+                )
+
         self.stdout.write("\n" + "="*50)
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN complete - no files were deleted"))
