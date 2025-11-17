@@ -206,13 +206,14 @@ def submit_request_direct(request_obj):
     if not job_file.exists():
         return (False, f"job script not created: {job_file}")
 
-    # Fix race condition: replace shared err.log with unique filename
-    # parserequest generates scripts that use hardcoded "err.log"
-    # When multiple jobs run in parallel, they conflict on this file
+    # Fix race conditions: replace shared filenames with unique ones
+    # parserequest generates scripts that use hardcoded "err.log" and "selected.bib"
+    # When multiple jobs run in parallel, they conflict on these files
     try:
         with open(job_file, 'r') as f:
             job_script = f.read()
         job_script = job_script.replace('err.log', f'err.{backend_id:06d}.log')
+        job_script = job_script.replace('selected.bib', f'selected.{backend_id:06d}.bib')
         with open(job_file, 'w') as f:
             f.write(job_script)
     except Exception as e:
