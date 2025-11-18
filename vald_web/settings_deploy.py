@@ -26,7 +26,7 @@ SECRET_KEY = "django-insecure-b78@6-7-x-+3y9cu82==f(4q!juta8elrb8hjp$y4plpw6ale3
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['vald.astro.uu.se','localhost']
+ALLOWED_HOSTS = ['vald.astro.uu.se','localhost','127.0.0.1']
 
 
 # Application definition
@@ -162,4 +162,4 @@ VALD_SHOWLINE_BIN = VALD_BIN / 'showline4.1'  # parserequest binary
 VALD_PARSEREQUEST_BIN = VALD_BIN / 'parserequest'  # parserequest binary
 VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request processing
 VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'  # Output directory for results
-VALD_MAX_WORKERS = 2  # Maximum parallel job executions (FIFO queue)
+VALD_MAX_WORKERS = 4  # Maximum parallel job executions (FIFO queue)

@@ -67,3 +67,4 @@ venv/
 # Personal configs
 config/personal_configs/*.cfg
 working/
+clients.register
