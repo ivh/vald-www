@@ -112,12 +112,49 @@ def login(request):
         # Check if user needs to activate (set password)
         if user.needs_activation():
             if password:
-                messages.error(request, 'Your account needs activation. Please leave password blank on first login.')
+                messages.error(request, 'Your account needs activation. Check your email for the activation link.')
                 return redirect('vald:index')
-            # Redirect to activation page
-            request.session['activation_email'] = email
-            request.session['activation_name'] = user.name
-            return redirect('vald:activate_account')
+
+            # Generate activation token and send email
+            token = user.generate_activation_token()
+            user.save()
+
+            # Build activation URL
+            activation_url = request.build_absolute_uri(
+                f"/activate/{token}/"
+            )
+
+            # Send activation email
+            email_subject = 'VALD Account Activation'
+            email_body = f"""Hello {user.name},
+
+Welcome to VALD! This is your first time logging in.
+
+To activate your account and set your password, please click the link below:
+
+{activation_url}
+
+This link will expire after you use it to set your password.
+
+If you did not request this, please ignore this email.
+
+Best regards,
+VALD Team
+"""
+
+            try:
+                send_mail(
+                    email_subject,
+                    email_body,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                )
+                messages.success(request, f'Activation email sent to {email}. Please check your inbox and click the link to set your password.')
+            except Exception as e:
+                messages.error(request, f'Failed to send activation email: {e}. Please contact the administrator.')
+
+            return redirect('vald:index')
 
         # User has password - check it
         if not password:
@@ -149,22 +186,38 @@ def login(request):
     return redirect('vald:index')
 
 
-def activate_account(request):
-    """Show activation page for users who need to set their password"""
-    activation_email = request.session.get('activation_email')
-    activation_name = request.session.get('activation_name')
+def activate_account(request, token):
+    """Verify activation token from email and show password setup page"""
+    try:
+        # Find user with this activation token
+        user = User.objects.get(activation_token=token)
 
-    if not activation_email:
-        messages.error(request, 'Session expired. Please login again.')
+        # Verify user needs activation
+        if not user.needs_activation():
+            messages.info(request, 'Your account is already activated. Please login with your password.')
+            return redirect('vald:index')
+
+        # Get primary email
+        primary_email = user.emails.filter(is_primary=True).first()
+        if not primary_email:
+            primary_email = user.emails.first()
+
+        # Store in session for password setting
+        request.session['activation_email'] = primary_email.email
+        request.session['activation_name'] = user.name
+        request.session['activation_token'] = token
+
+        context = get_user_context(request)
+        context.update({
+            'email': primary_email.email,
+            'user_name': user.name,
+        })
+
+        return render(request, 'vald/activate_account.html', context)
+
+    except User.DoesNotExist:
+        messages.error(request, 'Invalid or expired activation link. Please request a new one by logging in.')
         return redirect('vald:index')
-
-    context = get_user_context(request)
-    context.update({
-        'email': activation_email,
-        'user_name': activation_name,
-    })
-
-    return render(request, 'vald/activate_account.html', context)
 
 
 def set_password(request):
@@ -173,9 +226,10 @@ def set_password(request):
         return redirect('vald:index')
 
     activation_email = request.session.get('activation_email')
+    activation_token = request.session.get('activation_token')
 
-    if not activation_email:
-        messages.error(request, 'Session expired. Please login again.')
+    if not activation_email or not activation_token:
+        messages.error(request, 'Session expired. Please use the activation link from your email again.')
         return redirect('vald:index')
 
     password = request.POST.get('password', '').strip()
@@ -184,27 +238,34 @@ def set_password(request):
     # Validate passwords
     if not password:
         messages.error(request, 'Password cannot be empty.')
-        return redirect('vald:activate_account')
+        return redirect('vald:activate_account', token=activation_token)
 
     if len(password) < 8:
         messages.error(request, 'Password must be at least 8 characters long.')
-        return redirect('vald:activate_account')
+        return redirect('vald:activate_account', token=activation_token)
 
     if password != password_confirm:
         messages.error(request, 'Passwords do not match.')
-        return redirect('vald:activate_account')
+        return redirect('vald:activate_account', token=activation_token)
 
-    # Get user and set password
+    # Get user and verify token
     try:
-        user_email = UserEmail.objects.select_related('user').get(email=activation_email)
-        user = user_email.user
+        user = User.objects.get(activation_token=activation_token)
 
+        # Verify email matches
+        user_emails = user.emails.values_list('email', flat=True)
+        if activation_email not in user_emails:
+            messages.error(request, 'Invalid session. Please use the activation link from your email again.')
+            return redirect('vald:index')
+
+        # Set password (this also clears the activation_token)
         user.set_password(password)
         user.save()
 
         # Clear activation session data
         del request.session['activation_email']
         del request.session['activation_name']
+        del request.session['activation_token']
 
         # Log user in
         request.session['email'] = activation_email
@@ -224,8 +285,8 @@ def set_password(request):
         messages.success(request, 'Password set successfully! You are now logged in.')
         return redirect('vald:index')
 
-    except UserEmail.DoesNotExist:
-        messages.error(request, 'User not found. Please contact the administrator.')
+    except User.DoesNotExist:
+        messages.error(request, 'Invalid or expired activation link. Please request a new one by logging in.')
         return redirect('vald:index')
 
 
