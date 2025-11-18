@@ -261,19 +261,42 @@ def submit_request_direct(request_obj):
     # Find output file
     # parserequest creates files like: ClientName.NNNNNN.gz
     output_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.gz"
+    bib_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.bib.gz"
 
-    if output_file.exists():
-        return (True, str(output_file))
-    else:
+    # Check if output file exists in FTP directory
+    if not output_file.exists():
         # Check if it's in working directory (might need to move it)
         working_output = working_dir / f"{client_name}.{backend_id:06d}.gz"
         if working_output.exists():
             # Move to FTP directory
             settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
             working_output.rename(output_file)
-            return (True, str(output_file))
         else:
-            return (False, f"Output file not found: {output_file}")
+            # Check in job subdirectory
+            job_output = job_dir / f"{client_name}.{backend_id:06d}.gz"
+            if job_output.exists():
+                settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
+                job_output.rename(output_file)
+
+    # Check if bib file exists in FTP directory, if not try to move it
+    if not bib_file.exists():
+        # Check if it's in working directory
+        working_bib = working_dir / f"{client_name}.{backend_id:06d}.bib.gz"
+        if working_bib.exists():
+            settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
+            working_bib.rename(bib_file)
+        else:
+            # Check in job subdirectory
+            job_bib = job_dir / f"{client_name}.{backend_id:06d}.bib.gz"
+            if job_bib.exists():
+                settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
+                job_bib.rename(bib_file)
+
+    # Verify main output file exists (bib file is optional)
+    if output_file.exists():
+        return (True, str(output_file))
+    else:
+        return (False, f"Output file not found: {output_file}")
 
 
 def format_request_file(request_obj):
