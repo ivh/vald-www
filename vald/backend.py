@@ -328,12 +328,14 @@ def format_request_file(request_obj):
     pconf = params.get('pconf', 'default')
     lines.append(f"{pconf} configuration")
 
-    # Retrieval method - always use viaftp for direct submissions
-    lines.append("via ftp")
+    # Extract requests have via ftp and format, showline doesn't
+    if reqtype in ['extractall', 'extractelement', 'extractstellar']:
+        # Retrieval method - always use viaftp for direct submissions
+        lines.append("via ftp")
 
-    # Format
-    if 'format' in params:
-        lines.append(f"{params['format']} format")
+        # Format
+        if 'format' in params:
+            lines.append(f"{params['format']} format")
 
     # Units and medium
     if 'waveunit' in params:
@@ -364,21 +366,31 @@ def format_request_file(request_obj):
 
     elif reqtype == 'extractelement':
         if 'stwvl' in params and 'endwvl' in params:
-            lines.append(f"{params['stwvl']}, {params['endwvl']}")
-        if 'element' in params:
-            lines.append(params['element'])
+            lines.append(f"{params['stwvl']}, {params['endwvl']},")
+        if 'elmion' in params:
+            lines.append(params['elmion'])
 
     elif reqtype == 'extractstellar':
         if 'stwvl' in params and 'endwvl' in params:
-            lines.append(f"{params['stwvl']}, {params['endwvl']}")
+            lines.append(f"{params['stwvl']}, {params['endwvl']},")
+        if 'dlimit' in params and 'micturb' in params:
+            lines.append(f"{params['dlimit']}, {params['micturb']},")
         if 'teff' in params and 'logg' in params:
-            lines.append(f"{params['teff']}, {params['logg']}")
+            lines.append(f"{params['teff']}, {params['logg']},")
+        if 'chemcomp' in params:
+            lines.append(params['chemcomp'])
 
     elif reqtype == 'showline':
-        if 'wvl0' in params and 'win0' in params:
-            lines.append(f"{params['wvl0']}, {params['win0']}")
-        if 'el0' in params:
-            lines.append(params['el0'])
+        # Showline can have up to 5 sets of wavelength/window/element
+        for i in range(5):
+            wvl_key = f'wvl{i}'
+            win_key = f'win{i}'
+            el_key = f'el{i}'
+
+            if wvl_key in params and win_key in params:
+                lines.append(f"{params[wvl_key]}, {params[win_key]},")
+                if el_key in params:
+                    lines.append(params[el_key])
 
     lines.append("end request")
 
