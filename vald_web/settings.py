@@ -125,7 +125,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Email configuration (SMTP with STARTTLS)
 # Configure these via environment variables in production
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# For testing: use EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = 'smtp.fastmail.com'  # Change this to your SMTP server
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
