@@ -26,7 +26,7 @@ SECRET_KEY = "django-insecure-b78@6-7-x-+3y9cu82==f(4q!juta8elrb8hjp$y4plpw6ale3
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['vald.astro.uu.se','localhost']
+ALLOWED_HOSTS = ['vald.astro.uu.se','localhost','127.0.0.1']
 
 
 # Application definition
