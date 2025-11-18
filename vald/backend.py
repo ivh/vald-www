@@ -206,6 +206,72 @@ def submit_request_direct(request_obj):
     if not job_file.exists():
         return (False, f"job script not created: {job_file}")
 
+    # Fix job script to handle missing bib files
+    # presformat5 doesn't always create selected.bib (e.g., no matching lines)
+    # post_hfs_format5 often fails to create post_selected.bib (Fortran errors)
+    # Make all bib file operations conditional to prevent job failures
+    try:
+        with open(job_file, 'r') as f:
+            job_script = f.read()
+
+        bib_name = f'{client_name}.{backend_id:06d}.bib'
+        bib_gz = f'{bib_name}.gz'
+        ftp_dir = str(settings.VALD_FTP_DIR)
+
+        modified = False
+
+        # Fix HFS case: post_selected.bib -> fallback to selected.bib
+        if 'mv post_selected.bib' in job_script:
+            job_script = job_script.replace(
+                f'mv post_selected.bib {bib_name}',
+                f'test -f post_selected.bib && mv post_selected.bib {bib_name} || test -f selected.bib && mv selected.bib {bib_name}'
+            )
+            modified = True
+
+        # Fix non-HFS case: make selected.bib handling conditional
+        elif f'mv selected.bib {bib_name}' in job_script:
+            job_script = job_script.replace(
+                f'mv selected.bib {bib_name}',
+                f'test -f selected.bib && mv selected.bib {bib_name}'
+            )
+            modified = True
+
+        # Make subsequent bib operations conditional too
+        # Check for already-conditional gzip first
+        if f'test -f {bib_name} && gzip {bib_name}' not in job_script and f'gzip {bib_name}' in job_script:
+            job_script = job_script.replace(
+                f'gzip {bib_name}',
+                f'test -f {bib_name} && gzip {bib_name}'
+            )
+            modified = True
+
+        # Make mv of gzipped bib conditional
+        # Match lines like: mv TestUser.NNNNNN.bib.gz /path/to/ftp
+        import re
+        mv_bib_pattern = rf'^mv {re.escape(bib_gz)} '
+        for line in job_script.split('\n'):
+            if re.match(mv_bib_pattern, line) and 'test -f' not in line:
+                new_line = f'test -f {bib_gz} && {line}'
+                job_script = job_script.replace(line, new_line)
+                modified = True
+                break
+
+        # Make chmod conditional
+        # Match lines like: chmod a+r /path/to/ftp/TestUser.NNNNNN.bib.gz
+        chmod_search = f'chmod a+r {ftp_dir}/{bib_gz}'
+        for line in job_script.split('\n'):
+            if chmod_search in line and 'test -f' not in line:
+                new_line = f'test -f {ftp_dir}/{bib_gz} && {line}'
+                job_script = job_script.replace(line, new_line)
+                modified = True
+                break
+
+        if modified:
+            with open(job_file, 'w') as f:
+                f.write(job_script)
+    except Exception as e:
+        return (False, f"Failed to patch job script: {e}")
+
     # Create isolated subdirectory for this job to avoid race conditions
     # When multiple jobs run in parallel, they conflict on shared files like
     # err.log, selected.bib, etc. Running each in its own dir fixes this.
