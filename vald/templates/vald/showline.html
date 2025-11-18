@@ -32,14 +32,12 @@ ionization ]
 
 <tr><td colspan=3><hr>
 <tr><td>Isotopic scaling of oscillator strength
-<td><input type="radio" name="isotopic_scaling" value="on" {% if isotopic_scaling == 'on' %}checked{% endif %}> On
+<td>{% for radio in form.isotopic_scaling %}<div>{{ radio }}</div>{% endfor %}
 <td>
 <i>(Takes precendence over the default value set in the
 <a href="{% url 'vald:unitselection' %}">unit selection</a> dialog)</i>
-<tr><td>
-<td><input type="radio" name="isotopic_scaling" value="off" {% if isotopic_scaling == 'off' %}checked{% endif %}> Off
 <tr><td colspan=3><hr>
-<tr><td>Hyperfine structure<td><input type="checkbox" name="hfssplit" value="HFS splitting"> Include HFS splitting
+<tr><td>Hyperfine structure<td>{{ form.hfssplit }} Include HFS splitting
 <td><i>(Only those HFS components that fall into selected window will be shown)</i>
 
 <tr><td colspan=3><hr>

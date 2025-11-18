@@ -340,6 +340,16 @@ class ShowLineForm(forms.Form):
         initial='default',
         widget=forms.RadioSelect
     )
+    isotopic_scaling = forms.ChoiceField(
+        label='Isotopic scaling of oscillator strength',
+        choices=[('on', 'On'), ('off', 'Off')],
+        initial='on',
+        widget=forms.RadioSelect
+    )
+    hfssplit = forms.BooleanField(
+        label='Include HFS splitting',
+        required=False
+    )
     subject = forms.CharField(
         label='Optional comment for request',
         required=False,

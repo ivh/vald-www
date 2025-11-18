@@ -126,14 +126,22 @@ def uuid_to_6digit(uuid_obj):
 
 def get_client_name(user_email):
     """
-    Extract ClientName from user email by looking up in clients.register.
+    Extract ClientName from user email by looking up in User model or clients.register.
     Returns alphanumeric-only version of the name.
     """
+    from .models import UserEmail
     from .utils import validate_user_email
 
-    is_valid, user_name, is_local = validate_user_email(user_email)
-    if not is_valid:
-        return None
+    # First try to get from database (new auth system)
+    try:
+        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email.lower())
+        user_name = user_email_obj.user.name
+        is_local = False  # Database users are not local
+    except UserEmail.DoesNotExist:
+        # Fallback to clients.register files (legacy)
+        is_valid, user_name, is_local = validate_user_email(user_email)
+        if not is_valid:
+            return None
 
     # Convert to alphanumeric only (matching parsemail.c logic line 86)
     client_name = ''.join(c for c in user_name if c.isalnum())
@@ -327,19 +335,42 @@ def submit_request_direct(request_obj):
     # Find output file
     # parserequest creates files like: ClientName.NNNNNN.gz
     output_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.gz"
+    bib_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.bib.gz"
 
-    if output_file.exists():
-        return (True, str(output_file))
-    else:
+    # Check if output file exists in FTP directory
+    if not output_file.exists():
         # Check if it's in working directory (might need to move it)
         working_output = working_dir / f"{client_name}.{backend_id:06d}.gz"
         if working_output.exists():
             # Move to FTP directory
             settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
             working_output.rename(output_file)
-            return (True, str(output_file))
         else:
-            return (False, f"Output file not found: {output_file}")
+            # Check in job subdirectory
+            job_output = job_dir / f"{client_name}.{backend_id:06d}.gz"
+            if job_output.exists():
+                settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
+                job_output.rename(output_file)
+
+    # Check if bib file exists in FTP directory, if not try to move it
+    if not bib_file.exists():
+        # Check if it's in working directory
+        working_bib = working_dir / f"{client_name}.{backend_id:06d}.bib.gz"
+        if working_bib.exists():
+            settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
+            working_bib.rename(bib_file)
+        else:
+            # Check in job subdirectory
+            job_bib = job_dir / f"{client_name}.{backend_id:06d}.bib.gz"
+            if job_bib.exists():
+                settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
+                job_bib.rename(bib_file)
+
+    # Verify main output file exists (bib file is optional)
+    if output_file.exists():
+        return (True, str(output_file))
+    else:
+        return (False, f"Output file not found: {output_file}")
 
 
 def format_request_file(request_obj):
@@ -371,12 +402,14 @@ def format_request_file(request_obj):
     pconf = params.get('pconf', 'default')
     lines.append(f"{pconf} configuration")
 
-    # Retrieval method - always use viaftp for direct submissions
-    lines.append("via ftp")
+    # Extract requests have via ftp and format, showline doesn't
+    if reqtype in ['extractall', 'extractelement', 'extractstellar']:
+        # Retrieval method - always use viaftp for direct submissions
+        lines.append("via ftp")
 
-    # Format
-    if 'format' in params:
-        lines.append(f"{params['format']} format")
+        # Format
+        if 'format' in params:
+            lines.append(f"{params['format']} format")
 
     # Units and medium
     if 'waveunit' in params:
@@ -417,21 +450,31 @@ def format_request_file(request_obj):
 
     elif reqtype == 'extractelement':
         if 'stwvl' in params and 'endwvl' in params:
-            lines.append(f"{params['stwvl']}, {params['endwvl']}")
-        if 'element' in params:
-            lines.append(params['element'])
+            lines.append(f"{params['stwvl']}, {params['endwvl']},")
+        if 'elmion' in params:
+            lines.append(params['elmion'])
 
     elif reqtype == 'extractstellar':
         if 'stwvl' in params and 'endwvl' in params:
-            lines.append(f"{params['stwvl']}, {params['endwvl']}")
+            lines.append(f"{params['stwvl']}, {params['endwvl']},")
+        if 'dlimit' in params and 'micturb' in params:
+            lines.append(f"{params['dlimit']}, {params['micturb']},")
         if 'teff' in params and 'logg' in params:
-            lines.append(f"{params['teff']}, {params['logg']}")
+            lines.append(f"{params['teff']}, {params['logg']},")
+        if 'chemcomp' in params:
+            lines.append(params['chemcomp'])
 
     elif reqtype == 'showline':
-        if 'wvl0' in params and 'win0' in params:
-            lines.append(f"{params['wvl0']}, {params['win0']}")
-        if 'el0' in params:
-            lines.append(params['el0'])
+        # Showline can have up to 5 sets of wavelength/window/element
+        for i in range(5):
+            wvl_key = f'wvl{i}'
+            win_key = f'win{i}'
+            el_key = f'el{i}'
+
+            if wvl_key in params and win_key in params:
+                lines.append(f"{params[wvl_key]}, {params[win_key]},")
+                if el_key in params:
+                    lines.append(params[el_key])
 
     lines.append("end request")
 
