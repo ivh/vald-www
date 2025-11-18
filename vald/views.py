@@ -7,7 +7,7 @@ from django.views.decorators.http import require_http_methods
 from pathlib import Path
 import glob
 
-from .models import Request, UserPreferences, PersonalConfig, LineList
+from .models import Request, UserPreferences, PersonalConfig, LineList, User, UserEmail
 from .forms import (
     ExtractAllForm,
     ExtractElementForm,
@@ -90,35 +90,143 @@ def index(request):
 
 
 def login(request):
-    """Handle user login"""
+    """Handle user login with password authentication"""
     if request.method == 'POST':
-        email = request.POST.get('user', '').strip()
+        email = request.POST.get('user', '').strip().lower()
+        password = request.POST.get('password', '').strip()
 
-        is_valid, user_name, is_local = validate_user_email(email)
-
-        if is_valid:
-            request.session['email'] = email
-            request.session['name'] = user_name
-            request.session['is_local'] = is_local
-
-            # Get or create user preferences
-            prefs, created = UserPreferences.objects.get_or_create(
-                email=email,
-                defaults={'name': user_name}
-            )
-
-            if created or not prefs.name:
-                prefs.name = user_name
-                prefs.save()
-
-            messages.success(request, f'Welcome, {user_name}! You have successfully logged in.')
-            return redirect('vald:index')
-        else:
-            messages.error(request, 'Email address not registered. Please use the contact form to register.')
+        # Check if user exists in database
+        try:
+            user_email = UserEmail.objects.select_related('user').get(email=email)
+            user = user_email.user
+        except UserEmail.DoesNotExist:
+            # Fallback: check if email is in register files (for new imports)
+            is_valid, user_name, is_local = validate_user_email(email)
+            if is_valid:
+                messages.error(request, 'Your account has not been imported yet. Please contact the administrator.')
+            else:
+                messages.error(request, 'Email address not registered. Please use the contact form to register.')
             context = get_user_context(request)
             return render(request, 'vald/notregistered.html', context)
 
+        # Check if user needs to activate (set password)
+        if user.needs_activation():
+            if password:
+                messages.error(request, 'Your account needs activation. Please leave password blank on first login.')
+                return redirect('vald:index')
+            # Redirect to activation page
+            request.session['activation_email'] = email
+            request.session['activation_name'] = user.name
+            return redirect('vald:activate_account')
+
+        # User has password - check it
+        if not password:
+            messages.error(request, 'Please enter your password.')
+            return redirect('vald:index')
+
+        if not user.check_password(password):
+            messages.error(request, 'Invalid password. Please try again.')
+            return redirect('vald:index')
+
+        # Login successful
+        request.session['email'] = email
+        request.session['name'] = user.name
+        request.session['user_id'] = user.id
+
+        # Get or create user preferences
+        prefs, created = UserPreferences.objects.get_or_create(
+            email=email,
+            defaults={'name': user.name}
+        )
+
+        if created or not prefs.name:
+            prefs.name = user.name
+            prefs.save()
+
+        messages.success(request, f'Welcome, {user.name}! You have successfully logged in.')
+        return redirect('vald:index')
+
     return redirect('vald:index')
+
+
+def activate_account(request):
+    """Show activation page for users who need to set their password"""
+    activation_email = request.session.get('activation_email')
+    activation_name = request.session.get('activation_name')
+
+    if not activation_email:
+        messages.error(request, 'Session expired. Please login again.')
+        return redirect('vald:index')
+
+    context = get_user_context(request)
+    context.update({
+        'email': activation_email,
+        'user_name': activation_name,
+    })
+
+    return render(request, 'vald/activate_account.html', context)
+
+
+def set_password(request):
+    """Handle password setting for first-time activation"""
+    if request.method != 'POST':
+        return redirect('vald:index')
+
+    activation_email = request.session.get('activation_email')
+
+    if not activation_email:
+        messages.error(request, 'Session expired. Please login again.')
+        return redirect('vald:index')
+
+    password = request.POST.get('password', '').strip()
+    password_confirm = request.POST.get('password_confirm', '').strip()
+
+    # Validate passwords
+    if not password:
+        messages.error(request, 'Password cannot be empty.')
+        return redirect('vald:activate_account')
+
+    if len(password) < 8:
+        messages.error(request, 'Password must be at least 8 characters long.')
+        return redirect('vald:activate_account')
+
+    if password != password_confirm:
+        messages.error(request, 'Passwords do not match.')
+        return redirect('vald:activate_account')
+
+    # Get user and set password
+    try:
+        user_email = UserEmail.objects.select_related('user').get(email=activation_email)
+        user = user_email.user
+
+        user.set_password(password)
+        user.save()
+
+        # Clear activation session data
+        del request.session['activation_email']
+        del request.session['activation_name']
+
+        # Log user in
+        request.session['email'] = activation_email
+        request.session['name'] = user.name
+        request.session['user_id'] = user.id
+
+        # Get or create user preferences
+        prefs, created = UserPreferences.objects.get_or_create(
+            email=activation_email,
+            defaults={'name': user.name}
+        )
+
+        if created or not prefs.name:
+            prefs.name = user.name
+            prefs.save()
+
+        messages.success(request, 'Password set successfully! You are now logged in.')
+        return redirect('vald:index')
+
+    except UserEmail.DoesNotExist:
+        messages.error(request, 'User not found. Please contact the administrator.')
+        return redirect('vald:index')
 
 
 def require_login(view_func):

@@ -1,0 +1,37 @@
+{% extends "vald/base.html" %}
+
+{% block content %}
+<h2>Account Activation</h2>
+<hr>
+
+<p>Welcome, <b>{{ user_name }}</b>!</p>
+
+<p>This is your first time logging in with email address <b>{{ email }}</b>.</p>
+
+<p>Please set a password for your account to complete the activation:</p>
+
+<form method="post" action="{% url 'vald:set_password' %}">
+{% csrf_token %}
+<table border="0" cellpadding="5">
+  <tr>
+    <td><b>New Password:</b></td>
+    <td><input type="password" name="password" size="40" required></td>
+  </tr>
+  <tr>
+    <td><b>Confirm Password:</b></td>
+    <td><input type="password" name="password_confirm" size="40" required></td>
+  </tr>
+  <tr>
+    <td colspan="2"><i>Password must be at least 8 characters long</i></td>
+  </tr>
+  <tr>
+    <td colspan="2"><br><input type="submit" value="Set Password and Login"></td>
+  </tr>
+</table>
+</form>
+
+<hr>
+
+<p><a href="{% url 'vald:index' %}">← Back to Home</a></p>
+
+{% endblock %}

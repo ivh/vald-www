@@ -9,6 +9,8 @@ urlpatterns = [
 
     # Authentication
     path('login/', views.login, name='login'),
+    path('activate/', views.activate_account, name='activate_account'),
+    path('set-password/', views.set_password, name='set_password'),
 
     # Forms
     path('extractall/', views.extractall, name='extractall'),
