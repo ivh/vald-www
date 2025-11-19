@@ -63,9 +63,9 @@ db.sqlite3
 .venv/
 venv/
 *.pyc
+staticfiles/
 
 # Personal configs
 config/personal_configs/*.cfg
 working/
 clients.register
-staticfiles/
