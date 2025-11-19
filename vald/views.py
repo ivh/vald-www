@@ -718,21 +718,27 @@ def handle_contact_request(request):
         return render(request, 'vald/contact.html', context)
 
 
-def send_results_email(req_obj):
+def send_results_email(req_obj, request):
     """
     Send email to user with result files attached.
 
     Args:
         req_obj: Request model instance with completed extraction
+        request: HTTP request object (for building absolute URLs)
     """
     from django.core.mail import EmailMessage
     from pathlib import Path
 
-    # Build download URLs
-    request_url = f"{settings.SITENAME}/request/{req_obj.uuid}/"
-    download_url = f"{settings.SITENAME}/request/{req_obj.uuid}/download/"
-    bib_download_url = f"{settings.SITENAME}/request/{req_obj.uuid}/download-bib/"
-    my_requests_url = f"{settings.SITENAME}/my-requests/"
+    # Build download URLs using reverse() and build_absolute_uri()
+    request_path = reverse('vald:request_detail', kwargs={'uuid': req_obj.uuid})
+    download_path = reverse('vald:download_request', kwargs={'uuid': req_obj.uuid})
+    bib_download_path = reverse('vald:download_bib_request', kwargs={'uuid': req_obj.uuid})
+    my_requests_path = reverse('vald:my_requests')
+
+    request_url = request.build_absolute_uri(request_path)
+    download_url = request.build_absolute_uri(download_path)
+    bib_download_url = request.build_absolute_uri(bib_download_path)
+    my_requests_url = request.build_absolute_uri(my_requests_path)
 
     # Email body
     subject = f"VALD {req_obj.request_type} results ready"
@@ -942,7 +948,7 @@ def handle_extract_request(request):
             # Send email if user selected email delivery
             viaftp = form.cleaned_data.get('viaftp', 'email')
             if viaftp == 'email':
-                send_results_email(req_obj)
+                send_results_email(req_obj, request)
 
         else:
             # Processing failed
