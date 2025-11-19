@@ -1,7 +1,7 @@
 {% load static %}<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
 <html>
 <head>
-    <title>VALD WWW interface</title>
+    <title>{{ sitename }}</title>
     <link rel="stylesheet" href="{% static 'style.css' %}">
     {% block extra_head %}{% endblock %}
 </head>
@@ -10,7 +10,6 @@
 <tr>
 <td class="version" valign="top">
     <h3>Server: {{ sitename }}</h3>
-    <p>Django Version
 </td>
 <td class="topframe">
     {% block topframe %}
@@ -32,8 +31,8 @@
             <td><input type="button" value="Extract All" onClick="page.value='extractall'; submit();">
             <td><input type="button" value="Extract Element" onClick="page.value='extractelement'; submit();">
             <td><input type="button" value="Extract Stellar" onClick="page.value='extractstellar'; submit();">
-
-        <tr><td><a href="{% url 'vald:my_requests' %}"><input type="button" value="My Requests"></a>
+            <td width=30px>&nbsp;</td>
+            <td><a href="{% url 'vald:my_requests' %}"><input type="button" value="My Requests"></a>
             <td><input type="button" value="Logout" onClick="page.value='logout'; submit();">
 
       </table>
@@ -50,7 +49,7 @@
         <tr><td>Password :
             <td nowrap>
         <tr><td><input type="password" name="password" value="" size=45>
-        <tr><td colspan=2><i>(First-time login? Leave password blank to set it up)</i>
+        <tr><td colspan=2><i>(No password yet? Leave it blank to set up.)</i>
         <tr><td><br><input type="submit" value="Login">
       </table>
     </form>
@@ -63,8 +62,9 @@
 <td class="navigate">
     <table class="navigate" width="100%" border="0" cellspacing="0" cellpadding="0">
       <tr><td height="10px"> </td></tr>
-      <tr><td height="10px"><b>Documentation</b> </td></tr>
+      <tr><td height="10px"><b>Info</b> </td></tr>
       <tr><td height="10px"> </td></tr>
+      <tr><td class="navigateitem"> <a href="{% url 'vald:documentation' 'contact.html' %}">&nbsp; Registration & Contact</a> </td></tr>
       <tr><td class="navigateitem"> <a href="{% url 'vald:documentation' 'about_vald.html' %}">&nbsp; About VALD       </a> </td></tr>
       <tr><td class="navigateitem"> <a href="http://www.astro.uu.se/valdwiki">&nbsp; Documentation    </a> </td></tr>
       <tr><td class="navigateitem"> <a href="{% url 'vald:news' 0 %}">&nbsp; News </a> </td></tr>
@@ -74,10 +74,6 @@
       <tr><td class="navigateitem"> <a href="http://vald.astro.uu.se/~vald/php/vald.php">&nbsp; VALD3 Mirror Uppsala </a> </td></tr>
       <tr><td class="navigateitem"> <a href="http://vald.oreme.org/~vald/php/vald.php">&nbsp; VALD3 Mirror Montpellier </a> </td></tr>
       <tr><td class="navigateitem"> <a href="http://vald.inasan.ru/~vald3/php/vald.php">&nbsp; VALD3 Mirror Moscow </a> </td></tr>
-      <tr><td height="10px"> </td></tr>
-      <tr><td height="10px"><b>Contact / Registration</b> </td></tr>
-      <tr><td height="10px"> </td></tr>
-      <tr><td class="navigateitem"> <a href="{% url 'vald:documentation' 'contact.html' %}">&nbsp; Contact form </a> </td></tr>
       <tr><td height="10px"> </td></tr>
     </table>
 </td>

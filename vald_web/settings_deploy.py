@@ -25,6 +25,7 @@ SECRET_KEY = "django-insecure-b78@6-7-x-+3y9cu82==f(4q!juta8elrb8hjp$y4plpw6ale3
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+#DEBUG = False
 
 ALLOWED_HOSTS = ['vald.astro.uu.se','localhost','127.0.0.1']
 
@@ -152,7 +153,7 @@ PERSCONFIG_DEFAULT = BASE_DIR / 'config' / 'default.cfg'
 HTMLCONFIG_DEFAULT = BASE_DIR / 'config' / 'htmldefault.cfg'
 DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
-SITENAME = 'VALD'
+SITENAME = 'VALD Uppsala'
 SITE_URL = 'https://vald.astro.uu.se'  # Base URL (reverse() adds the /new prefix)
 MAINTENANCE = False
 
