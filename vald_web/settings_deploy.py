@@ -134,16 +134,13 @@ STATICFILES_DIRS = [BASE_DIR / "style", BASE_DIR / "public_html"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Email configuration (SMTP with STARTTLS)
-# Configure these via environment variables in production
+# Email configuration - uses system sendmail
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.fastmail.com'  # Change this to your SMTP server
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')  # Set via environment variable
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')  # Set via environment variable
-DEFAULT_FROM_EMAIL = 'vald@tmy.se'
-VALD_REQUEST_EMAIL = 'vald@tmy.se'  # Where to send requests
+EMAIL_HOST = 'localhost'
+EMAIL_PORT = 25
+EMAIL_USE_TLS = False
+DEFAULT_FROM_EMAIL = 'vald@physics.uu.se'
+VALD_REQUEST_EMAIL = 'vald@physics.uu.se'  # Where to send requests
 
 # VALD-specific configuration
 VALD_HOME = Path(os.getenv('VALD_HOME', ''))
