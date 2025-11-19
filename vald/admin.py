@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.core.mail import send_mail
 from django.conf import settings
+from django.urls import reverse
 from .models import Request, User, UserEmail, UserPreferences, PersonalConfig, LineList
 
 
@@ -91,7 +92,8 @@ class UserAdmin(admin.ModelAdmin):
                     email = user.emails.first()
 
                 if email:
-                    activation_url = f"{settings.SITENAME}/activate/{token}/"
+                    activation_path = reverse('vald:activate_account', kwargs={'token': token})
+                    activation_url = f"{settings.SITENAME}{activation_path}"
                     try:
                         send_mail(
                             'VALD Account Activated',

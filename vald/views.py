@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
+from django.urls import reverse
 from pathlib import Path
 import glob
 
@@ -123,9 +124,8 @@ def login(request):
             user.save()
 
             # Build activation URL
-            activation_url = request.build_absolute_uri(
-                f"/activate/{token}/"
-            )
+            activation_path = reverse('vald:activate_account', kwargs={'token': token})
+            activation_url = request.build_absolute_uri(activation_path)
 
             # Send activation email
             email_subject = 'VALD Account Activation'
@@ -165,7 +165,8 @@ VALD Team
             return redirect('vald:index')
 
         if not user.check_password(password):
-            reset_url = request.build_absolute_uri('/reset-password/')
+            reset_path = reverse('vald:request_password_reset')
+            reset_url = request.build_absolute_uri(reset_path)
             messages.error(
                 request,
                 f'Invalid password. <a href="{reset_url}">Forgot your password?</a>',
@@ -335,7 +336,8 @@ def request_password_reset(request):
             user.save()
 
             # Build reset URL
-            reset_url = request.build_absolute_uri(f"/reset-password/{token}/")
+            reset_path = reverse('vald:reset_password', kwargs={'token': token})
+            reset_url = request.build_absolute_uri(reset_path)
 
             # Send reset email
             email_subject = 'VALD Password Reset'
