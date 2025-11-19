@@ -3,36 +3,41 @@ body {
   color:               #000000;
   background-position: top right;
   background-repeat:   no-repeat;
-  font-family:         arial;
-  font-size:           12px;
+  font-family:         Arial, Helvetica, sans-serif;
+  font-size:           14px;
   font-style:          normal;
-  font-weight:         300;
+  font-weight:         400;
   background-position: top left;
   background-image:    url('pictures/VALD3_bg-navigate.png');
   background-repeat: no-repeat;
+  line-height:         1.5;
 }
 a {
   text-decoration: none;
   font-weight:     600;
   color:           #202090;
 }
+a:hover {
+  text-decoration: underline;
+  color:           #3030b0;
+}
 b {
-  font-size:   12px;
-  font-weight: 900;
+  font-size:   14px;
+  font-weight: 700;
 }
 b.heading {
-  font-size:   14px;
-  font-weight: 900;
+  font-size:   16px;
+  font-weight: 700;
 }
-table { 
-  table-layout: fixed; 
+table {
+  table-layout: fixed;
   text-align:   left;
-  font-family:  arial;
-  font-size:    12px;
+  font-family:  Arial, Helvetica, sans-serif;
+  font-size:    14px;
   font-style:   normal;
-  font-weight:  300;
+  font-weight:  400;
 }
-td.navigate { 
+td.navigate {
   height:              600px;
   width:               200px;
   text-align:          left;
@@ -41,7 +46,7 @@ td.navigate {
   background-repeat:   repeat-y;
 }
 td.navigateitem {
-  height:              25px;
+  height:              28px;
   text-align:          left;
   vertical-align:      middle;
   background-image:    url('VALD3_td-navigate.png');
@@ -56,7 +61,7 @@ td.topframe {
   background-repeat:   no-repeat;
   padding-left:        10px;
 }
-td.version { 
+td.version {
   color:               #202090;
   height:              150px;
   width:               200px;
@@ -65,22 +70,41 @@ td.version {
   background-position: top left;
   background-repeat:   no-repeat;
 }
-td.content { 
+td.content {
   text-align:          left;
   vertical-align:      top;
   padding-left:        10px;
 }
-th { 
+th {
   text-align:          center;
   vertical-align:      top;
 }
 td.hspace   { width:  10px; }
 td.vspace   { height: 10px; }
 input {
-  font-size:    12px;
+  font-size:    14px;
+  padding:      4px 8px;
 }
 select {
-  font-size:    12px;
+  font-size:    14px;
+  padding:      4px 8px;
+}
+textarea {
+  font-size:    14px;
+  padding:      4px 8px;
+  font-family:  Arial, Helvetica, sans-serif;
+}
+input[type="submit"], input[type="button"] {
+  padding:      6px 12px;
+  cursor:       pointer;
+  border:       1px solid #202090;
+  background:   #f0f0ff;
+  color:        #202090;
+  font-weight:  600;
+  border-radius: 3px;
+}
+input[type="submit"]:hover, input[type="button"]:hover {
+  background:   #e0e0ff;
 }
 .modified_data {
   background-color: #ff5555;
@@ -89,15 +113,16 @@ select {
   background-color: #ff9955;
 }
 .messages {
-  margin: 10px 0;
+  margin: 15px 0;
   padding: 0;
   list-style: none;
 }
 .messages li {
-  padding: 10px;
-  margin: 5px 0;
-  border-radius: 3px;
-  font-weight: bold;
+  padding: 12px 15px;
+  margin: 8px 0;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 14px;
 }
 .messages .success {
   background-color: #d4edda;
