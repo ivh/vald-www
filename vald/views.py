@@ -718,81 +718,6 @@ def handle_contact_request(request):
         return render(request, 'vald/contact.html', context)
 
 
-def send_results_email(req_obj, request):
-    """
-    Send email to user with result files attached.
-
-    Args:
-        req_obj: Request model instance with completed extraction
-        request: HTTP request object (for building absolute URLs)
-    """
-    from django.core.mail import EmailMessage
-    from pathlib import Path
-
-    # Build download URLs using reverse() and build_absolute_uri()
-    request_path = reverse('vald:request_detail', kwargs={'uuid': req_obj.uuid})
-    download_path = reverse('vald:download_request', kwargs={'uuid': req_obj.uuid})
-    bib_download_path = reverse('vald:download_bib_request', kwargs={'uuid': req_obj.uuid})
-    my_requests_path = reverse('vald:my_requests')
-
-    request_url = request.build_absolute_uri(request_path)
-    download_url = request.build_absolute_uri(download_path)
-    bib_download_url = request.build_absolute_uri(bib_download_path)
-    my_requests_url = request.build_absolute_uri(my_requests_path)
-
-    # Email body
-    subject = f"VALD {req_obj.request_type} results ready"
-    body = f"""Your VALD extraction request has completed successfully.
-
-Request Type: {req_obj.request_type}
-Submitted: {req_obj.created_at.strftime('%Y-%m-%d %H:%M:%S')}
-
-Your results are attached to this email and are also available for download:
-
-Main results: {download_url}
-Bibliography: {bib_download_url}
-Request details: {request_url}
-
-You can modify and resubmit this request with different parameters from:
-{my_requests_url}
-
-Files are available for download for 48 hours.
-
----
-Vienna Atomic Line Database (VALD)
-{settings.SITENAME}
-"""
-
-    # Create email with attachments
-    email = EmailMessage(
-        subject=subject,
-        body=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to=[req_obj.user_email],
-    )
-
-    # Attach main result file
-    if req_obj.output_exists():
-        output_path = Path(req_obj.output_file)
-        with open(output_path, 'rb') as f:
-            email.attach(output_path.name, f.read(), 'application/gzip')
-
-    # Attach bib file if it exists
-    if req_obj.bib_output_exists():
-        bib_path = Path(req_obj.get_bib_output_file())
-        with open(bib_path, 'rb') as f:
-            email.attach(bib_path.name, f.read(), 'application/gzip')
-
-    # Send email
-    try:
-        email.send(fail_silently=False)
-    except Exception as e:
-        # Log error but don't fail the request
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Failed to send results email for request {req_obj.uuid}: {e}")
-
-
 def handle_registration_request(request):
     """Handle registration form submission"""
     context = get_user_context(request)
@@ -927,53 +852,112 @@ def handle_extract_request(request):
         status='pending'
     )
 
-    try:
-        # Direct submission - call backend directly
-        from .backend import submit_request_direct
+    # Start background processing
+    import threading
 
-        # Update status to processing
-        req_obj.status = 'processing'
-        req_obj.save()
+    def process_request_background():
+        """Process request in background thread"""
+        from django.core.mail import send_mail
 
-        # Submit directly to backend
-        success, result = submit_request_direct(req_obj)
+        try:
+            # Import here to avoid circular imports
+            from .backend import submit_request_direct
 
-        if success:
-            # Update request with output file
-            req_obj.status = 'complete'
-            req_obj.output_file = result
+            # Update status to processing
+            req_obj.status = 'processing'
             req_obj.save()
-            messages.success(request, 'Your request has been processed successfully.')
 
-            # Send email if user selected email delivery
-            viaftp = form.cleaned_data.get('viaftp', 'email')
-            if viaftp == 'email':
-                send_results_email(req_obj, request)
+            # Submit directly to backend
+            success, result = submit_request_direct(req_obj)
 
-        else:
-            # Processing failed
+            if success:
+                # Update request with output file
+                req_obj.status = 'complete'
+                req_obj.output_file = result
+                req_obj.save()
+
+                # Send email if user selected email delivery
+                viaftp = req_obj.parameters.get('viaftp', 'email')
+                if viaftp == 'email':
+                    # Build URLs for email
+                    request_path = reverse('vald:request_detail', kwargs={'uuid': req_obj.uuid})
+                    download_path = reverse('vald:download_request', kwargs={'uuid': req_obj.uuid})
+                    bib_download_path = reverse('vald:download_bib_request', kwargs={'uuid': req_obj.uuid})
+                    my_requests_path = reverse('vald:my_requests')
+
+                    # Use SITE_URL as base for email links (no request object in background)
+                    base_url = getattr(settings, 'SITE_URL', settings.SITENAME)
+                    request_url = f"{base_url}{request_path}"
+                    download_url = f"{base_url}{download_path}"
+                    bib_download_url = f"{base_url}{bib_download_path}"
+                    my_requests_url = f"{base_url}{my_requests_path}"
+
+                    # Send email
+                    from django.core.mail import EmailMessage
+                    from pathlib import Path
+
+                    subject = f"VALD {req_obj.request_type} results ready"
+                    body = f"""Your VALD extraction request has completed successfully.
+
+Request Type: {req_obj.request_type}
+Submitted: {req_obj.created_at.strftime('%Y-%m-%d %H:%M:%S')}
+
+Your results are attached to this email and are also available for download:
+
+Main results: {download_url}
+Bibliography: {bib_download_url}
+Request details: {request_url}
+
+You can modify and resubmit this request with different parameters from:
+{my_requests_url}
+
+Files are available for download for 48 hours.
+
+---
+Vienna Atomic Line Database (VALD)
+{settings.SITENAME}
+"""
+
+                    # Create email with attachments
+                    email = EmailMessage(
+                        subject=subject,
+                        body=body,
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        to=[req_obj.user_email]
+                    )
+
+                    # Attach main results file
+                    output_path = Path(settings.VALD_FTP_DIR) / req_obj.output_file
+                    if output_path.exists():
+                        email.attach_file(str(output_path))
+
+                    # Attach bibliography file if exists
+                    bib_file = req_obj.output_file.replace('.gz', '.bib.gz')
+                    bib_path = Path(settings.VALD_FTP_DIR) / bib_file
+                    if bib_path.exists():
+                        email.attach_file(str(bib_path))
+
+                    email.send(fail_silently=True)
+
+            else:
+                # Processing failed
+                req_obj.status = 'failed'
+                req_obj.error_message = result
+                req_obj.save()
+
+        except Exception as e:
+            # Mark request as failed
             req_obj.status = 'failed'
-            req_obj.error_message = result
+            req_obj.error_message = str(e)
             req_obj.save()
-            messages.error(request, f'Request processing failed: {result}')
 
-        # Redirect to request detail page
-        return redirect('vald:request_detail', uuid=req_obj.uuid)
+    # Start background thread
+    thread = threading.Thread(target=process_request_background, daemon=True)
+    thread.start()
 
-    except Exception as e:
-        # Mark request as failed
-        req_obj.status = 'failed'
-        req_obj.save()
-
-        messages.error(request, f'A problem occurred when processing your input: {e}')
-        context['form'] = form
-        template_map = {
-            'extractall': 'vald/extractall.html',
-            'extractelement': 'vald/extractelement.html',
-            'extractstellar': 'vald/extractstellar.html',
-            'showline': 'vald/showline.html',
-        }
-        return render(request, template_map[reqtype], context)
+    # Immediately redirect to request detail page
+    messages.success(request, 'Your request has been submitted and is being processed.')
+    return redirect('vald:request_detail', uuid=req_obj.uuid)
 
 
 @require_login

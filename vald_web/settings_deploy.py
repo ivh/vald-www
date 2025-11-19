@@ -152,6 +152,7 @@ HTMLCONFIG_DEFAULT = BASE_DIR / 'config' / 'htmldefault.cfg'
 DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
 SITENAME = 'VALD'
+SITE_URL = 'https://vald.astro.uu.se/new'  # Full URL for email links
 MAINTENANCE = False
 
 # Backend processing configuration
