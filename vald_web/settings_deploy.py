@@ -115,6 +115,7 @@ USE_TZ = True
 ## DEPLOY via reverse proxy
 FORCE_SCRIPT_NAME = '/new'
 USE_X_FORWARDED_HOST = True
+APPEND_SLASH = False  # Avoid redirect issues with reverse proxy
 CSRF_COOKIE_PATH = '/new'
 SESSION_COOKIE_PATH = '/new'
 CSRF_TRUSTED_ORIGINS = ['https://vald.astro.uu.se']
