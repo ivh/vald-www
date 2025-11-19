@@ -170,6 +170,10 @@ VALD Team
         request.session['name'] = user.name
         request.session['user_id'] = user.id
 
+        # Set the login email as primary (tracks actively used email)
+        user.emails.update(is_primary=False)  # Clear all primary flags
+        UserEmail.objects.filter(user=user, email=email).update(is_primary=True)
+
         # Get or create user preferences
         prefs, created = UserPreferences.objects.get_or_create(
             email=email,
@@ -261,6 +265,12 @@ def set_password(request):
         # Set password (this also clears the activation_token)
         user.set_password(password)
         user.save()
+
+        # Set the activation email as primary (they just verified it)
+        # Clear any existing primary flags first
+        user.emails.update(is_primary=False)
+        # Set this email as primary
+        UserEmail.objects.filter(user=user, email=activation_email).update(is_primary=True)
 
         # Clear activation session data
         del request.session['activation_email']
