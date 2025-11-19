@@ -9,6 +9,8 @@ import glob
 
 from .models import Request, UserPreferences, PersonalConfig, LineList, User, UserEmail
 from .forms import (
+    PasswordResetRequestForm,
+    PasswordResetForm,
     RegistrationForm,
     ExtractAllForm,
     ExtractElementForm,
@@ -163,7 +165,12 @@ VALD Team
             return redirect('vald:index')
 
         if not user.check_password(password):
-            messages.error(request, 'Invalid password. Please try again.')
+            reset_url = request.build_absolute_uri('/reset-password/')
+            messages.error(
+                request,
+                f'Invalid password. <a href="{reset_url}">Forgot your password?</a>',
+                extra_tags='safe'
+            )
             return redirect('vald:index')
 
         # Login successful
@@ -299,6 +306,112 @@ def set_password(request):
     except User.DoesNotExist:
         messages.error(request, 'Invalid or expired activation link. Please request a new one by logging in.')
         return redirect('vald:index')
+
+
+def request_password_reset(request):
+    """Handle password reset request form"""
+    context = get_user_context(request)
+
+    if request.method == 'POST':
+        form = PasswordResetRequestForm(request.POST)
+
+        if not form.is_valid():
+            for field, errors in form.errors.items():
+                for error in errors:
+                    field_label = form.fields[field].label if field in form.fields else field
+                    messages.error(request, f"{field_label}: {error}")
+            context['form'] = form
+            return render(request, 'vald/request_password_reset.html', context)
+
+        email = form.cleaned_data['email']
+
+        # Check if user exists
+        try:
+            user_email = UserEmail.objects.select_related('user').get(email=email)
+            user = user_email.user
+
+            # Generate reset token
+            token = user.generate_activation_token()
+            user.save()
+
+            # Build reset URL
+            reset_url = request.build_absolute_uri(f"/reset-password/{token}/")
+
+            # Send reset email
+            email_subject = 'VALD Password Reset'
+            email_body = f"""Hello {user.name},
+
+You requested to reset your password for your VALD account.
+
+To reset your password, please click the link below:
+
+{reset_url}
+
+This link will expire in 7 days.
+
+If you did not request this password reset, please ignore this email.
+
+Best regards,
+VALD Team
+"""
+
+            try:
+                send_mail(
+                    email_subject,
+                    email_body,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [email],
+                    fail_silently=False,
+                )
+                messages.success(request, f'Password reset email sent to {email}. Please check your inbox.')
+            except Exception as e:
+                messages.error(request, f'Failed to send reset email: {e}. Please contact the administrator.')
+
+        except UserEmail.DoesNotExist:
+            # Don't reveal if email exists or not (security best practice)
+            messages.success(request, f'If {email} is registered, a password reset email has been sent.')
+
+        return redirect('vald:index')
+
+    # GET request - show form
+    context['form'] = PasswordResetRequestForm()
+    return render(request, 'vald/request_password_reset.html', context)
+
+
+def reset_password(request, token):
+    """Handle password reset with token"""
+    context = get_user_context(request)
+
+    # Verify token
+    try:
+        user = User.objects.get(activation_token=token)
+    except User.DoesNotExist:
+        messages.error(request, 'Invalid or expired password reset link.')
+        return redirect('vald:index')
+
+    if request.method == 'POST':
+        form = PasswordResetForm(request.POST)
+
+        if not form.is_valid():
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, error)
+            context['form'] = form
+            context['token'] = token
+            return render(request, 'vald/reset_password.html', context)
+
+        # Set new password
+        user.set_password(form.cleaned_data['password'])
+        user.save()
+
+        messages.success(request, 'Password reset successfully! You can now log in with your new password.')
+        return redirect('vald:index')
+
+    # GET request - show form
+    context['form'] = PasswordResetForm()
+    context['token'] = token
+    context['user_name'] = user.name
+    return render(request, 'vald/reset_password.html', context)
 
 
 def require_login(view_func):

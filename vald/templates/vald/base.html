@@ -52,7 +52,6 @@
         <tr><td><input type="password" name="password" value="" size=45>
         <tr><td colspan=2><i>(First-time login? Leave password blank to set it up)</i>
         <tr><td><br><input type="submit" value="Login">
-                <input type="reset"  value="Reset">
       </table>
     </form>
     {% endif %}
@@ -86,7 +85,7 @@
     {% if messages %}
     <ul class="messages">
         {% for message in messages %}
-        <li class="{{ message.tags }}">{{ message }}</li>
+        <li class="{{ message.tags }}">{% if 'safe' in message.tags %}{{ message|safe }}{% else %}{{ message }}{% endif %}</li>
         {% endfor %}
     </ul>
     {% endif %}

@@ -3,6 +3,49 @@ from django.core.exceptions import ValidationError
 import re
 
 
+class PasswordResetRequestForm(forms.Form):
+    """Password reset request form"""
+    email = forms.EmailField(
+        label='Email address',
+        required=True,
+        max_length=100,
+        widget=forms.TextInput(attrs={'size': '50'})
+    )
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].lower()
+        if '@' not in email:
+            raise ValidationError("Your email address should at least contain a '@'!")
+        return email
+
+
+class PasswordResetForm(forms.Form):
+    """Password reset form"""
+    password = forms.CharField(
+        label='New password',
+        required=True,
+        widget=forms.PasswordInput(attrs={'size': '40'})
+    )
+    password_confirm = forms.CharField(
+        label='Confirm new password',
+        required=True,
+        widget=forms.PasswordInput(attrs={'size': '40'})
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get('password')
+        password_confirm = cleaned_data.get('password_confirm')
+
+        if password and password_confirm and password != password_confirm:
+            raise ValidationError("Passwords do not match.")
+
+        if password and len(password) < 6:
+            raise ValidationError("Password must be at least 6 characters long.")
+
+        return cleaned_data
+
+
 class RegistrationForm(forms.Form):
     """User registration form - creates pending user accounts for admin approval"""
     email = forms.EmailField(
