@@ -1,19 +1,41 @@
 {% extends "vald/base.html" %}
 
 {% block content %}
-<hr><h3>Contact form (for {{ sitename }})</h3><hr>
+<hr><h3>Registration (for {{ sitename }})</h3><hr>
 
-<p>If you would like to <b>register as a new user for the {{ sitename }} server</b>, or for any other reason would
-like to <b>contact one of the managers of VALD</b>, please complete the form below.
+<p>If you would like to <b>register as a new user for the {{ sitename }} server</b>, please complete the form below.
 <p>When registering, please provide the following information:
-<ol><li> The email address at which you would like to receive the results of
-         your VALD database queries
+<ol><li> The email address at which you would like to receive the results of your VALD database queries
     <li> Your full name and affiliation
 </ol>
 <i>Note that your registration will only be valid for the server you are registering for ({{ sitename }}).
 If you want to use the service on other servers, you will need to register for each server separately.</i>
-<p>If you intend to access VALD-EMS from different computers/accounts, send <b>all</b>
-e-mail addresses that you intend to use.
+<p>After submitting your registration, an administrator will review and approve your account. You will receive
+an email with instructions to set your password once approved.
+
+<p><form name="registrationform" method="post" action="{% url 'vald:submit_request' %}">
+  {% csrf_token %}
+  <table>
+    <input type="hidden" name="reqtype" value="registration">
+    <tr><td colspan=2><hr>
+    <tr><td>{{ registration_form.email.label }} : <td>{{ registration_form.email }}
+    <tr><td>{{ registration_form.name.label }} : <td>{{ registration_form.name }}
+    <tr><td>{{ registration_form.affiliation.label }} : <td>{{ registration_form.affiliation }}
+    <tr><td>{{ registration_form.position.label }} : <td>{{ registration_form.position }} {{ registration_form.position.help_text }}
+    <tr><td colspan=2><hr>
+    <tr><td>{{ registration_form.privacy_accepted }}<td>
+    By submitting a registration through the form above, you give us permission to process and store<br>
+    your personal data to comply with your request. Your name, email address and affiliation will be<br>
+    stored on our servers, which are distributed around the world.
+    <tr><td colspan=2><hr>
+    <tr><td><input type="submit" value="Register">
+        <td><input type="reset" value="Clear">
+    </table>
+</form>
+
+<hr><h3>Contact form (for {{ sitename }})</h3><hr>
+
+<p>If you would like to <b>contact one of the managers of VALD</b>, please complete the form below.
 
 <p><form name="contactform" method="post" action="{% url 'vald:submit_request' %}">
   {% csrf_token %}
@@ -21,19 +43,16 @@ e-mail addresses that you intend to use.
     <input type="hidden" name="reqtype" value="contact">
     <tr><td colspan=2><hr>
     <tr><td>Your email : <td>{{ form.contactemail }}
-    <tr><td>Full name : <td>{{ form.contactname }} (required for registration)
-    <tr><td>Affiliation : <td>{{ form.affiliation }} (required for registration)
-    <tr><td>Current position : <td>{{ form.position }} (for statistics only)
+    <tr><td>Full name : <td>{{ form.contactname }} {{ form.contactname.help_text }}
+    <tr><td>Affiliation : <td>{{ form.affiliation }} {{ form.affiliation.help_text }}
+    <tr><td>Current position : <td>{{ form.position }} {{ form.position.help_text }}
     <tr><td>To : <td>{{ form.manager }}
     <tr><td valign="top">Your message :
         <td>{{ form.message }}
     <tr><td colspan=2><hr>
     <tr><td>{{ form.permission }}<td>
-    By submitting a request for information or registration through the form<br>
-    above, you give us permission to process and store your personal data to<br>
-    comply with your request. In case of registration, your name, email address<br>
-    and affiliation will be stored on our servers, which are distributed around
-    the world.
+    By submitting a request for information through the form above, you give us permission<br>
+    to process and store your personal data to comply with your request.
     {{ form.privacy_statement }}
     <tr><td colspan=2><hr>
     <tr><td><input type="submit" value="Send message">
