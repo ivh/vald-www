@@ -1,8 +1,26 @@
 from django.contrib import admin
+from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
+from django import forms
 from .models import Request, User, UserEmail, UserPreferences, PersonalConfig, LineList
+
+
+class UserChangeForm(forms.ModelForm):
+    """Custom form for User admin with proper password display"""
+    password = ReadOnlyPasswordHashField(
+        label="Password",
+        help_text=(
+            "Raw passwords are not stored, so there is no way to see this "
+            "user's password, but you can change the password using "
+            '<a href="../password/">this form</a>.'
+        ),
+    )
+
+    class Meta:
+        model = User
+        fields = '__all__'
 
 
 @admin.register(Request)
@@ -42,6 +60,7 @@ class UserEmailInline(admin.TabularInline):
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
+    form = UserChangeForm
     list_display = ('name', 'get_emails', 'has_password', 'is_active', 'is_pending', 'created_at')
     list_filter = ('is_active', 'created_at')
     search_fields = ('name', 'affiliation', 'emails__email')
@@ -59,6 +78,50 @@ class UserAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
+
+    def get_urls(self):
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<id>/password/',
+                self.admin_site.admin_view(self.user_change_password),
+                name='vald_user_password_change',
+            ),
+        ]
+        return custom_urls + urls
+
+    def user_change_password(self, request, id, form_url=''):
+        from django.contrib import messages
+        from django.shortcuts import redirect, render
+        from django.contrib.admin.utils import unquote
+
+        user = self.get_object(request, unquote(id))
+        if user is None:
+            raise self.model.DoesNotExist
+
+        if request.method == 'POST':
+            password = request.POST.get('password1')
+            password2 = request.POST.get('password2')
+
+            if not password:
+                messages.error(request, 'Password cannot be empty.')
+            elif password != password2:
+                messages.error(request, 'Passwords do not match.')
+            elif len(password) < 6:
+                messages.error(request, 'Password must be at least 6 characters.')
+            else:
+                user.set_password(password)
+                user.save()
+                messages.success(request, f'Password changed successfully for {user.name}.')
+                return redirect('admin:vald_user_change', user.id)
+
+        context = {
+            'user': user,
+            'opts': self.model._meta,
+            'title': f'Change password: {user.name}',
+        }
+        return render(request, 'admin/vald/user_password_change.html', context)
 
     def get_emails(self, obj):
         """Display all email addresses for the user"""
