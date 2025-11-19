@@ -9,6 +9,7 @@ import glob
 
 from .models import Request, UserPreferences, PersonalConfig, LineList, User, UserEmail
 from .forms import (
+    RegistrationForm,
     ExtractAllForm,
     ExtractElementForm,
     ExtractStellarForm,
@@ -517,9 +518,11 @@ def submit_request(request):
     reqtype = request.POST.get('reqtype')
     context = get_user_context(request)
 
-    # Contact form is accessible to everyone
+    # Contact and registration forms are accessible to everyone
     if reqtype == 'contact':
         return handle_contact_request(request)
+    elif reqtype == 'registration':
+        return handle_registration_request(request)
 
     # All other requests require login
     if not request.session.get('email'):
@@ -554,6 +557,7 @@ def handle_contact_request(request):
                 field_label = form.fields[field].label if field in form.fields else field
                 messages.error(request, f"{field_label}: {error}")
         context['form'] = form
+        context['registration_form'] = RegistrationForm()
         return render(request, 'vald/contact.html', context)
 
     # Spam check
@@ -561,14 +565,12 @@ def handle_contact_request(request):
     if not spam_check(message):
         messages.error(request, 'Your message was rejected because the content was classed as spam.')
         context['form'] = form
+        context['registration_form'] = RegistrationForm()
         return render(request, 'vald/contact.html', context)
 
     # Prepare email content
     email_context = {
         'contactemail': form.cleaned_data['contactemail'],
-        'contactname': form.cleaned_data['contactname'],
-        'affiliation': form.cleaned_data['affiliation'],
-        'position': form.cleaned_data['position'],
         'message': form.cleaned_data['message'],
         'permission': form.cleaned_data['permission'],
         'privacy_statement': form.cleaned_data['privacy_statement'],
@@ -580,7 +582,7 @@ def handle_contact_request(request):
     manager = form.cleaned_data['manager']
     recipient_map = {
         'valdadministrator': settings.VALD_REQUEST_EMAIL,
-        'valdwebmanager': settings.VALD_REQUEST_EMAIL,
+        'webmaster': settings.VALD_REQUEST_EMAIL,
     }
     recipient = recipient_map.get(manager, settings.VALD_REQUEST_EMAIL)
 
@@ -597,6 +599,7 @@ def handle_contact_request(request):
     except Exception as e:
         messages.error(request, f'A problem occurred when processing your input: {e}')
         context['form'] = form
+        context['registration_form'] = RegistrationForm()
         return render(request, 'vald/contact.html', context)
 
 
@@ -667,6 +670,48 @@ Vienna Atomic Line Database (VALD)
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Failed to send results email for request {req_obj.uuid}: {e}")
+
+
+def handle_registration_request(request):
+    """Handle registration form submission"""
+    context = get_user_context(request)
+    form = RegistrationForm(request.POST)
+
+    if not form.is_valid():
+        # Show form errors with field names
+        for field, errors in form.errors.items():
+            for error in errors:
+                field_label = form.fields[field].label if field in form.fields else field
+                messages.error(request, f"{field_label}: {error}")
+        context['registration_form'] = form
+        context['form'] = ContactForm()
+        return render(request, 'vald/contact.html', context)
+
+    # Create new user with is_active=False (pending admin approval)
+    user = User.objects.create(
+        name=form.cleaned_data['name'],
+        affiliation=form.cleaned_data['affiliation'],
+        password=None,  # No password yet - needs activation
+        is_active=False  # Requires admin approval
+    )
+
+    # Create email record
+    UserEmail.objects.create(
+        user=user,
+        email=form.cleaned_data['email'],
+        is_primary=True
+    )
+
+    messages.success(
+        request,
+        f"Registration submitted successfully! Your account for {form.cleaned_data['email']} "
+        "is pending approval. You will receive an email once your account is activated."
+    )
+
+    # Return clean forms
+    context['registration_form'] = RegistrationForm()
+    context['form'] = ContactForm()
+    return render(request, 'vald/contact.html', context)
 
 
 def handle_extract_request(request):
@@ -846,6 +891,7 @@ def documentation(request, docpage):
 
     # Special handling for contact.html
     if docpage == 'contact.html':
+        context['registration_form'] = RegistrationForm()
         context['form'] = ContactForm()
         return render(request, 'vald/contact.html', context)
 

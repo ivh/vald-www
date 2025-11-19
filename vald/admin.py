@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.core.mail import send_mail
+from django.conf import settings
 from .models import Request, User, UserEmail, UserPreferences, PersonalConfig, LineList
 
 
@@ -39,11 +41,12 @@ class UserEmailInline(admin.TabularInline):
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ('name', 'get_emails', 'has_password', 'is_active', 'created_at')
+    list_display = ('name', 'get_emails', 'has_password', 'is_active', 'is_pending', 'created_at')
     list_filter = ('is_active', 'created_at')
     search_fields = ('name', 'affiliation', 'emails__email')
     readonly_fields = ('created_at', 'updated_at', 'activation_token')
     inlines = [UserEmailInline]
+    actions = ['approve_and_send_activation', 'approve_without_email', 'reject_registration']
     fieldsets = (
         ('User Information', {
             'fields': ('name', 'affiliation', 'is_active')
@@ -66,6 +69,62 @@ class UserAdmin(admin.ModelAdmin):
         return bool(obj.password)
     has_password.boolean = True
     has_password.short_description = 'Has Password'
+
+    def is_pending(self, obj):
+        """Show if user is pending approval (inactive with no password)"""
+        return not obj.is_active and not obj.password
+    is_pending.boolean = True
+    is_pending.short_description = 'Pending Approval'
+
+    def approve_and_send_activation(self, request, queryset):
+        """Approve selected users and send activation email"""
+        count = 0
+        for user in queryset:
+            if not user.is_active:
+                user.is_active = True
+                token = user.generate_activation_token()
+                user.save()
+
+                # Get primary email or first email
+                email = user.emails.filter(is_primary=True).first()
+                if not email:
+                    email = user.emails.first()
+
+                if email:
+                    activation_url = f"{settings.SITENAME}/activate/{token}/"
+                    try:
+                        send_mail(
+                            'VALD Account Activated',
+                            f'Hello {user.name},\n\n'
+                            f'Your VALD account has been approved!\n\n'
+                            f'Please click the following link to set your password and activate your account:\n'
+                            f'{activation_url}\n\n'
+                            f'This link will expire in 7 days.\n\n'
+                            f'Best regards,\n'
+                            f'VALD Team',
+                            settings.DEFAULT_FROM_EMAIL,
+                            [email.email],
+                            fail_silently=False,
+                        )
+                        count += 1
+                    except Exception as e:
+                        self.message_user(request, f'Error sending email to {user.name}: {e}', level='error')
+
+        self.message_user(request, f'{count} user(s) approved and activation emails sent.')
+    approve_and_send_activation.short_description = 'Approve and send activation email'
+
+    def approve_without_email(self, request, queryset):
+        """Approve selected users without sending email"""
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f'{updated} user(s) approved (no email sent).')
+    approve_without_email.short_description = 'Approve without sending email'
+
+    def reject_registration(self, request, queryset):
+        """Delete/reject selected pending users"""
+        count = queryset.filter(is_active=False, password__isnull=True).count()
+        queryset.filter(is_active=False, password__isnull=True).delete()
+        self.message_user(request, f'{count} pending registration(s) rejected and deleted.')
+    reject_registration.short_description = 'Reject pending registrations'
 
 
 @admin.register(UserEmail)

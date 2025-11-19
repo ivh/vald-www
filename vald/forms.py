@@ -3,6 +3,55 @@ from django.core.exceptions import ValidationError
 import re
 
 
+class RegistrationForm(forms.Form):
+    """User registration form - creates pending user accounts for admin approval"""
+    email = forms.EmailField(
+        label='Email address',
+        required=True,
+        max_length=100,
+        widget=forms.TextInput(attrs={'size': '50'})
+    )
+    name = forms.CharField(
+        label='Full name',
+        required=True,
+        max_length=100,
+        widget=forms.TextInput(attrs={'size': '50'})
+    )
+    affiliation = forms.CharField(
+        label='Affiliation',
+        required=True,
+        max_length=200,
+        widget=forms.TextInput(attrs={'size': '50'})
+    )
+    position = forms.CharField(
+        label='Current position',
+        required=False,
+        max_length=100,
+        widget=forms.TextInput(attrs={'size': '50'}),
+        help_text='optional, for statistics only'
+    )
+    privacy_accepted = forms.BooleanField(
+        label='I accept the privacy statement',
+        required=True,
+        error_messages={'required': 'You must accept the privacy statement to register'}
+    )
+
+    def clean_email(self):
+        from vald.models import UserEmail
+        email = self.cleaned_data['email'].lower()
+
+        # Check if email already registered
+        if UserEmail.objects.filter(email=email).exists():
+            raise ValidationError(
+                "This email address is already registered. Please use the login form or contact the administrator."
+            )
+
+        if '@' not in email:
+            raise ValidationError("Your email address should at least contain a '@'!")
+
+        return email
+
+
 class ExtractAllForm(forms.Form):
     """Extract All form"""
     stwvl = forms.FloatField(
@@ -401,39 +450,18 @@ class ShowLineForm(forms.Form):
 
 
 class ContactForm(forms.Form):
-    """Contact/Registration form"""
+    """Contact form for general inquiries"""
     contactemail = forms.EmailField(
         label='Your email',
         required=True,
         max_length=100,
         widget=forms.TextInput(attrs={'size': '50'})
     )
-    contactname = forms.CharField(
-        label='Full name',
-        required=False,
-        max_length=100,
-        widget=forms.TextInput(attrs={'size': '50'}),
-        help_text='required for registration'
-    )
-    affiliation = forms.CharField(
-        label='Affiliation',
-        required=False,
-        max_length=200,
-        widget=forms.TextInput(attrs={'size': '50'}),
-        help_text='required for registration'
-    )
-    position = forms.CharField(
-        label='Current position',
-        required=False,
-        max_length=100,
-        widget=forms.TextInput(attrs={'size': '50'}),
-        help_text='for statistics only'
-    )
     manager = forms.ChoiceField(
         label='To',
         choices=[
-            ('valdadministrator', 'VALD Administrator (registration, questions, general issues, support)'),
-            ('valdwebmanager', 'VALD Web manager (issues concerning this mirror)')
+            ('valdadministrator', 'VALD Administrator (questions, general issues, support)'),
+            ('webmaster', 'Webmaster (issues with this site)')
         ],
         initial='valdadministrator'
     )
