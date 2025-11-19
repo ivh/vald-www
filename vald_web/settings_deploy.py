@@ -125,7 +125,8 @@ SESSION_COOKIE_SECURE = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "new/static/"
+STATIC_URL = "/new/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"  # Where collectstatic puts files
 STATICFILES_DIRS = [BASE_DIR / "style"]
 
 # Default primary key field type
