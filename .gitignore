@@ -68,3 +68,4 @@ venv/
 config/personal_configs/*.cfg
 working/
 clients.register
+staticfiles/
