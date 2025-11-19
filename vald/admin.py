@@ -156,7 +156,7 @@ class UserAdmin(admin.ModelAdmin):
 
                 if email:
                     activation_path = reverse('vald:activate_account', kwargs={'token': token})
-                    activation_url = f"{settings.SITENAME}{activation_path}"
+                    activation_url = f"{settings.SITE_URL}{activation_path}"
                     try:
                         send_mail(
                             'VALD Account Activated',
