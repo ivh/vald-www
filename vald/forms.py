@@ -457,32 +457,11 @@ class ContactForm(forms.Form):
         max_length=100,
         widget=forms.TextInput(attrs={'size': '50'})
     )
-    contactname = forms.CharField(
-        label='Full name',
-        required=False,
-        max_length=100,
-        widget=forms.TextInput(attrs={'size': '50'}),
-        help_text='optional'
-    )
-    affiliation = forms.CharField(
-        label='Affiliation',
-        required=False,
-        max_length=200,
-        widget=forms.TextInput(attrs={'size': '50'}),
-        help_text='optional'
-    )
-    position = forms.CharField(
-        label='Current position',
-        required=False,
-        max_length=100,
-        widget=forms.TextInput(attrs={'size': '50'}),
-        help_text='optional'
-    )
     manager = forms.ChoiceField(
         label='To',
         choices=[
-            ('valdadministrator', 'VALD Administrator (registration, questions, general issues, support)'),
-            ('valdwebmanager', 'VALD Web manager (issues concerning this mirror)')
+            ('valdadministrator', 'VALD Administrator (questions, general issues, support)'),
+            ('webmaster', 'Webmaster (issues with this site)')
         ],
         initial='valdadministrator'
     )

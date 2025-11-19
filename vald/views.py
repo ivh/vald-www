@@ -571,9 +571,6 @@ def handle_contact_request(request):
     # Prepare email content
     email_context = {
         'contactemail': form.cleaned_data['contactemail'],
-        'contactname': form.cleaned_data['contactname'],
-        'affiliation': form.cleaned_data['affiliation'],
-        'position': form.cleaned_data['position'],
         'message': form.cleaned_data['message'],
         'permission': form.cleaned_data['permission'],
         'privacy_statement': form.cleaned_data['privacy_statement'],
@@ -585,7 +582,7 @@ def handle_contact_request(request):
     manager = form.cleaned_data['manager']
     recipient_map = {
         'valdadministrator': settings.VALD_REQUEST_EMAIL,
-        'valdwebmanager': settings.VALD_REQUEST_EMAIL,
+        'webmaster': settings.VALD_REQUEST_EMAIL,
     }
     recipient = recipient_map.get(manager, settings.VALD_REQUEST_EMAIL)
 
