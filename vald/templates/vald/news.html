@@ -6,8 +6,8 @@
 
 <p>More news items :
 <p>
-{% for i, filename in enumerate news_files %}
-  <a href="{% url 'vald:news' i %}">{{ filename }}</a>{% if not forloop.last %},&nbsp;{% endif %}
+{% for filename in news_files %}
+  <a href="{% url 'vald:news' forloop.counter0 %}">{{ filename }}</a>{% if not forloop.last %},&nbsp;{% endif %}
   {% if forloop.counter|divisibleby:5 %}<p>{% endif %}
 {% endfor %}
 </p>
