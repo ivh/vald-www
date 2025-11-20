@@ -1,10 +1,9 @@
 """
-Personal configuration management - handles linelist configuration
-Similar to the PHP PersConfig class
+Personal configuration management - handles linelist configuration files
+File-based implementation (no database models)
 """
 import re
 from pathlib import Path
-from .models import PersonalConfig, LineList
 
 
 def read_persconfig_file(filepath):
@@ -65,134 +64,45 @@ def read_persconfig_file(filepath):
     return (hidden_params, linelists)
 
 
-def load_or_create_persconfig(email, default_config_path, user_config_path):
+def write_persconfig_file(filepath, hidden_params, linelists):
     """
-    Load user's personal config or create from default.
-    Returns PersonalConfig model instance.
+    Write a personal configuration file to disk.
+
+    Args:
+        filepath: Path to write the config file
+        hidden_params: List of 4 hidden parameters (strings)
+        linelists: List of linelist dicts with keys:
+            - 'commented': bool
+            - 'params': list of 15 parameter strings
+            - 'name': linelist name
+            - 'id': linelist ID (optional, for sorting)
     """
-    # Try to get existing config from database
-    try:
-        persconf = PersonalConfig.objects.get(email=email)
-        return persconf
-    except PersonalConfig.DoesNotExist:
-        pass
+    with open(filepath, 'w') as f:
+        # Write hidden parameters as first line
+        hidden_line = ','.join(str(p) for p in hidden_params[:4])
+        f.write(hidden_line + '\n')
 
-    # Read default config
-    hidden_params, default_linelists = read_persconfig_file(default_config_path)
+        # Write each linelist
+        for ll in linelists:
+            # Build the line with 15 fields
+            params = ll['params'][:15]  # Ensure we have exactly 15 fields
 
-    # Create new config
-    persconf = PersonalConfig.objects.create(
-        email=email,
-        hidden_param_0=hidden_params[0] if len(hidden_params) > 0 else '',
-        hidden_param_1=hidden_params[1] if len(hidden_params) > 1 else '',
-        hidden_param_2=hidden_params[2] if len(hidden_params) > 2 else '',
-        hidden_param_3=hidden_params[3] if len(hidden_params) > 3 else '',
-    )
+            # Pad with empty strings if needed
+            while len(params) < 14:
+                params.append('')
 
-    # Create linelists
-    for ll_data in default_linelists:
-        linelist = LineList.objects.create(
-            personal_config=persconf,
-            list_id=ll_data['id'],
-            name=ll_data['name'],
-            commented=ll_data['commented'],
-        )
+            # Build comma-separated fields (first 14 params)
+            fields = ','.join(str(p) for p in params[:14])
 
-        # Set parameters
-        for j in range(15):
-            if j < len(ll_data['params']):
-                linelist.set_param(j, ll_data['params'][j])
+            # Add name field in quotes as 15th field
+            name = ll['name']
+            line = f"{fields},'{name}'"
 
-        linelist.save()
+            # Add comment marker if commented
+            if ll.get('commented', False):
+                line = ';' + line
 
-    return persconf
+            f.write(line + '\n')
 
 
-def compare_with_default(persconf, default_config_path):
-    """
-    Compare user config with default and mark modifications.
-    Returns the updated persconf.
-    """
-    hidden_params, default_linelists = read_persconfig_file(default_config_path)
-
-    # Update hidden params if they've changed in default
-    if hidden_params:
-        persconf.hidden_param_0 = hidden_params[0] if len(hidden_params) > 0 else ''
-        persconf.hidden_param_1 = hidden_params[1] if len(hidden_params) > 1 else ''
-        persconf.hidden_param_2 = hidden_params[2] if len(hidden_params) > 2 else ''
-        persconf.hidden_param_3 = hidden_params[3] if len(hidden_params) > 3 else ''
-        persconf.save()
-
-    # Build lookup for default linelists
-    default_lookup = {ll['id']: ll for ll in default_linelists}
-
-    # Check each user linelist
-    user_linelists = list(persconf.linelists.all())
-    for linelist in user_linelists:
-        default_ll = default_lookup.get(linelist.list_id)
-
-        if not default_ll:
-            # Linelist no longer exists in default - delete it
-            linelist.delete()
-            continue
-
-        # Check if commented status differs
-        if linelist.commented != default_ll['commented']:
-            linelist.mod_comment = True
-
-        # Check each parameter
-        for j in range(1, 14):
-            user_val = linelist.get_param(j)
-            default_val = default_ll['params'][j] if j < len(default_ll['params']) else ''
-            if user_val != default_val:
-                linelist.set_mod_flag(j, True)
-
-        linelist.save()
-
-    # Add any new linelists from default
-    user_ids = {ll.list_id for ll in user_linelists}
-    for ll_data in default_linelists:
-        if ll_data['id'] not in user_ids:
-            linelist = LineList.objects.create(
-                personal_config=persconf,
-                list_id=ll_data['id'],
-                name=ll_data['name'],
-                commented=ll_data['commented'],
-            )
-
-            for j in range(15):
-                if j < len(ll_data['params']):
-                    linelist.set_param(j, ll_data['params'][j])
-
-            linelist.save()
-
-    return persconf
-
-
-def restore_linelist_to_default(linelist, default_config_path):
-    """Restore a single linelist to default values"""
-    hidden_params, default_linelists = read_persconfig_file(default_config_path)
-
-    # Find the default linelist
-    default_ll = None
-    for ll in default_linelists:
-        if ll['id'] == linelist.list_id:
-            default_ll = ll
-            break
-
-    if not default_ll:
-        return linelist
-
-    # Restore values
-    linelist.commented = default_ll['commented']
-    linelist.name = default_ll['name']
-
-    for j in range(15):
-        if j < len(default_ll['params']):
-            linelist.set_param(j, default_ll['params'][j])
-        linelist.set_mod_flag(j, False)
-
-    linelist.mod_comment = False
-    linelist.save()
-
-    return linelist
+# Old DB-based functions removed - file-based implementation only

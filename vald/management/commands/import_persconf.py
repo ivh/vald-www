@@ -2,26 +2,45 @@ from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
 from pathlib import Path
 import re
-from vald.models import User, PersonalConfig, LineList
-from vald.persconfig import read_persconfig_file
 
 
 class Command(BaseCommand):
-    help = 'Import personal configuration from a .cfg file for a user'
+    help = '[DEPRECATED] This command is no longer needed - personal configs are file-based now'
 
     def add_arguments(self, parser):
         parser.add_argument(
             'filename',
             type=str,
-            help='Configuration filename (e.g., ThomasMarquart.cfg)',
+            help='[DEPRECATED] This argument is ignored',
         )
         parser.add_argument(
             '--dry-run',
             action='store_true',
-            help='Show what would be imported without making changes',
+            help='[DEPRECATED] This flag is ignored',
         )
 
     def handle(self, *args, **options):
+        self.stdout.write(self.style.WARNING(
+            '\n' + '='*70 + '\n'
+            'DEPRECATED COMMAND\n'
+            '='*70 + '\n\n'
+            'This command is no longer needed!\n\n'
+            'Personal configurations are now file-based and do not use the database.\n'
+            'Configuration files are read directly from disk at:\n'
+            f'  {settings.PERSCONFIG_DIR}\n\n'
+            'Files should be named: {ClientName}.cfg (e.g., ThomasMarquart.cfg)\n\n'
+            'The backend automatically reads these files during request processing.\n'
+            'Users can edit their config via the web interface at /persconf/\n\n'
+            'To manage config files:\n'
+            '  - View: ls ' + str(settings.PERSCONFIG_DIR) + '\n'
+            '  - Edit: Use /persconf/ web interface or edit files directly\n'
+            '  - Copy: cp default.cfg {ClientName}.cfg\n\n'
+            '='*70 + '\n'
+        ))
+        return
+
+        # Old implementation removed - kept for reference:
+        """
         filename = options['filename']
         dry_run = options['dry_run']
 
@@ -122,10 +141,8 @@ class Command(BaseCommand):
         self.stdout.write(f'Imported {len(linelists)} linelists from {filepath}')
 
     def find_user_by_filename(self, name_from_file):
-        """
-        Find a user whose name matches the filename when whitespace is removed.
-        PHP code: trim(preg_replace("/\s+/", "", $user->name)) . ".cfg"
-        """
+        # Find a user whose name matches the filename when whitespace is removed.
+        # PHP code: trim(preg_replace("/\s+/", "", $user->name)) . ".cfg"
         # Get all users
         users = User.objects.all()
 
@@ -137,3 +154,4 @@ class Command(BaseCommand):
                 return user
 
         return None
+        """

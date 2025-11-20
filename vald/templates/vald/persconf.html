@@ -18,10 +18,10 @@
 <th>ID<th>Active<th>Name<th colspan=9>Parameters<th colspan=3>Options
 
 {% for linelist in linelists %}
-{% if editid == linelist.list_id %}
+{% if editid == linelist.id %}
   {# Editable row #}
   <tr align=center>
-  <td align="right">{{ linelist.list_id }}</td>
+  <td align="right">{{ linelist.id }}</td>
   <td{% if linelist.mod_comment %} class="modified_data"{% endif %}>
     <input type=checkbox {% if not linelist.commented %}checked{% endif %} name="linelist-checked">
   </td>
@@ -44,14 +44,14 @@
   <td{% if linelist|get_mod_flag:12 %} class="modified_data"{% endif %}><input type="text" name="edit-val-12" value="{{ linelist|get_param:12 }}" size=2></td>
   <td{% if linelist|get_mod_flag:13 %} class="modified_data"{% endif %}><input type="text" name="edit-val-13" value="{{ linelist|get_param:13 }}" size=2></td>
 
-  <td><a href="javascript:void();" onClick="thisform.action.value='save'; thisform.editid.value='{{ linelist.list_id }}'; thisform.submit(); return false;">Save</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='cancel'; thisform.editid.value='{{ linelist.list_id }}';thisform.submit(); return false;">Cancel</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.list_id }}'; thisform.submit(); return false;">Restore VALD default</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='save'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Save</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='cancel'; thisform.editid.value='{{ linelist.id }}';thisform.submit(); return false;">Cancel</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Restore VALD default</a></td>
 
 {% else %}
   {# Read-only row #}
   <tr align=center>
-  <td align="right">{{ linelist.list_id }}</td>
+  <td align="right">{{ linelist.id }}</td>
   <td{% if linelist.mod_comment %} class="modified_data"{% endif %}>
     {% if not linelist.commented %} X {% else %} &nbsp; {% endif %}
   </td>
@@ -73,7 +73,7 @@
     <td colspan=3> &nbsp;<br></td>
   {% else %}
     {# When browsing, show edit option #}
-    <td><a href="javascript:void();" onClick="thisform.action.value='edit'; thisform.editid.value='{{ linelist.list_id }}'; thisform.submit(); return false;">Edit</a></td>
+    <td><a href="javascript:void();" onClick="thisform.action.value='edit'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Edit</a></td>
     <td colspan=2>&nbsp;</td>
   {% endif %}
 {% endif %}

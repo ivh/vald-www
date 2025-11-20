@@ -8,7 +8,7 @@ from django.urls import reverse
 from pathlib import Path
 import glob
 
-from .models import Request, UserPreferences, PersonalConfig, LineList, User, UserEmail
+from .models import Request, UserPreferences, User, UserEmail
 from .forms import (
     PasswordResetRequestForm,
     PasswordResetForm,
@@ -1062,25 +1062,49 @@ def news(request, newsitem=None):
 
 @require_login
 def persconf(request):
-    """Personal configuration page"""
-    from .persconfig import (
-        load_or_create_persconfig,
-        compare_with_default,
-        restore_linelist_to_default,
-    )
+    """Personal configuration page - file-based implementation"""
+    from .persconfig import read_persconfig_file, write_persconfig_file
+    from .backend import get_client_name
 
     context = get_user_context(request)
     email = request.session.get('email')
 
-    # Load or create config
-    persconf_obj = load_or_create_persconfig(
-        email,
-        settings.PERSCONFIG_DEFAULT,
-        settings.PERSCONFIG_DIR / f"{email.replace('@', '_').replace('.', '_')}.cfg"
-    )
+    # Get client name and config file path
+    client_name = get_client_name(email)
+    if not client_name:
+        messages.error(request, 'Could not determine user name from email.')
+        return redirect('vald:index')
 
-    # Compare with default to mark modifications
-    persconf_obj = compare_with_default(persconf_obj, settings.PERSCONFIG_DEFAULT)
+    user_config_path = settings.PERSCONFIG_DIR / f"{client_name}.cfg"
+    default_config_path = settings.PERSCONFIG_DEFAULT
+
+    # Read user config (or use default if doesn't exist)
+    if user_config_path.exists():
+        hidden_params, linelists = read_persconfig_file(user_config_path)
+    else:
+        hidden_params, linelists = read_persconfig_file(default_config_path)
+
+    # Read default config for comparison
+    default_hidden_params, default_linelists = read_persconfig_file(default_config_path)
+    default_lookup = {ll['id']: ll for ll in default_linelists}
+
+    # Mark modifications by comparing with default
+    for ll in linelists:
+        ll['mod_comment'] = False
+        ll['mod_flags'] = [False] * 15
+
+        default_ll = default_lookup.get(ll['id'])
+        if default_ll:
+            # Check if commented status differs
+            if ll['commented'] != default_ll['commented']:
+                ll['mod_comment'] = True
+
+            # Check each parameter
+            for j in range(1, 14):
+                user_val = ll['params'][j] if j < len(ll['params']) else ''
+                default_val = default_ll['params'][j] if j < len(default_ll['params']) else ''
+                if user_val != default_val:
+                    ll['mod_flags'][j] = True
 
     # Handle actions (edit, save, restore, cancel)
     action = request.POST.get('action') if request.method == 'POST' else None
@@ -1089,24 +1113,47 @@ def persconf(request):
     if action == 'save' and editid:
         # Save edited linelist
         try:
-            linelist = persconf_obj.linelists.get(list_id=int(editid))
+            editid_int = int(editid)
+            linelist = None
+            for ll in linelists:
+                if ll['id'] == editid_int:
+                    linelist = ll
+                    break
 
-            # Update commented status
-            linelist.commented = not request.POST.get('linelist-checked')
+            if linelist:
+                # Update commented status
+                linelist['commented'] = not request.POST.get('linelist-checked')
 
-            # Update editable parameters (5-13)
-            for j in range(5, 14):
-                param_value = request.POST.get(f'edit-val-{j}', '')
-                linelist.set_param(j, param_value)
+                # Update editable parameters (5-13)
+                for j in range(5, 14):
+                    param_value = request.POST.get(f'edit-val-{j}', '')
+                    linelist['params'][j] = param_value
 
-            linelist.save()
+                # Write back to file
+                write_persconfig_file(user_config_path, hidden_params, linelists)
 
-            # Re-compare with default
-            persconf_obj = compare_with_default(persconf_obj, settings.PERSCONFIG_DEFAULT)
+                # Re-read to refresh modification flags
+                hidden_params, linelists = read_persconfig_file(user_config_path)
 
-            messages.success(request, f'Linelist "{linelist.name}" has been saved successfully.')
-        except (LineList.DoesNotExist, ValueError):
-            messages.error(request, 'Failed to save linelist.')
+                # Re-mark modifications
+                for ll in linelists:
+                    ll['mod_comment'] = False
+                    ll['mod_flags'] = [False] * 15
+                    default_ll = default_lookup.get(ll['id'])
+                    if default_ll:
+                        if ll['commented'] != default_ll['commented']:
+                            ll['mod_comment'] = True
+                        for j in range(1, 14):
+                            user_val = ll['params'][j] if j < len(ll['params']) else ''
+                            default_val = default_ll['params'][j] if j < len(default_ll['params']) else ''
+                            if user_val != default_val:
+                                ll['mod_flags'][j] = True
+
+                messages.success(request, f'Linelist "{linelist["name"]}" has been saved successfully.')
+            else:
+                messages.error(request, 'Linelist not found.')
+        except (ValueError, KeyError) as e:
+            messages.error(request, f'Failed to save linelist: {e}')
 
         # Clear edit mode
         editid = None
@@ -1115,22 +1162,62 @@ def persconf(request):
     elif action == 'restore' and editid:
         # Restore linelist to default
         try:
-            linelist = persconf_obj.linelists.get(list_id=int(editid))
-            restore_linelist_to_default(linelist, settings.PERSCONFIG_DEFAULT)
-            messages.success(request, f'Linelist "{linelist.name}" has been restored to default.')
-        except (LineList.DoesNotExist, ValueError):
-            messages.error(request, 'Failed to restore linelist.')
+            editid_int = int(editid)
+            linelist = None
+            for ll in linelists:
+                if ll['id'] == editid_int:
+                    linelist = ll
+                    break
 
+            if linelist:
+                # Find default values
+                default_ll = default_lookup.get(editid_int)
+                if default_ll:
+                    # Restore from default
+                    linelist['commented'] = default_ll['commented']
+                    linelist['params'] = default_ll['params'][:]
+                    linelist['name'] = default_ll['name']
+
+                    # Write back to file
+                    write_persconfig_file(user_config_path, hidden_params, linelists)
+
+                    messages.success(request, f'Linelist "{linelist["name"]}" has been restored to default.')
+                else:
+                    messages.error(request, 'Default values not found.')
+            else:
+                messages.error(request, 'Linelist not found.')
+        except (ValueError, KeyError) as e:
+            messages.error(request, f'Failed to restore linelist: {e}')
+
+        # Clear edit mode
         editid = None
         action = None
+
+        # Re-read config
+        if user_config_path.exists():
+            hidden_params, linelists = read_persconfig_file(user_config_path)
+        else:
+            hidden_params, linelists = read_persconfig_file(default_config_path)
+
+        # Re-mark modifications
+        for ll in linelists:
+            ll['mod_comment'] = False
+            ll['mod_flags'] = [False] * 15
+            default_ll = default_lookup.get(ll['id'])
+            if default_ll:
+                if ll['commented'] != default_ll['commented']:
+                    ll['mod_comment'] = True
+                for j in range(1, 14):
+                    user_val = ll['params'][j] if j < len(ll['params']) else ''
+                    default_val = default_ll['params'][j] if j < len(default_ll['params']) else ''
+                    if user_val != default_val:
+                        ll['mod_flags'][j] = True
 
     elif action == 'cancel':
         editid = None
         action = None
 
     # Build context for template
-    linelists = persconf_obj.linelists.all().order_by('list_id')
-
     context.update({
         'linelists': linelists,
         'editid': int(editid) if editid and action == 'edit' else None,

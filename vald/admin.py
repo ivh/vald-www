@@ -4,7 +4,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
 from django import forms
-from .models import Request, User, UserEmail, UserPreferences, PersonalConfig, LineList
+from .models import Request, User, UserEmail, UserPreferences
 
 
 class UserChangeForm(forms.ModelForm):
@@ -208,24 +208,4 @@ class UserPreferencesAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
 
 
-class LineListInline(admin.TabularInline):
-    model = LineList
-    extra = 0
-    fields = ('list_id', 'name', 'commented', 'param_5', 'param_6', 'param_7', 'param_8', 'param_9')
-    readonly_fields = ('list_id', 'name')
-
-
-@admin.register(PersonalConfig)
-class PersonalConfigAdmin(admin.ModelAdmin):
-    list_display = ('email', 'updated_at')
-    search_fields = ('email',)
-    readonly_fields = ('created_at', 'updated_at')
-    inlines = [LineListInline]
-
-
-@admin.register(LineList)
-class LineListAdmin(admin.ModelAdmin):
-    list_display = ('list_id', 'name', 'personal_config', 'commented', 'param_5', 'param_6', 'param_7')
-    list_filter = ('commented',)
-    search_fields = ('name', 'personal_config__email')
-    readonly_fields = ('personal_config',)
+# PersonalConfig and LineList models removed - file-based implementation only
