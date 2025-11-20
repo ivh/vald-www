@@ -62,44 +62,40 @@ def write_userprefs_file(filepath, prefs):
             f.write(f"{key}\t{value}\n")
 
 
-def get_userprefs_path(client_name, is_local=False):
+def get_userprefs_path(client_name):
     """
     Get the file path for a user's preferences file.
 
     Args:
         client_name: Alphanumeric client name (e.g., 'ThomasMarquart')
-        is_local: True if this is a local user
 
     Returns:
         Path object for the user's HTMLdefs file
     """
-    suffix = '-HTMLdefs.cfg_local' if is_local else '-HTMLdefs.cfg'
-    return settings.PERSCONFIG_DIR / f"{client_name}{suffix}"
+    return settings.PERSCONFIG_DIR / f"{client_name}-HTMLdefs.cfg"
 
 
-def load_user_preferences(client_name, is_local=False):
+def load_user_preferences(client_name):
     """
     Load user preferences from file, or return defaults if file doesn't exist.
 
     Args:
         client_name: Alphanumeric client name
-        is_local: True if this is a local user
 
     Returns:
         Dict with preference keys and values
     """
-    filepath = get_userprefs_path(client_name, is_local)
+    filepath = get_userprefs_path(client_name)
     return read_userprefs_file(filepath)
 
 
-def save_user_preferences(client_name, prefs, is_local=False):
+def save_user_preferences(client_name, prefs):
     """
     Save user preferences to file.
 
     Args:
         client_name: Alphanumeric client name
         prefs: Dict with preference keys and values
-        is_local: True if this is a local user
     """
-    filepath = get_userprefs_path(client_name, is_local)
+    filepath = get_userprefs_path(client_name)
     write_userprefs_file(filepath, prefs)

@@ -8,23 +8,17 @@ from django.conf import settings
 
 def validate_user_email(email):
     """
-    Validate user email against client register files.
-    Returns (is_valid, user_name, is_local) tuple.
+    Validate user email against client register file.
+    Returns (is_valid, user_name) tuple.
     """
     email = email.lower().strip()
 
     # Check main register
     result = _check_register_file(settings.CLIENTS_REGISTER, email)
     if result:
-        return (True, result, False)
+        return (True, result)
 
-    # Check local register
-    if settings.CLIENTS_REGISTER_LOCAL.exists():
-        result = _check_register_file(settings.CLIENTS_REGISTER_LOCAL, email)
-        if result:
-            return (True, result, True)
-
-    return (False, None, False)
+    return (False, None)
 
 
 def _check_register_file(filepath, email):

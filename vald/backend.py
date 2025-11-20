@@ -136,18 +136,14 @@ def get_client_name(user_email):
     try:
         user_email_obj = UserEmail.objects.select_related('user').get(email=user_email.lower())
         user_name = user_email_obj.user.name
-        is_local = False  # Database users are not local
     except UserEmail.DoesNotExist:
-        # Fallback to clients.register files (legacy)
-        is_valid, user_name, is_local = validate_user_email(user_email)
+        # Fallback to clients.register file (legacy)
+        is_valid, user_name = validate_user_email(user_email)
         if not is_valid:
             return None
 
     # Convert to alphanumeric only (matching parsemail.c logic line 86)
     client_name = ''.join(c for c in user_name if c.isalnum())
-
-    if is_local:
-        client_name += '_local'
 
     return client_name
 

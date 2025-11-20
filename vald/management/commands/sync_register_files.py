@@ -15,45 +15,36 @@ class Command(BaseCommand):
         parser.add_argument(
             '--file',
             type=str,
-            help='Process specific register file instead of defaults (clients.register and clients.register.local)',
+            help='Process specific register file instead of default (clients.register)',
         )
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
         custom_file = options.get('file')
 
-        # Determine which files to process
+        # Determine which file to process
         if custom_file:
             # Process only the specified file
             from pathlib import Path
-            register_files = [(Path(custom_file), False)]
+            register_file = Path(custom_file)
         else:
-            # Parse both default register files
-            register_files = [
-                (settings.CLIENTS_REGISTER, False),
-                (settings.CLIENTS_REGISTER_LOCAL, True),
-            ]
+            # Process default register file
+            register_file = settings.CLIENTS_REGISTER
 
-        total_users = 0
-        total_emails = 0
+        if not register_file.exists():
+            self.stdout.write(self.style.ERROR(f'Register file not found: {register_file}'))
+            return
 
-        for register_file, is_local in register_files:
-            if not register_file.exists():
-                self.stdout.write(self.style.WARNING(f'Skipping {register_file} (not found)'))
-                continue
-
-            self.stdout.write(f'\nProcessing {register_file}...')
-            users_count, emails_count = self.parse_register_file(register_file, is_local, dry_run)
-            total_users += users_count
-            total_emails += emails_count
+        self.stdout.write(f'\nProcessing {register_file}...')
+        users_count, emails_count = self.parse_register_file(register_file, dry_run)
 
         self.stdout.write(self.style.SUCCESS(
-            f'\nDone! Processed {total_users} users with {total_emails} email addresses'
+            f'\nDone! Processed {users_count} users with {emails_count} email addresses'
         ))
         if dry_run:
             self.stdout.write(self.style.WARNING('(DRY RUN - no changes made)'))
 
-    def parse_register_file(self, filepath, is_local, dry_run):
+    def parse_register_file(self, filepath, dry_run):
         """Parse a clients.register file and import users"""
         users_created = 0
         emails_created = 0
@@ -106,7 +97,7 @@ class Command(BaseCommand):
                         if affiliation:
                             self.stdout.write(f'    Affiliation: {affiliation}')
                     else:
-                        user, created = self.create_or_update_user(name, affiliation, emails, is_local)
+                        user, created = self.create_or_update_user(name, affiliation, emails)
                         if created:
                             users_created += 1
                             self.stdout.write(self.style.SUCCESS(f'  Created user: {name}'))
@@ -119,7 +110,7 @@ class Command(BaseCommand):
 
         return users_created, emails_created
 
-    def create_or_update_user(self, name, affiliation, emails, is_local):
+    def create_or_update_user(self, name, affiliation, emails):
         """Create or update a user with the given emails"""
         # Check if any of the emails already exist
         existing_email = UserEmail.objects.filter(email__in=emails).first()

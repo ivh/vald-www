@@ -44,13 +44,8 @@ def get_user_context(request):
         # Get client name to determine file path
         client_name = get_client_name(context['user_email'])
         if client_name:
-            # Check if it's a local user (ends with _local)
-            is_local = client_name.endswith('_local')
-            if is_local:
-                client_name = client_name[:-6]  # Remove _local suffix
-
             # Load preferences from file
-            prefs = load_user_preferences(client_name, is_local)
+            prefs = load_user_preferences(client_name)
             context.update(prefs)
         else:
             # Couldn't determine client name, use defaults
@@ -105,7 +100,7 @@ def login(request):
             user = user_email.user
         except UserEmail.DoesNotExist:
             # Fallback: check if email is in register files (for new imports)
-            is_valid, user_name, is_local = validate_user_email(email)
+            is_valid, user_name = validate_user_email(email)
             if is_valid:
                 messages.error(request, 'Your account has not been imported yet. Please contact the administrator.')
             else:
@@ -793,10 +788,7 @@ def handle_extract_request(request):
 
     client_name = get_client_name(user_email)
     if client_name:
-        is_local = client_name.endswith('_local')
-        if is_local:
-            client_name = client_name[:-6]
-        prefs = load_user_preferences(client_name, is_local)
+        prefs = load_user_preferences(client_name)
     else:
         prefs = DEFAULT_PREFERENCES.copy()
 
@@ -963,10 +955,6 @@ def save_units(request):
         messages.error(request, 'Could not save preferences: unable to determine user.')
         return redirect('vald:unitselection')
 
-    is_local = client_name.endswith('_local')
-    if is_local:
-        client_name = client_name[:-6]
-
     # Build preferences dict from POST data
     prefs = {
         'energyunit': request.POST.get('energyunit', 'eV'),
@@ -977,7 +965,7 @@ def save_units(request):
     }
 
     # Save to file
-    save_user_preferences(client_name, prefs, is_local)
+    save_user_preferences(client_name, prefs)
 
     messages.success(request, 'Your unit preferences have been saved successfully.')
     context = get_user_context(request)
