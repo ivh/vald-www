@@ -40,5 +40,6 @@ urlpatterns = [
 
     # Documentation and news
     path('doc/<str:docpage>', views.documentation, name='documentation'),
+    path('news/', views.news, name='news_all'),
     path('news/<int:newsitem>/', views.news, name='news'),
 ]
