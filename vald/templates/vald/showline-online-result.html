@@ -8,7 +8,7 @@
 {% endif %}
 
 <hr>
-<pre>{{ output }}</pre>
+{{ output|safe }}
 <hr>
 
 <p><a href="{% url 'vald:showline_online' %}">Back to Show Line Online</a>
