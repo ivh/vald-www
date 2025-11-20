@@ -4,7 +4,7 @@
 <h4>Latest news from the VALD consortium :</h4>
 <p><hr><p>
 
-<p>More news items :
+<p>{% if show_all %}<a href="{% url 'vald:news' 0 %}">View single item</a> |{% else %}<a href="{% url 'vald:news_all' %}">View all items</a> |{% endif %} More news items :
 <p>
 {% for filename in news_files %}
   <a href="{% url 'vald:news' forloop.counter0 %}">{{ filename }}</a>{% if not forloop.last %},&nbsp;{% endif %}
@@ -14,7 +14,15 @@
 
 <hr><p>
 
-{{ news_content|safe }}
+{% if show_all %}
+  {% for item in all_news %}
+    <h4>{{ item.filename }}</h4>
+    {{ item.content|safe }}
+    <p><hr><p>
+  {% endfor %}
+{% else %}
+  {{ news_content|safe }}
+  <p><hr>
+{% endif %}
 
-<p><hr>
 {% endblock %}

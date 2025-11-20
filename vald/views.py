@@ -1011,7 +1011,7 @@ def documentation(request, docpage):
     return render(request, 'vald/error.html', context)
 
 
-def news(request, newsitem=0):
+def news(request, newsitem=None):
     """Display news items"""
     context = get_user_context(request)
 
@@ -1022,23 +1022,40 @@ def news(request, newsitem=0):
         context['error'] = 'No news items found.'
         return render(request, 'vald/error.html', context)
 
-    # Ensure newsitem is within range
-    newsitem = int(newsitem)
-    if newsitem < 0 or newsitem >= len(news_files):
-        newsitem = 0
-
-    # Read news content
-    with open(news_files[newsitem], 'r') as f:
-        news_content = f.read()
-
     # Build file list for navigation
     file_list = [Path(f).name for f in news_files]
 
-    context.update({
-        'news_content': news_content,
-        'news_files': file_list,
-        'current_index': newsitem,
-    })
+    # If newsitem is None, show all news items
+    if newsitem is None:
+        all_news = []
+        for news_file in news_files:
+            with open(news_file, 'r') as f:
+                all_news.append({
+                    'filename': Path(news_file).name,
+                    'content': f.read()
+                })
+
+        context.update({
+            'show_all': True,
+            'all_news': all_news,
+            'news_files': file_list,
+        })
+    else:
+        # Show single news item
+        newsitem = int(newsitem)
+        if newsitem < 0 or newsitem >= len(news_files):
+            newsitem = 0
+
+        # Read news content
+        with open(news_files[newsitem], 'r') as f:
+            news_content = f.read()
+
+        context.update({
+            'show_all': False,
+            'news_content': news_content,
+            'news_files': file_list,
+            'current_index': newsitem,
+        })
 
     return render(request, 'vald/news.html', context)
 
