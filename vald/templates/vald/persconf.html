@@ -8,6 +8,13 @@
 
 <p><b>Note:</b> Modified parameters are highlighted in <span class="modified_data">red</span>.
 
+<p>
+<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;">
+{% csrf_token %}
+<input type="hidden" name="action" value="reset_to_default">
+<input type="submit" value="Reset all to VALD default" onclick="return confirm('This will delete your personal configuration and restore VALD defaults. Are you sure?');">
+</form>
+
 <form name="thisform" method="post" action="{% url 'vald:persconf' %}">
 {% csrf_token %}
 <input type="hidden" name="action" value="">

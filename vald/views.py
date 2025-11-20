@@ -1106,11 +1106,27 @@ def persconf(request):
                 if user_val != default_val:
                     ll['mod_flags'][j] = True
 
-    # Handle actions (edit, save, restore, cancel)
+    # Handle actions (edit, save, restore, cancel, reset_to_default)
     action = request.POST.get('action') if request.method == 'POST' else None
     editid = request.POST.get('editid')
 
-    if action == 'save' and editid:
+    if action == 'reset_to_default':
+        # Delete user's config file to reset to default
+        if user_config_path.exists():
+            user_config_path.unlink()
+            messages.success(request, 'Personal configuration has been reset to VALD default.')
+        else:
+            messages.info(request, 'You are already using the VALD default configuration.')
+
+        # Re-read config (will use default now)
+        hidden_params, linelists = read_persconfig_file(default_config_path)
+
+        # Re-mark modifications (should be all False now since we're using default)
+        for ll in linelists:
+            ll['mod_comment'] = False
+            ll['mod_flags'] = [False] * 15
+
+    elif action == 'save' and editid:
         # Save edited linelist
         try:
             editid_int = int(editid)
