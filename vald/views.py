@@ -517,7 +517,7 @@ def showline_online(request):
 def showline_online_submit(request):
     """Execute Show Line Online and display results"""
     import subprocess
-    from .persconfig import load_or_create_persconfig, compare_with_default
+    from .backend import get_client_name
 
     context = get_user_context(request)
 
@@ -545,19 +545,19 @@ def showline_online_submit(request):
     # Determine config file to use
     email = request.session.get('email')
     if pconf == 'personal':
-        # Try to get user's personal config from database
-        try:
-            persconf_obj = load_or_create_persconfig(
-                email,
-                settings.PERSCONFIG_DEFAULT,
-                settings.PERSCONFIG_DIR / f"{email.replace('@', '_').replace('.', '_')}.cfg"
-            )
-            # For now, just use default - would need to write DB config to temp file
+        # Try to get user's personal config file
+        client_name = get_client_name(email)
+        if client_name:
+            user_config_path = settings.PERSCONFIG_DIR / f"{client_name}.cfg"
+            if user_config_path.exists():
+                configfile = str(user_config_path)
+                note = None
+            else:
+                configfile = str(settings.PERSCONFIG_DEFAULT)
+                note = "NOTE: Personal configuration file does not exist. Using default configuration instead."
+        else:
             configfile = str(settings.PERSCONFIG_DEFAULT)
-            note = "NOTE: Custom configuration not yet fully supported for online extraction. Using default configuration instead."
-        except:
-            configfile = str(settings.PERSCONFIG_DEFAULT)
-            note = "NOTE: Custom configuration file does not (yet) exist. Using default configuration instead."
+            note = "NOTE: Could not determine user name. Using default configuration instead."
     else:
         configfile = str(settings.PERSCONFIG_DEFAULT)
         note = None
