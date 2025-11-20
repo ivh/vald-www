@@ -4,7 +4,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
 from django import forms
-from .models import Request, User, UserEmail, UserPreferences
+from .models import Request, User, UserEmail
 
 
 class UserChangeForm(forms.ModelForm):
@@ -200,12 +200,4 @@ class UserEmailAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at',)
 
 
-@admin.register(UserPreferences)
-class UserPreferencesAdmin(admin.ModelAdmin):
-    list_display = ('email', 'name', 'energyunit', 'medium', 'waveunit', 'vdwformat', 'isotopic_scaling', 'updated_at')
-    list_filter = ('energyunit', 'medium', 'waveunit', 'isotopic_scaling')
-    search_fields = ('email', 'name')
-    readonly_fields = ('created_at', 'updated_at')
-
-
-# PersonalConfig and LineList models removed - file-based implementation only
+# UserPreferences, PersonalConfig and LineList models removed - file-based implementation only

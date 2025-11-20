@@ -8,7 +8,7 @@ from django.urls import reverse
 from pathlib import Path
 import glob
 
-from .models import Request, UserPreferences, User, UserEmail
+from .models import Request, User, UserEmail
 from .forms import (
     PasswordResetRequestForm,
     PasswordResetForm,
@@ -30,6 +30,9 @@ from .utils import (
 
 def get_user_context(request):
     """Get common context data for templates"""
+    from .backend import get_client_name
+    from .userprefs import load_user_preferences
+
     context = {
         'sitename': settings.SITENAME,
         'user_email': request.session.get('email'),
@@ -38,24 +41,21 @@ def get_user_context(request):
 
     # Add user preferences if logged in
     if context['user_email']:
-        try:
-            prefs = UserPreferences.objects.get(email=context['user_email'])
-            context.update({
-                'energyunit': prefs.energyunit,
-                'medium': prefs.medium,
-                'waveunit': prefs.waveunit,
-                'vdwformat': prefs.vdwformat,
-                'isotopic_scaling': prefs.isotopic_scaling,
-            })
-        except UserPreferences.DoesNotExist:
-            # Use defaults
-            context.update({
-                'energyunit': 'eV',
-                'medium': 'air',
-                'waveunit': 'angstrom',
-                'vdwformat': 'default',
-                'isotopic_scaling': 'on',
-            })
+        # Get client name to determine file path
+        client_name = get_client_name(context['user_email'])
+        if client_name:
+            # Check if it's a local user (ends with _local)
+            is_local = client_name.endswith('_local')
+            if is_local:
+                client_name = client_name[:-6]  # Remove _local suffix
+
+            # Load preferences from file
+            prefs = load_user_preferences(client_name, is_local)
+            context.update(prefs)
+        else:
+            # Couldn't determine client name, use defaults
+            from .userprefs import DEFAULT_PREFERENCES
+            context.update(DEFAULT_PREFERENCES)
 
     return context
 
@@ -183,15 +183,7 @@ VALD Team
         user.emails.update(is_primary=False)  # Clear all primary flags
         UserEmail.objects.filter(user=user, email=email).update(is_primary=True)
 
-        # Get or create user preferences
-        prefs, created = UserPreferences.objects.get_or_create(
-            email=email,
-            defaults={'name': user.name}
-        )
-
-        if created or not prefs.name:
-            prefs.name = user.name
-            prefs.save()
+        # User preferences are now file-based, no DB object needed
 
         messages.success(request, f'Welcome, {user.name}! You have successfully logged in.')
         return redirect('vald:index')
@@ -291,15 +283,7 @@ def set_password(request):
         request.session['name'] = user.name
         request.session['user_id'] = user.id
 
-        # Get or create user preferences
-        prefs, created = UserPreferences.objects.get_or_create(
-            email=activation_email,
-            defaults={'name': user.name}
-        )
-
-        if created or not prefs.name:
-            prefs.name = user.name
-            prefs.save()
+        # User preferences are now file-based, no DB object needed
 
         messages.success(request, 'Password set successfully! You are now logged in.')
         return redirect('vald:index')
@@ -803,25 +787,20 @@ def handle_extract_request(request):
         'user_email': user_email,
     }
 
-    # Get user preferences
-    try:
-        prefs = UserPreferences.objects.get(email=user_email)
-        email_context.update({
-            'energyunit': prefs.energyunit,
-            'medium': prefs.medium,
-            'waveunit': prefs.waveunit,
-            'vdwformat': prefs.vdwformat,
-            'isotopic_scaling': prefs.isotopic_scaling,
-        })
-    except UserPreferences.DoesNotExist:
-        # Use defaults
-        email_context.update({
-            'energyunit': 'eV',
-            'medium': 'air',
-            'waveunit': 'angstrom',
-            'vdwformat': 'default',
-            'isotopic_scaling': 'on',
-        })
+    # Get user preferences from file
+    from .backend import get_client_name
+    from .userprefs import load_user_preferences, DEFAULT_PREFERENCES
+
+    client_name = get_client_name(user_email)
+    if client_name:
+        is_local = client_name.endswith('_local')
+        if is_local:
+            client_name = client_name[:-6]
+        prefs = load_user_preferences(client_name, is_local)
+    else:
+        prefs = DEFAULT_PREFERENCES.copy()
+
+    email_context.update(prefs)
 
     # Copy all cleaned data to context
     for key, value in form.cleaned_data.items():
@@ -970,19 +949,35 @@ def unitselection(request):
 @require_login
 def save_units(request):
     """Save unit preferences"""
+    from .backend import get_client_name
+    from .userprefs import save_user_preferences
+
     if request.method != 'POST':
         return redirect('vald:unitselection')
 
     email = request.session.get('email')
-    prefs, created = UserPreferences.objects.get_or_create(email=email)
 
-    # Update preferences from POST data
-    prefs.energyunit = request.POST.get('energyunit', 'eV')
-    prefs.medium = request.POST.get('medium', 'air')
-    prefs.waveunit = request.POST.get('waveunit', 'angstrom')
-    prefs.vdwformat = request.POST.get('vdwformat', 'default')
-    prefs.isotopic_scaling = request.POST.get('isotopic_scaling', 'on')
-    prefs.save()
+    # Get client name to determine file path
+    client_name = get_client_name(email)
+    if not client_name:
+        messages.error(request, 'Could not save preferences: unable to determine user.')
+        return redirect('vald:unitselection')
+
+    is_local = client_name.endswith('_local')
+    if is_local:
+        client_name = client_name[:-6]
+
+    # Build preferences dict from POST data
+    prefs = {
+        'energyunit': request.POST.get('energyunit', 'eV'),
+        'medium': request.POST.get('medium', 'air'),
+        'waveunit': request.POST.get('waveunit', 'angstrom'),
+        'vdwformat': request.POST.get('vdwformat', 'default'),
+        'isotopic_scaling': request.POST.get('isotopic_scaling', 'on'),
+    }
+
+    # Save to file
+    save_user_preferences(client_name, prefs, is_local)
 
     messages.success(request, 'Your unit preferences have been saved successfully.')
     context = get_user_context(request)

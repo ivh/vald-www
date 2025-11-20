@@ -164,36 +164,36 @@ class UserEmail(models.Model):
         return f"{self.email} ({self.user.name})"
 
 
-class UserPreferences(models.Model):
-    """Store user HTML defaults (energy unit, wavelength unit, medium, etc.)"""
-    email = models.EmailField(unique=True, db_index=True)
-    name = models.CharField(max_length=255)
-
-    # Unit preferences
-    energyunit = models.CharField(max_length=10, default='eV')
-    medium = models.CharField(max_length=10, default='air')
-    waveunit = models.CharField(max_length=10, default='angstrom')
-    vdwformat = models.CharField(max_length=20, default='default')
-    isotopic_scaling = models.CharField(max_length=10, default='on')
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name_plural = "User Preferences"
-
-    def __str__(self):
-        return f"{self.name} ({self.email})"
-
-
 # ============================================================================
 # DEPRECATED MODELS - File-based implementation only
 # ============================================================================
-# These models were used for database-backed personal configuration storage.
-# Personal configs are now file-based (.cfg files) and read directly from disk.
+# UserPreferences, PersonalConfig and LineList models were used for database-backed
+# configuration storage. All configs are now file-based and read directly from disk.
 # Models kept commented out for reference and migration history.
 # To remove completely: create migration to drop tables, then delete this code.
 # ============================================================================
+
+# class UserPreferences(models.Model):
+#     """Store user HTML defaults (energy unit, wavelength unit, medium, etc.)"""
+#     email = models.EmailField(unique=True, db_index=True)
+#     name = models.CharField(max_length=255)
+#
+#     # Unit preferences
+#     energyunit = models.CharField(max_length=10, default='eV')
+#     medium = models.CharField(max_length=10, default='air')
+#     waveunit = models.CharField(max_length=10, default='angstrom')
+#     vdwformat = models.CharField(max_length=20, default='default')
+#     isotopic_scaling = models.CharField(max_length=10, default='on')
+#
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
+#
+#     class Meta:
+#         verbose_name_plural = "User Preferences"
+#
+#     def __str__(self):
+#         return f"{self.name} ({self.email})"
+#
 
 # class LineList(models.Model):
 #     """Represents a single linelist in a personal configuration"""
