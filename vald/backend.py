@@ -288,6 +288,24 @@ def submit_request_direct(request_obj):
     # All files are already in job_dir since parserequest ran there
     # No need to move files
 
+    # Modify select.input to increase line limit (for stellar extractions)
+    select_input = job_dir / 'select.input'
+    if select_input.exists():
+        try:
+            with open(select_input, 'r') as f:
+                lines = f.readlines()
+
+            # Last line is the max lines limit (default 100000 from parserequest)
+            # Replace with configurable limit
+            max_lines = getattr(settings, 'VALD_MAX_LINES_PER_REQUEST', 500000)
+            if lines:
+                lines[-1] = f"{max_lines}\n"
+                with open(select_input, 'w') as f:
+                    f.writelines(lines)
+        except Exception as e:
+            # Non-critical, continue with default limit
+            pass
+
     # Define job execution function for queue
     def execute_job():
         """Execute the job script - this runs in worker thread."""
