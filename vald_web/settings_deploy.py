@@ -107,9 +107,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Europe/Stockholm"
 
-USE_I18N = True
+USE_I18N = False
 
 USE_TZ = True
 
@@ -163,4 +163,4 @@ VALD_SHOWLINE_BIN = VALD_BIN / 'showline4.1'  # parserequest binary
 VALD_PARSEREQUEST_BIN = VALD_BIN / 'parserequest'  # parserequest binary
 VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request processing
 VALD_FTP_DIR = VALD_HOME / 'WWW' / 'public_html' / 'FTP'  # Output directory for results
-VALD_MAX_WORKERS = 1 # Maximum parallel job executions (FIFO queue)
+VALD_MAX_WORKERS = 5 # Maximum parallel job executions (FIFO queue)

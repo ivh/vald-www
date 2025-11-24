@@ -145,6 +145,7 @@ HTMLCONFIG_DEFAULT = BASE_DIR / 'config' / 'htmldefault.cfg'
 DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
 SITENAME = 'VALD'
+SITE_URL = 'http://localhost:8000'  # Base URL for email links (update for production)
 MAINTENANCE = False
 
 # Backend processing configuration

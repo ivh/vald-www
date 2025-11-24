@@ -288,23 +288,37 @@ def submit_request_direct(request_obj):
     # All files are already in job_dir since parserequest ran there
     # No need to move files
 
-    # Modify select.input to increase line limit (for stellar extractions)
+    # Increase line limits (parserequest defaults to 100000 for FTP, 1000 for email)
+    max_lines = getattr(settings, 'VALD_MAX_LINES_PER_REQUEST', 500000)
+
+    # Extract Stellar: modify select.input (last line is limit)
+    # Note: pres_in.NNNNNN for stellar should stay 0 (no limit) for preselection
     select_input = job_dir / 'select.input'
     if select_input.exists():
         try:
             with open(select_input, 'r') as f:
                 lines = f.readlines()
-
-            # Last line is the max lines limit (default 100000 from parserequest)
-            # Replace with configurable limit
-            max_lines = getattr(settings, 'VALD_MAX_LINES_PER_REQUEST', 500000)
             if lines:
                 lines[-1] = f"{max_lines}\n"
                 with open(select_input, 'w') as f:
                     f.writelines(lines)
-        except Exception as e:
-            # Non-critical, continue with default limit
+        except Exception:
             pass
+
+    # Extract All/Element: modify pres_in.NNNNNN (line 2 is limit)
+    # Don't modify for stellar - it needs unlimited preselection
+    if request_obj.request_type in ['extractall', 'extractelement']:
+        pres_in = job_dir / f"pres_in.{backend_id:06d}"
+        if pres_in.exists():
+            try:
+                with open(pres_in, 'r') as f:
+                    lines = f.readlines()
+                if len(lines) >= 2:
+                    lines[1] = f"{max_lines}\n"
+                    with open(pres_in, 'w') as f:
+                        f.writelines(lines)
+            except Exception:
+                pass
 
     # Define job execution function for queue
     def execute_job():

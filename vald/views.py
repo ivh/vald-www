@@ -858,10 +858,12 @@ def handle_extract_request(request):
 
                     # Use SITE_URL as base for email links (no request object in background)
                     base_url = getattr(settings, 'SITE_URL', settings.SITENAME)
-                    request_url = f"{base_url}{request_path}"
-                    download_url = f"{base_url}{download_path}"
-                    bib_download_url = f"{base_url}{bib_download_path}"
-                    my_requests_url = f"{base_url}{my_requests_path}"
+                    # Add FORCE_SCRIPT_NAME prefix if configured (e.g., /new)
+                    script_name = getattr(settings, 'FORCE_SCRIPT_NAME', '')
+                    request_url = f"{base_url}{script_name}{request_path}"
+                    download_url = f"{base_url}{script_name}{download_path}"
+                    bib_download_url = f"{base_url}{script_name}{bib_download_path}"
+                    my_requests_url = f"{base_url}{script_name}{my_requests_path}"
 
                     # Send email
                     from django.core.mail import EmailMessage

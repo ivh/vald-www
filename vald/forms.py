@@ -426,6 +426,12 @@ class ShowLineForm(forms.Form):
     win4 = forms.FloatField(label='Wavelength window', required=False, min_value=0.01, max_value=5.0, widget=forms.TextInput(attrs={'size': '10'}))
     el4 = forms.CharField(label='Element [ + ionization ]', required=False, max_length=20, widget=forms.TextInput(attrs={'size': '5'}))
 
+    viaftp = forms.ChoiceField(
+        label='Retrieve data via',
+        choices=[('via ftp', 'Download'), ('email', 'Email')],
+        initial='via ftp',
+        widget=forms.RadioSelect
+    )
     pconf = forms.ChoiceField(
         label='Linelist configuration',
         choices=[('default', 'Default'), ('personal', 'Custom')],
