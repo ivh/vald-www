@@ -27,6 +27,10 @@ ionization ]
 <td>{{ form.el4 }}
 
 <tr><td colspan=3><hr>
+<tr><td>Retrieve data via
+<td>{% for radio in form.viaftp %}<div>{{ radio }}</div>{% endfor %}
+
+<tr><td colspan=3><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
 <td>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
 
