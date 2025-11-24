@@ -171,8 +171,16 @@ def submit_request_direct(request_obj):
     # parserequest uses atol() which can't parse UUIDs
     backend_id = uuid_to_6digit(request_obj.uuid)
 
-    # Create request file with 6-digit ID
-    request_file = working_dir / f"request.{backend_id:06d}"
+    # Create isolated subdirectory for this job first
+    # parserequest must run in the job directory to create files with correct names
+    job_dir = working_dir / f"{backend_id:06d}"
+    try:
+        job_dir.mkdir(exist_ok=True)
+    except Exception as e:
+        return (False, f"Failed to create job directory: {e}")
+
+    # Create request file in subdirectory
+    request_file = job_dir / f"request.{backend_id:06d}"
     try:
         with open(request_file, 'w') as f:
             # Write request content in VALD format
@@ -181,17 +189,18 @@ def submit_request_direct(request_obj):
     except Exception as e:
         return (False, f"Failed to create request file: {e}")
 
-    # Call parserequest binary
+    # Call parserequest binary from subdirectory
     try:
         parserequest_bin = settings.VALD_PARSEREQUEST_BIN
         if not parserequest_bin.exists():
             return (False, f"parserequest binary not found: {parserequest_bin}")
 
         # parserequest expects: ./parserequest request.NNNNNN ClientName
-        # It will create job.NNNNNN in current directory
+        # It will create job.NNNNNN, pres_in.NNNNNN, show_in.NNNNNN_* in current directory
+        # MUST run from job subdirectory for correct file naming
         result = subprocess.run(
-            [str(parserequest_bin), str(request_file.name), client_name],
-            cwd=working_dir,
+            [str(parserequest_bin), request_file.name, client_name],
+            cwd=job_dir,
             capture_output=True,
             text=True,
             timeout=30
@@ -205,8 +214,8 @@ def submit_request_direct(request_obj):
     except Exception as e:
         return (False, f"Error calling parserequest: {e}")
 
-    # Execute generated job script (parserequest creates job.NNNNNN)
-    job_file = working_dir / f"job.{backend_id:06d}"
+    # Check that job script was created
+    job_file = job_dir / f"job.{backend_id:06d}"
     if not job_file.exists():
         return (False, f"job script not created: {job_file}")
 
@@ -276,33 +285,8 @@ def submit_request_direct(request_obj):
     except Exception as e:
         return (False, f"Failed to patch job script: {e}")
 
-    # Create isolated subdirectory for this job to avoid race conditions
-    # When multiple jobs run in parallel, they conflict on shared files like
-    # err.log, selected.bib, etc. Running each in its own dir fixes this.
-    job_dir = working_dir / f"{backend_id:06d}"
-    try:
-        job_dir.mkdir(exist_ok=True)
-
-        # Move all job-related files into the subdirectory
-        # parserequest creates: job.NNNNNN, pres_in.NNNNNN (for extract requests)
-        import shutil
-        shutil.move(str(request_file), str(job_dir / request_file.name))
-        shutil.move(str(job_file), str(job_dir / job_file.name))
-
-        # Move pres_in file if it exists (created for extract requests)
-        pres_in_file = working_dir / f"pres_in.{backend_id:06d}"
-        if pres_in_file.exists():
-            shutil.move(str(pres_in_file), str(job_dir / pres_in_file.name))
-
-        # Move show_in files if they exist (created for showline requests)
-        # parserequest creates show_in.NNNNNN_NNN for each line query
-        for show_in_file in working_dir.glob(f"show_in.{backend_id:06d}_*"):
-            shutil.move(str(show_in_file), str(job_dir / show_in_file.name))
-
-        # Update job_file path to point to subdirectory
-        job_file = job_dir / job_file.name
-    except Exception as e:
-        return (False, f"Failed to create job directory: {e}")
+    # All files are already in job_dir since parserequest ran there
+    # No need to move files
 
     # Define job execution function for queue
     def execute_job():
