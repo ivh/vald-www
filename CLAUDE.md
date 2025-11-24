@@ -1,291 +1,105 @@
 # VALD Django Implementation - Technical Documentation for Claude
 
-This document provides technical context for future Claude Code sessions working on this project.
+Technical context for Claude Code sessions. See README.md for user documentation.
 
 ## Project Overview
 
-**Goal**: Django drop-in replacement for 30-year-old PHP-based VALD (Vienna Atomic Line Database) web interface.
+**Goal**: Django drop-in replacement for 30-year-old PHP VALD web interface.
 
-**Status**: Functional replacement with enhanced features (request tracking, direct backend submission).
+**Status**: Production-ready. All request types working (Extract All/Element/Stellar, Show Line, Show Line ONLINE).
 
-**User**: Tom (system administrator, familiar with the legacy system, prefers concise technical communication)
+**User**: Tom (sysadmin, prefers concise technical explanations, "pls" not "please")
 
-## Architecture Evolution
+## Architecture
 
-### Original PHP System (30+ years old)
-- Users submit forms → emails sent to local mail spool
-- Backend daemon (`service-ems.sh` via at-jobs) runs every 10 minutes:
-  - `parsemail` parses mail spool, extracts requests, assigns sequential IDs
-  - Creates `request.NNNNNN` files
-  - Generates `process` shell script
-  - `parserequest` generates `job.NNNNNN` scripts
-  - Jobs call VALD extraction binaries (preselect, format, hfs_split, etc.)
-  - Results saved as `{ClientName}.NNNNNN.gz` in `public_html/FTP/`
-  - Files deleted after 48 hours
-  - Email reply with download link sent to user
+**Direct Mode (default, `VALD_DIRECT_SUBMISSION = True`):**
+- Converts UUID → 6-digit ID via SHA256 hash (backend uses `atol()`)
+- Creates job subdirectory: `working/NNNNNN/`
+- Creates `request.NNNNNN` in subdirectory
+- **CRITICAL**: Runs `parserequest` FROM subdirectory for correct file naming
+- Executes `job.NNNNNN` script in isolated directory
+- Status tracking: pending → processing → complete/failed
+- Job queue with worker threads (default 2, configurable via `VALD_MAX_WORKERS`)
 
-### Django Implementation (Current)
+**Email Mode (`VALD_DIRECT_SUBMISSION = False`):**
+- Sends email to mail spool, backend daemon processes async
+- Sequential IDs, no real-time status updates
 
-**Hybrid Architecture**: Supports both email-based (legacy) and direct submission modes.
+## Key Files
 
-#### Email Mode (`VALD_DIRECT_SUBMISSION = False`)
-- Django sends email to local mail spool
-- Backend daemon processes as before
-- Request records created for tracking but status stays "pending"
-- Users get email with download link (legacy behavior)
-
-#### Direct Mode (`VALD_DIRECT_SUBMISSION = True`)
-- Django bypasses email entirely
-- Creates `request.{UUID}` files in `EMS/DJANGO_WORKING/`
-- Calls `parserequest` binary directly with ClientName parameter
-- Executes generated `job.{UUID}` script synchronously
-- Output: `{ClientName}.{UUID}.gz` in `public_html/FTP/`
-- Updates Request model: pending → processing → complete/failed
-- User redirected to request detail page with auto-refresh
-
-**Key Insight**: UUID-based filenames ensure no conflicts between email and direct modes during parallel testing.
-
-## Critical Files & Their Roles
-
-### Backend Processing (Reference Only)
-- `backend/parsemail.c` - Email parser (assigns sequential IDs, validates users)
-- `backend/parserequest.c` - Request parser (generates job scripts)
-- These are **reference only** - deployed systems have compiled binaries in `bin/`
-
-### Django App Structure
+**vald/backend.py** - Direct submission logic:
+- `uuid_to_6digit()` - Converts UUID to 6-digit number via SHA256
+- `submit_request_direct()` - Main handler, runs parserequest from job subdirectory
+- `format_request_file()` - Converts form data to VALD request format
+- `JobQueue` - Thread pool for parallel processing
 
 **vald/models.py**:
-- `Request` - Tracks all submissions (email + direct)
-  - UUID for URL-safe identifiers
-  - JSONField for flexible parameter storage (all request types use one model)
-  - Status: pending/processing/complete/failed
-  - Methods: `output_exists()`, `get_output_size()`, `is_pending()`, `is_complete()`
-- `User`, `UserEmail` - File-based authentication (from clients.register)
-- `UserPreferences` - Energy units, wavelength units, medium, VdW format
-- `PersonalConfig`, `LineList` - Personal linelist configurations
-
-**vald/backend.py** (Direct Submission):
-- `get_client_name(email)` - Extracts alphanumeric ClientName from register
-- `format_request_file(request_obj)` - Converts Django form data to VALD request format
-- `submit_request_direct(request_obj)` - Main submission handler:
-  1. Creates `request.{UUID}` file
-  2. Calls `parserequest request.{UUID} {ClientName}`
-  3. Executes `job.{UUID}`
-  4. Returns output file path or error
+- `Request` - Tracks submissions (UUID, JSONField parameters, status)
+- `User`, `UserEmail` - Password authentication with activation tokens
+- `UserPreferences` - File-based per-user settings (energy units, etc.)
+- `PersonalConfig`, `LineList` - Custom linelist configurations
 
 **vald/views.py**:
-- `handle_extract_request()` - Checks `VALD_DIRECT_SUBMISSION` setting
-  - If True: calls `submit_request_direct()`, updates status
-  - If False: sends email (legacy)
-- `request_detail()` - Shows request status, auto-refreshes if pending
-- `download_request()` - Serves output files securely (checks user ownership)
-- `my_requests()` - Lists all user requests with status counts
+- `handle_extract_request()` - Routes to direct or email mode
+- `request_detail()` - Status page with auto-refresh
+- `download_request()` - Serves output files (checks ownership)
 
 **vald/forms.py**:
-- Django Forms for all request types (server-side validation)
-- Fixed issues: `viaftp` empty string → `'email'`, removed buggy JS validation
-- `ShowLineOnlineForm` - Numeric validation for window size (was string comparison bug)
+- Server-side validation for all request types
+- Fixed: viaftp empty string, showline None values, JS numeric validation bugs
 
-**vald/utils.py**:
-- `validate_user_email()` - Checks clients.register files
-- `render_request_template()` - PHP-style template variable substitution
-- `spam_check()` - Content filtering for contact form
+## Critical Bug Fixes
 
-### Templates
+### 1. Showline None Values (2025-11-24)
+**Problem**: Empty form fields stored as Python `None` → written as string `"None"` in request file → parser errors
+**Fix**: `format_request_file()` now checks `if wvl is not None and win is not None` before adding lines
+**Location**: vald/backend.py:470-479
 
-**Key templates**:
-- `vald/templates/vald/base.html` - Main layout (reuses original PHP HTML/CSS)
-- `vald/templates/vald/request_detail.html` - Status page with auto-refresh meta tag
-- `vald/templates/vald/my_requests.html` - Request list with status badges
+### 2. Parserequest Working Directory (2025-11-24)
+**Problem**: `parserequest` extracts ID from filename → creates `pres_in.000000` when run as `parserequest 917714/request.917714`
+**Fix**: Run `parserequest` FROM job subdirectory, not parent → creates `pres_in.917714` correctly
+**Location**: vald/backend.py:174-220
+**Impact**: All extract requests (extractall/element/stellar)
 
-**Template filter** (`vald/templatetags/vald_extras.py`):
-- `pprint` - Pretty-prints JSONField parameters
+### 3. Show_in File Movement (2025-11-24)
+**Problem**: `show_in.NNNNNN_*` files not moved to job subdirectory → job script fails with "No such file"
+**Fix**: Added glob pattern to move all `show_in.*` files
+**Location**: vald/backend.py:297-300
 
-### Configuration Files
+### 4. Showline vs Extract Output (2025-11-24)
+**Problem**: Code expected `.gz` files for all requests, showline creates `result.NNNNNN` text file
+**Fix**: Check `request_type == 'showline'` → move `result.*` to FTP as `.txt`, skip bib file handling
+**Location**: vald/backend.py:336-383
 
-**Request templates** (`requests/*.txt`):
-- VALD-specific format with `$variable` placeholders
-- Example: `begin request\nextract all\n$waveunit\n$energyunit\nend request`
+## Output Files
 
-**Client registers** (`config/clients.register`):
-```
-#$ Full Name
-# affiliation line
-email1@domain.com
-email2@domain.com
+- **Extract requests**: `{ClientName}.NNNNNN.gz` + `{ClientName}.NNNNNN.bib.gz` (optional)
+- **Showline requests**: `result.NNNNNN` → moved to `{ClientName}.NNNNNN.txt` (no bib file)
+- **ID format**: 6-digit from UUID hash (direct mode) or sequential (email mode)
+- **Location**: `public_html/FTP/`
 
-#$ Another User
-...
-```
+## Common Errors
 
-**Management command**: `python manage.py sync_register_files [--file=/path/to/register] [--dry-run]`
+**"Output file not found"**: parserequest ran from wrong directory or files not moved correctly
+**"Can't open input data file"**: pres_in file missing/misnamed (check working directory)
+**"SELECT ERROR: Can't open input data file"**: stellar extraction can't find pres_in.NNNNNN
+**"Badly placed ()'s"**: Request file has invalid syntax (check for "None" strings)
+**"User not registered"**: Run `python manage.py sync_register_files`
 
-## Important Technical Details
+## Design Decisions
 
-### Form Validation Bug Fixes
-1. **viaftp field**: Empty string `""` treated as "no value" by Django → changed to `'email'`
-2. **Show Line ONLINE JS**: String comparison `"1" > "5"` → removed all JS, added server-side numeric validation
+- Single `Request` model for all types (JSONField for flexibility)
+- UUID → 6-digit conversion for backend compatibility
+- Synchronous job execution in direct mode (simpler, immediate feedback)
+- Job isolation via subdirectories (prevents race conditions)
+- Keep email mode available (proven system, gradual migration)
+- Reuse original HTML/CSS (user familiarity)
 
-### Email Connection Issue
-- `[Errno 111] Connection refused` on localhost:587
-- Resolution: Configure proper SMTP or use console backend for testing
+## Adding New Request Types
 
-### Request File Format
-
-Example generated by `format_request_file()`:
-```
-begin request
-extract all
-default configuration
-via ftp
-short format
-waveunit angstrom
-energyunit eV
-medium air
-isotopic scaling on
-5000.0, 6000.0
-end request
-```
-
-### ClientName Extraction
-From `parsemail.c` line 86: Only alphanumeric characters allowed.
-- "John Doe" → "JohnDoe"
-- Local users get "_local" suffix
-
-### Output Files
-- Pattern: `{ClientName}.{ID}.gz` and `{ClientName}.{ID}.bib.gz`
-- Email mode: ID = 6-digit sequential (000123)
-- Direct mode: ID = UUID (e.g., a1b2c3d4-...)
-- Location: `public_html/FTP/`
-- Auto-delete after 48 hours (email mode only, handled by service-ems.sh)
-
-### Database Models
-
-**Request.parameters** JSONField examples:
-```json
-{
-  "stwvl": "5000.0",
-  "endwvl": "6000.0",
-  "format": "short",
-  "waveunit": "angstrom",
-  "energyunit": "eV",
-  "medium": "air",
-  "viaftp": "email",
-  "pconf": "default",
-  "isotopic_scaling": "on"
-}
-```
-
-## Common Pitfalls & Solutions
-
-### 1. VALD Binaries Not Available
-**Problem**: Development environment doesn't have VALD binaries
-**Solution**: Set `VALD_DIRECT_SUBMISSION = False` to use email mode, or use console email backend for testing
-
-### 2. Working Directory Permissions
-**Problem**: Django can't write to `EMS/DJANGO_WORKING/`
-**Solution**: Ensure directory exists and is writable by web server user
-
-### 3. Request Status Stuck on "Pending"
-- Email mode: Expected behavior (backend updates status if integrated)
-- Direct mode: Check binary paths, execution permissions, error logs
-
-### 4. Output File Not Found
-- Check `VALD_FTP_DIR` path is correct
-- Verify `parserequest` created files in expected location
-- Look for job script errors in working directory
-
-## Development Workflow
-
-### Testing Direct Submission
-```python
-# 1. Create test request
-from vald.models import Request
-req = Request.objects.create(
-    user_email='test@example.com',
-    user_name='Test User',
-    request_type='extractall',
-    parameters={'stwvl': '5000', 'endwvl': '6000', ...},
-    status='pending'
-)
-
-# 2. Submit directly
-from vald.backend import submit_request_direct
-success, result = submit_request_direct(req)
-
-# 3. Check result
-if success:
-    print(f"Output: {result}")
-    print(f"Status: {req.status}")
-else:
-    print(f"Error: {result}")
-```
-
-### Adding New Request Types
 1. Add form class in `vald/forms.py`
 2. Add template in `vald/templates/vald/`
 3. Add request template in `requests/`
-4. Add view handler in `vald/views.py`
-5. Add URL route in `vald/urls.py`
-6. Update `format_request_file()` in `vald/backend.py`
-
-### Database Migrations
-```bash
-python manage.py makemigrations vald
-python manage.py migrate
-```
-
-## User's Preferences
-
-**Tom's communication style**:
-- Concise, technical explanations
-- "pls" instead of "please"
-- Appreciates when asked clarifying questions
-- Prefers showing code over explaining
-- Comfortable with system administration tasks
-
-**Design decisions made**:
-- Single Request model for all types (using JSONField)
-- UUID-based naming for isolation from email system
-- Synchronous processing in direct mode (simpler, immediate feedback)
-- Keep email mode available (proven system, don't force migration)
-- Reuse original HTML/CSS (users familiar with interface)
-
-## Git Workflow
-
-Branch: `claude/review-php-forms-018bX5D7779ZNHxwLxooEFbW`
-
-Commit message style: Detailed with bullet points, includes reasoning.
-
-## Next Steps / TODO
-
-- [ ] Test direct submission with actual VALD binaries
-- [ ] Implement user password activation flow (mentioned but not priority)
-- [ ] Consider async processing for direct mode (Celery/background tasks)
-- [ ] Add monitoring/logging for production
-- [ ] Document deployment process for production VALD server
-
-## Key Lessons Learned
-
-1. Django ChoiceField treats empty strings specially in validation
-2. JavaScript string comparison bugs can persist for decades
-3. UUID-based naming prevents conflicts during parallel system testing
-4. File-based authentication is simpler than expected with Django
-5. Hybrid architectures allow gradual migration without forcing users
-6. The old system's email-based architecture is actually quite elegant for async processing
-
-## Questions to Ask User
-
-When uncertain about:
-- VALD binary paths/availability
-- Whether to prioritize email vs direct mode
-- File permissions and deployment environment
-- How much to preserve from original PHP vs modernize
-- Performance requirements (sync vs async processing)
-
-## References
-
-- VALD website: http://vald.astro.uu.se/
-- Django 5.2.8 documentation
-- Original PHP code in `public_html/php/vald.php` (reference)
-- Backend C sources in `backend/` (reference only, binaries provided on deployment)
+4. Add view + URL route
+5. Update `format_request_file()` in backend.py
+6. Handle output file type if different from `.gz`

@@ -1,375 +1,116 @@
 # VALD Web Interface - Django Version
 
-This is a Django replacement for the original PHP-based VALD (Vienna Atomic Line Database) web interface. It provides a drop-in replacement with the same functionality and form layouts.
+Django replacement for the 30-year-old PHP-based VALD (Vienna Atomic Line Database) web interface.
 
 ## Features
 
-- User authentication via email (file-based validation against client register)
-- 5 main request forms:
-  - Extract All
-  - Extract Element
-  - Extract Stellar
-  - Show Line
-  - Show Line ONLINE (direct execution with results)
-  - Contact form (public access)
-- User preferences (energy units, wavelength units, medium, etc.)
-- **Request tracking system** - track all submissions with status updates
-- **Direct backend submission** - bypass email system, call VALD binaries directly
-- **Hybrid architecture** - supports both email-based and direct submission modes
-- Session-based authentication
-- Re-uses original HTML structure and CSS
+- Password authentication with activation tokens
+- 5 request forms: Extract All/Element/Stellar, Show Line, Show Line ONLINE
+- **Request tracking** - real-time status updates, download links
+- **Direct backend submission** - calls VALD binaries directly, bypasses email
+- **Hybrid architecture** - supports both direct and email-based modes
+- User preferences (energy units, wavelength, medium, linelist configs)
+- Job queue system with parallel processing
+- Re-uses original HTML/CSS for familiarity
 
 ## Requirements
 
 - Python 3.11+
-- uv (for dependency management)
-- SQLite (included with Python)
-- SMTP server for sending emails
+- SQLite (included)
+- VALD binaries (in `$VALD_HOME/bin/`)
+- SMTP server (optional, for email mode)
 
 ## Installation
 
-1. **Create virtual environment:**
+1. **Install dependencies:**
    ```bash
-   uv venv
+   python -m pip install -r requirements.txt
    ```
 
-2. **Install dependencies:**
+2. **Run migrations:**
    ```bash
-   uv pip install django
-   ```
-
-3. **Run migrations:**
-   ```bash
-   source .venv/bin/activate
    python manage.py migrate
    ```
 
-4. **Configure email settings** (see Configuration section below)
+3. **Sync user register:**
+   ```bash
+   python manage.py sync_register_files
+   ```
 
-5. **Set up client register files** (see Configuration section below)
+4. **Set VALD_HOME environment variable:**
+   ```bash
+   export VALD_HOME=/path/to/VALD3
+   ```
 
-## Running the Application
+## Running
 
-Using uv:
 ```bash
-uv run manage.py runserver
-```
-
-Or with activated virtual environment:
-```bash
-source .venv/bin/activate
 python manage.py runserver
 ```
 
-The application will be available at http://127.0.0.1:8000/
+Server runs at http://127.0.0.1:8000/
 
 ## Configuration
 
-### Email Settings
+### Direct Submission Mode (Recommended)
 
-Edit `vald_web/settings.py` and configure the email backend:
-
+Set in `vald_web/settings.py`:
 ```python
-EMAIL_HOST = 'smtp.your-server.com'  # Your SMTP server
-EMAIL_PORT = 587                      # SMTP port (usually 587 for TLS)
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'your-email@example.com'      # SMTP username
-EMAIL_HOST_PASSWORD = 'your-password'           # SMTP password
-DEFAULT_FROM_EMAIL = 'noreply@vald.local'
-VALD_REQUEST_EMAIL = 'vald-request@localhost'  # Where requests are sent
+VALD_DIRECT_SUBMISSION = True  # Call binaries directly
+VALD_MAX_WORKERS = 2           # Parallel job limit
 ```
 
-**Important:** For production, use environment variables instead of hardcoding credentials:
+Requires VALD binaries in `$VALD_HOME/bin/`: `parserequest`, `preselect5`, `select5`, `showline4.1`, etc.
 
-```python
-import os
-
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-```
-
-Then set environment variables before running:
-```bash
-export EMAIL_HOST=smtp.gmail.com
-export EMAIL_PORT=587
-export EMAIL_HOST_USER=your-email@gmail.com
-export EMAIL_HOST_PASSWORD=your-app-password
-uv run manage.py runserver
-```
-
-### Client Register Files
-
-User authentication is file-based. Edit these files to add registered users:
-
-**`config/clients.register`** (main register):
-```
-# VALD Client Register
-# Format:
-# #$ Full Name
-# email@domain.com
-
-#$ John Doe
-john.doe@university.edu
-
-#$ Jane Smith
-jane.smith@research.org
-```
-
-**`config/clients.register.local`** (local register):
-```
-# Local VALD Client Register
-
-#$ Local Test User
-local@localhost
-```
-
-### Site Configuration
-
-Edit `vald_web/settings.py` to configure site-specific settings:
-
-```python
-# VALD-specific configuration
-SITENAME = 'VALD'                    # Site name shown in header
-MAINTENANCE = False                   # Set to True to show maintenance page
-VALD_BIN_PATH = BASE_DIR / 'bin' / 'showline4.1'  # Path to showline binary
-```
-
-**Note:** For Show Line ONLINE to work, you need the `showline4.1` binary at the configured path. If you don't have this binary, the feature will show an error. The other features (email-based requests) will still work.
-
-### Request Submission Modes
-
-The application supports two submission modes:
-
-#### Email-Based Submission (Legacy)
+### Email Mode (Legacy)
 
 ```python
 VALD_DIRECT_SUBMISSION = False  # Use email system
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'localhost'
+EMAIL_PORT = 25
 ```
 
-Requests are sent via email to the backend processor, which:
-1. Parses emails from mail spool
-2. Assigns sequential request IDs
-3. Processes extraction requests
-4. Emails results back to users
-5. Saves files as `{ClientName}.{RequestID}.gz` in FTP directory
+### User Registration
 
-#### Direct Backend Submission (New)
-
-```python
-VALD_DIRECT_SUBMISSION = True  # Bypass email, call binaries directly
-```
-
-Requests are processed immediately by calling VALD binaries directly:
-1. Django creates `request.{UUID}` file in working directory
-2. Calls `parserequest` binary to generate job script
-3. Executes job script (calls extraction binaries)
-4. Saves output as `{ClientName}.{UUID}.gz` in FTP directory
-5. Updates Request model status in real-time
-
-**Key Differences:**
-- Email mode: Sequential IDs (`000123`), async processing via at-jobs
-- Direct mode: UUIDs, synchronous processing, immediate status updates
-- Both can run in parallel without conflicts (different filename patterns)
-
-**Configuration for Direct Mode:**
-
-```python
-# Backend processing configuration
-VALD_PARSEREQUEST_BIN = BASE_DIR / 'bin' / 'parserequest'
-VALD_WORKING_DIR = BASE_DIR / 'EMS' / 'DJANGO_WORKING'
-VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'
-VALD_DIRECT_SUBMISSION = True
-```
-
-**Requirements for Direct Mode:**
-- All VALD binaries must be available in `$VALD_HOME/bin/`:
-  - `parserequest` - Request parser and job generator
-  - `preselect` - Line preselection
-  - `format` - Output formatting
-  - `hfs_split` - Hyperfine structure splitting
-  - Other VALD extraction tools
-
-### Request Tracking
-
-All requests (both email and direct) are tracked in the database:
-
-- **My Requests** page shows all user submissions
-- Status tracking: pending → processing → complete/failed
-- Auto-refresh on detail page while pending
-- Download link when complete
-- Queue position for pending requests
-- Uses UUID-based URLs for security
-
-### Directory Structure
-
-The application expects the following directory structure:
-
-```
-vald-www/
-├── backend/                      # Backend C sources (for reference only)
-│   ├── parsemail.c               # Email parser
-│   └── parserequest.c            # Request parser
-├── bin/                          # VALD binaries (when deployed)
-│   ├── parserequest              # Required for direct submission
-│   ├── preselect                 # Line preselection
-│   ├── format                    # Output formatting
-│   ├── showline4.1               # For Show Line ONLINE
-│   └── ...                       # Other VALD tools
-├── config/
-│   ├── clients.register          # Main user register
-│   ├── clients.register.local    # Local user register
-│   ├── default.cfg               # Default linelist config
-│   ├── htmldefault.cfg           # Default HTML preferences
-│   └── personal_configs/         # User-specific configs (auto-created)
-├── documentation/                # Documentation HTML files
-├── EMS/
-│   ├── DJANGO_WORKING/           # Working dir for direct submission (auto-created)
-│   └── TMP_WORKING/              # Working dir for email-based system
-├── news/                         # News items
-├── public_html/
-│   └── FTP/                      # Output files directory (auto-created)
-├── requests/                     # Email templates for requests
-│   ├── contact-req.txt
-│   ├── extractall-req.txt
-│   ├── extractelement-req.txt
-│   ├── extractstellar-req.txt
-│   └── showline-req.txt
-├── style/
-│   └── style.css                 # Original CSS (auto-included)
-├── vald/                         # Django app
-│   ├── backend.py                # Direct submission logic
-│   ├── forms.py                  # Django Forms
-│   ├── models.py                 # Request, User, UserPreferences models
-│   ├── views.py                  # View handlers
-│   └── ...
-├── vald_web/                     # Django project
-│   └── settings.py               # Configuration
-├── manage.py
-└── pyproject.toml
-```
-
-## Testing
-
-### Test Users
-
-Two test users are pre-configured in `config/clients.register`:
-
-- `test@example.com` (Test User)
-- `john.doe@university.edu` (John Doe)
-
-### Test Login
-
-1. Start the server: `uv run manage.py runserver`
-2. Navigate to http://127.0.0.1:8000/
-3. Enter a test email (e.g., `test@example.com`)
-4. Click Login
-5. You should now see the logged-in interface with form buttons
-
-### Test Email Sending
-
-For testing without a real SMTP server, you can use Django's console email backend:
-
-In `vald_web/settings.py`:
-```python
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-```
-
-This will print emails to the console instead of sending them.
-
-## Differences from PHP Version
-
-### Implemented Features
-
-- ✅ All 5 main forms (Extract All, Extract Element, Extract Stellar, Show Line, Contact)
-- ✅ Show Line ONLINE (direct execution with results displayed on page)
-- ✅ Personal Configuration (linelist editing with save/restore/cancel)
-- ✅ File-based email authentication
-- ✅ User preferences (units, medium, wavelength)
-- ✅ Request tracking system (My Requests page, status updates, download links)
-- ✅ Direct backend submission (bypass email, call binaries directly)
-- ✅ Hybrid architecture (email mode + direct mode)
-- ✅ Email submission of requests
-- ✅ Documentation pages
-- ✅ News items
-- ✅ Session management
-- ✅ Django Messages framework
-- ✅ Django Admin interface (User, Request, Preferences management)
-- ✅ Management commands (sync_register_files)
-- ✅ Original HTML + CSS layout
-- ✅ Form validation (server-side, removed buggy JavaScript)
-
-### Not Yet Implemented
-
-- ⏳ SVN version display
-- ⏳ User password activation flow
-
-### Key Changes
-
-- **Database:** SQLite instead of file-based personal configs for user preferences
-- **Sessions:** Django sessions instead of PHP sessions
-- **Email:** Django email backend (SMTP with STARTTLS) instead of PHP mail()
-- **Configuration:** Python settings.py instead of PHP config files
-
-## Development
-
-### Adding New Users
-
-Edit `config/clients.register` and add:
+Edit `config/clients.register`:
 ```
 #$ Full Name
 email@domain.com
 ```
 
-### Modifying Forms
+Run `python manage.py sync_register_files` after changes.
 
-Form templates are in `vald/templates/vald/`:
-- `extractall.html`
-- `extractelement.html`
-- `extractstellar.html`
-- `showline.html`
-- `contact.html`
+## Architecture
 
-### Modifying Email Templates
+**Direct Mode (default):**
+1. Creates `request.NNNNNN` in job subdirectory
+2. Runs `parserequest` from subdirectory (critical for correct file naming)
+3. Executes generated `job.NNNNNN` script
+4. Output: `{ClientName}.NNNNNN.gz` (extract) or `.txt` (showline)
+5. Real-time status updates
 
-Request templates are in `requests/`:
-- `contact-req.txt`
-- `extractall-req.txt`
-- `extractelement-req.txt`
-- `extractstellar-req.txt`
-- `showline-req.txt`
+**Email Mode:**
+- Sends email to local mail spool
+- Backend daemon processes requests asynchronously
+- Uses sequential IDs instead of UUIDs
 
-Use `$variable` syntax for template variables (same as PHP version).
+## Key Technical Notes
+
+- **UUID to 6-digit conversion**: Backend expects numeric IDs, converts UUID via SHA256 hash
+- **Parserequest working directory**: Must run FROM job subdirectory for correct `pres_in.NNNNNN` naming
+- **Showline requests**: No bib files, output is `result.NNNNNN` → moved to FTP as `.txt`
+- **Extract requests**: Create `.gz` and `.bib.gz` files
+- **Job queue**: Thread pool limits parallel execution (default 2 workers)
 
 ## Troubleshooting
 
-### Email Not Sending
+**"Output file not found"** → Check `parserequest` ran from correct directory
+**"Can't open input data file"** → `pres_in.*` file missing or misnamed
+**"User not registered"** → Run `python manage.py sync_register_files`
 
-1. Check SMTP settings in `vald_web/settings.py`
-2. Verify credentials are correct
-3. Check firewall allows outbound connections on port 587
-4. Use console backend for testing: `EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'`
+## References
 
-### Login Failed
-
-1. Check that email is in `config/clients.register` or `config/clients.register.local`
-2. Ensure email format is: lowercase, one per line, with `#$ Name` comment above
-3. Check file permissions on register files
-
-### Static Files Not Loading
-
-If CSS isn't loading, run:
-```bash
-python manage.py collectstatic
-```
-
-## License
-
-Same as original VALD project.
-
-## Support
-
-For issues related to this Django implementation, please check the codebase or contact the maintainer.
-
-For VALD database questions, visit http://vald.astro.uu.se/
+- VALD website: http://vald.astro.uu.se/
+- Django 5.2 docs
+- Backend C sources in `backend/` (reference only)
