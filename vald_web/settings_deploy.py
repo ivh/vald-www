@@ -25,7 +25,7 @@ SECRET_KEY = "django-insecure-b78@6-7-x-+3y9cu82==f(4q!juta8elrb8hjp$y4plpw6ale3
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-#DEBUG = False
+DEBUG = False
 
 ALLOWED_HOSTS = ['vald.astro.uu.se','localhost','127.0.0.1']
 
@@ -106,11 +106,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = "en-us"
-
-TIME_ZONE = "Europe/Stockholm"
-
 USE_I18N = False
-
+TIME_ZONE = "Europe/Stockholm"
 USE_TZ = True
 
 ## DEPLOY via reverse proxy
