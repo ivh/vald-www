@@ -294,6 +294,11 @@ def submit_request_direct(request_obj):
         if pres_in_file.exists():
             shutil.move(str(pres_in_file), str(job_dir / pres_in_file.name))
 
+        # Move show_in files if they exist (created for showline requests)
+        # parserequest creates show_in.NNNNNN_NNN for each line query
+        for show_in_file in working_dir.glob(f"show_in.{backend_id:06d}_*"):
+            shutil.move(str(show_in_file), str(job_dir / show_in_file.name))
+
         # Update job_file path to point to subdirectory
         job_file = job_dir / job_file.name
     except Exception as e:
@@ -328,41 +333,50 @@ def submit_request_direct(request_obj):
     except Exception as e:
         return (False, f"Error executing job: {e}")
 
-    # Find output file
-    # parserequest creates files like: ClientName.NNNNNN.gz
-    output_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.gz"
-    bib_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.bib.gz"
+    # Find output file - different for showline vs extract requests
+    settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Check if output file exists in FTP directory
-    if not output_file.exists():
-        # Check if it's in working directory (might need to move it)
-        working_output = working_dir / f"{client_name}.{backend_id:06d}.gz"
-        if working_output.exists():
-            # Move to FTP directory
-            settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
-            working_output.rename(output_file)
+    if request_obj.request_type == 'showline':
+        # Showline creates result.NNNNNN in job directory
+        result_file = job_dir / f"result.{backend_id:06d}"
+        output_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.txt"
+
+        if result_file.exists():
+            # Move result file to FTP directory with .txt extension
+            import shutil
+            shutil.move(str(result_file), str(output_file))
         else:
-            # Check in job subdirectory
-            job_output = job_dir / f"{client_name}.{backend_id:06d}.gz"
-            if job_output.exists():
-                settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
-                job_output.rename(output_file)
+            return (False, f"Result file not found: {result_file}")
+    else:
+        # Extract requests create ClientName.NNNNNN.gz
+        output_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.gz"
+        bib_file = settings.VALD_FTP_DIR / f"{client_name}.{backend_id:06d}.bib.gz"
 
-    # Check if bib file exists in FTP directory, if not try to move it
-    if not bib_file.exists():
-        # Check if it's in working directory
-        working_bib = working_dir / f"{client_name}.{backend_id:06d}.bib.gz"
-        if working_bib.exists():
-            settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
-            working_bib.rename(bib_file)
-        else:
-            # Check in job subdirectory
-            job_bib = job_dir / f"{client_name}.{backend_id:06d}.bib.gz"
-            if job_bib.exists():
-                settings.VALD_FTP_DIR.mkdir(parents=True, exist_ok=True)
-                job_bib.rename(bib_file)
+        # Check if output file exists in FTP directory
+        if not output_file.exists():
+            # Check if it's in working directory (might need to move it)
+            working_output = working_dir / f"{client_name}.{backend_id:06d}.gz"
+            if working_output.exists():
+                working_output.rename(output_file)
+            else:
+                # Check in job subdirectory
+                job_output = job_dir / f"{client_name}.{backend_id:06d}.gz"
+                if job_output.exists():
+                    job_output.rename(output_file)
 
-    # Verify main output file exists (bib file is optional)
+        # Check if bib file exists in FTP directory, if not try to move it
+        if not bib_file.exists():
+            # Check if it's in working directory
+            working_bib = working_dir / f"{client_name}.{backend_id:06d}.bib.gz"
+            if working_bib.exists():
+                working_bib.rename(bib_file)
+            else:
+                # Check in job subdirectory
+                job_bib = job_dir / f"{client_name}.{backend_id:06d}.bib.gz"
+                if job_bib.exists():
+                    job_bib.rename(bib_file)
+
+    # Verify main output file exists (bib file is optional for extract requests)
     if output_file.exists():
         return (True, str(output_file))
     else:
@@ -467,10 +481,16 @@ def format_request_file(request_obj):
             win_key = f'win{i}'
             el_key = f'el{i}'
 
-            if wvl_key in params and win_key in params:
-                lines.append(f"{params[wvl_key]}, {params[win_key]},")
-                if el_key in params:
-                    lines.append(params[el_key])
+            wvl = params.get(wvl_key)
+            win = params.get(win_key)
+            el = params.get(el_key, '')
+
+            # Skip if wavelength or window is None/empty
+            if wvl is not None and win is not None:
+                lines.append(f"{wvl}, {win},")
+                # Add element if it's not empty
+                if el:
+                    lines.append(el)
 
     lines.append("end request")
 

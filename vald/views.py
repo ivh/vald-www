@@ -868,6 +868,12 @@ def handle_extract_request(request):
                     from pathlib import Path
 
                     subject = f"VALD {req_obj.request_type} results ready"
+
+                    # Build download links section
+                    download_links = f"Main results: {download_url}"
+                    if req_obj.bib_output_exists():
+                        download_links += f"\nBibliography: {bib_download_url}"
+
                     body = f"""Your VALD extraction request has completed successfully.
 
 Request Type: {req_obj.request_type}
@@ -875,8 +881,7 @@ Submitted: {req_obj.created_at.strftime('%Y-%m-%d %H:%M:%S')}
 
 Your results are attached to this email and are also available for download:
 
-Main results: {download_url}
-Bibliography: {bib_download_url}
+{download_links}
 Request details: {request_url}
 
 You can modify and resubmit this request with different parameters from:
@@ -898,15 +903,14 @@ Vienna Atomic Line Database (VALD)
                     )
 
                     # Attach main results file
-                    output_path = Path(settings.VALD_FTP_DIR) / req_obj.output_file
+                    output_path = Path(req_obj.output_file)
                     if output_path.exists():
                         email.attach_file(str(output_path))
 
-                    # Attach bibliography file if exists
-                    bib_file = req_obj.output_file.replace('.gz', '.bib.gz')
-                    bib_path = Path(settings.VALD_FTP_DIR) / bib_file
-                    if bib_path.exists():
-                        email.attach_file(str(bib_path))
+                    # Attach bibliography file if exists (only for extract requests)
+                    if req_obj.bib_output_exists():
+                        bib_file = req_obj.get_bib_output_file()
+                        email.attach_file(str(bib_file))
 
                     email.send(fail_silently=True)
 
