@@ -18,6 +18,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+# Customize admin site
+admin.site.site_header = "VALD admin"
+admin.site.site_title = "VALD admin"
+admin.site.index_title = "VALD administration"
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("vald.urls")),
