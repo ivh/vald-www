@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.hashers import make_password, check_password
+from pathlib import Path
 import secrets
 import uuid
 
@@ -49,13 +50,7 @@ class Request(models.Model):
     @property
     def user_email(self):
         """Get primary email for the user (for email sending)"""
-        if not self.user:
-            return None
-        primary = self.user.emails.filter(is_primary=True).first()
-        if primary:
-            return primary.email
-        first = self.user.emails.first()
-        return first.email if first else None
+        return self.user.primary_email if self.user else None
 
     @property
     def user_name(self):
@@ -78,14 +73,12 @@ class Request(models.Model):
         """Check if output file exists on filesystem"""
         if not self.output_file:
             return False
-        from pathlib import Path
         return Path(self.output_file).exists()
 
     def get_output_size(self):
         """Get size of output file in human-readable format"""
         if not self.output_exists():
             return None
-        from pathlib import Path
         size_bytes = Path(self.output_file).stat().st_size
         for unit in ['B', 'KB', 'MB', 'GB']:
             if size_bytes < 1024.0:
@@ -97,7 +90,6 @@ class Request(models.Model):
         """Get path to .bib.gz file if it exists"""
         if not self.output_file:
             return None
-        from pathlib import Path
         # Replace .gz with .bib.gz
         output_path = Path(self.output_file)
         if output_path.suffix == '.gz':
@@ -110,14 +102,12 @@ class Request(models.Model):
         bib_file = self.get_bib_output_file()
         if not bib_file:
             return False
-        from pathlib import Path
         return Path(bib_file).exists()
 
     def get_bib_output_size(self):
         """Get size of .bib.gz output file in human-readable format"""
         if not self.bib_output_exists():
             return None
-        from pathlib import Path
         bib_file = self.get_bib_output_file()
         size_bytes = Path(bib_file).stat().st_size
         for unit in ['B', 'KB', 'MB', 'GB']:
@@ -163,6 +153,20 @@ class User(models.Model):
     def needs_activation(self):
         """Check if user needs to set password"""
         return not self.password
+
+    @property
+    def client_name(self):
+        """Get alphanumeric-only version of name for file paths"""
+        return ''.join(c for c in self.name if c.isalnum())
+
+    @property
+    def primary_email(self):
+        """Get the primary email address, or first email if none marked primary"""
+        primary = self.emails.filter(is_primary=True).first()
+        if primary:
+            return primary.email
+        first = self.emails.first()
+        return first.email if first else None
 
 
 class UserEmail(models.Model):

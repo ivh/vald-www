@@ -70,16 +70,11 @@ class Command(BaseCommand):
 
         self.stdout.write(f'Found user: {user.name}')
 
-        # Get user's primary email for PersonalConfig
-        primary_email = user.emails.filter(is_primary=True).first()
-        if not primary_email:
-            primary_email = user.emails.first()
-
-        if not primary_email:
+        # Get user's primary email
+        if not user.primary_email:
             raise CommandError(f'User {user.name} has no email addresses')
 
-        email = primary_email.email
-        self.stdout.write(f'Using email: {email}')
+        self.stdout.write(f'Using email: {user.primary_email}')
 
         # Read the config file
         self.stdout.write(f'\nReading configuration from {filepath}...')

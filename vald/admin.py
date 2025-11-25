@@ -154,12 +154,7 @@ class UserAdmin(admin.ModelAdmin):
                 token = user.generate_activation_token()
                 user.save()
 
-                # Get primary email or first email
-                email = user.emails.filter(is_primary=True).first()
-                if not email:
-                    email = user.emails.first()
-
-                if email:
+                if user.primary_email:
                     activation_path = reverse('vald:activate_account', kwargs={'token': token})
                     activation_url = f"{settings.SITE_URL}{activation_path}"
                     try:
@@ -173,7 +168,7 @@ class UserAdmin(admin.ModelAdmin):
                             f'Best regards,\n'
                             f'VALD Team',
                             settings.DEFAULT_FROM_EMAIL,
-                            [email.email],
+                            [user.primary_email],
                             fail_silently=False,
                         )
                         count += 1

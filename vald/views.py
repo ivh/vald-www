@@ -52,16 +52,9 @@ def get_user_context(request):
     # Add user preferences if logged in
     user = get_current_user(request) if request.session.get('user_id') else None
     if user:
-        # Get client name from user object
-        client_name = ''.join(c for c in user.name if c.isalnum())
-        if client_name:
-            # Load preferences from file
-            prefs = load_user_preferences(client_name)
-            context.update(prefs)
-        else:
-            # Couldn't determine client name, use defaults
-            from .userprefs import DEFAULT_PREFERENCES
-            context.update(DEFAULT_PREFERENCES)
+        # Load preferences from file
+        prefs = load_user_preferences(user.client_name)
+        context.update(prefs)
 
     return context
 
@@ -208,19 +201,14 @@ def activate_account(request, token):
             messages.info(request, 'Your account is already activated. Please login with your password.')
             return redirect('vald:index')
 
-        # Get primary email
-        primary_email = user.emails.filter(is_primary=True).first()
-        if not primary_email:
-            primary_email = user.emails.first()
-
         # Store in session for password setting
-        request.session['activation_email'] = primary_email.email
+        request.session['activation_email'] = user.primary_email
         request.session['activation_name'] = user.name
         request.session['activation_token'] = token
 
         context = get_user_context(request)
         context.update({
-            'email': primary_email.email,
+            'email': user.primary_email,
             'user_name': user.name,
         })
 
@@ -558,20 +546,15 @@ def showline_online_submit(request):
 
     # Determine config file to use
     user = get_current_user(request)
-    if pconf == 'personal' and user:
+    if pconf == 'personal' and user and user.client_name:
         # Try to get user's personal config file
-        client_name = ''.join(c for c in user.name if c.isalnum())
-        if client_name:
-            user_config_path = settings.PERSCONFIG_DIR / f"{client_name}.cfg"
-            if user_config_path.exists():
-                configfile = str(user_config_path)
-                note = None
-            else:
-                configfile = str(settings.PERSCONFIG_DEFAULT)
-                note = "NOTE: Personal configuration file does not exist. Using default configuration instead."
+        user_config_path = settings.PERSCONFIG_DIR / f"{user.client_name}.cfg"
+        if user_config_path.exists():
+            configfile = str(user_config_path)
+            note = None
         else:
             configfile = str(settings.PERSCONFIG_DEFAULT)
-            note = "NOTE: Could not determine user name. Using default configuration instead."
+            note = "NOTE: Personal configuration file does not exist. Using default configuration instead."
     else:
         configfile = str(settings.PERSCONFIG_DEFAULT)
         note = None
@@ -795,19 +778,16 @@ def handle_extract_request(request):
         return render(request, template_map[reqtype], context)
 
     # Build email context from validated form data
-    user_email = user.emails.filter(is_primary=True).first()
-    user_email = user_email.email if user_email else user.emails.first().email if user.emails.exists() else None
     email_context = {
         'reqtype': reqtype,
-        'user_email': user_email,
+        'user_email': user.primary_email,
     }
 
     # Get user preferences from file
     from .userprefs import load_user_preferences, DEFAULT_PREFERENCES
 
-    client_name = ''.join(c for c in user.name if c.isalnum())
-    if client_name:
-        prefs = load_user_preferences(client_name)
+    if user.client_name:
+        prefs = load_user_preferences(user.client_name)
     else:
         prefs = DEFAULT_PREFERENCES.copy()
 
@@ -971,14 +951,8 @@ def save_units(request):
         return redirect('vald:unitselection')
 
     user = get_current_user(request)
-    if not user:
+    if not user or not user.client_name:
         messages.error(request, 'Could not save preferences: user not found.')
-        return redirect('vald:unitselection')
-
-    # Get client name from user
-    client_name = ''.join(c for c in user.name if c.isalnum())
-    if not client_name:
-        messages.error(request, 'Could not save preferences: unable to determine user.')
         return redirect('vald:unitselection')
 
     # Build preferences dict from POST data
@@ -991,7 +965,7 @@ def save_units(request):
     }
 
     # Save to file
-    save_user_preferences(client_name, prefs)
+    save_user_preferences(user.client_name, prefs)
 
     messages.success(request, 'Your unit preferences have been saved successfully.')
     context = get_user_context(request)
@@ -1077,13 +1051,11 @@ def persconf(request):
     context = get_user_context(request)
     user = get_current_user(request)
 
-    # Get client name from user
-    client_name = ''.join(c for c in user.name if c.isalnum()) if user else None
-    if not client_name:
+    if not user or not user.client_name:
         messages.error(request, 'Could not determine user name.')
         return redirect('vald:index')
 
-    user_config_path = settings.PERSCONFIG_DIR / f"{client_name}.cfg"
+    user_config_path = settings.PERSCONFIG_DIR / f"{user.client_name}.cfg"
     default_config_path = settings.PERSCONFIG_DEFAULT
 
     # Read user config (or use default if doesn't exist)

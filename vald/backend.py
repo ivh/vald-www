@@ -153,13 +153,15 @@ def submit_request_direct(request_obj):
     Submit a request directly to the backend processing system.
 
     Args:
-        request_obj: Request model instance with user_email, request_type, parameters
+        request_obj: Request model instance with user, request_type, parameters
 
     Returns:
         tuple: (success, output_file_path or error_message)
     """
-    # Get client name
-    client_name = get_client_name(request_obj.user_email)
+    # Get client name from user
+    if not request_obj.user:
+        return (False, "User not found")
+    client_name = request_obj.user.client_name
     if not client_name:
         return (False, "User not registered")
 
