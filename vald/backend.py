@@ -312,20 +312,78 @@ def submit_request_direct(request_obj):
         except Exception:
             pass
 
-    # Extract All/Element: modify pres_in.NNNNNN (line 2 is limit)
-    # Don't modify for stellar - it needs unlimited preselection
-    if request_obj.request_type in ['extractall', 'extractelement']:
-        pres_in = job_dir / f"pres_in.{backend_id:06d}"
-        if pres_in.exists():
-            try:
-                with open(pres_in, 'r') as f:
-                    lines = f.readlines()
-                if len(lines) >= 2:
-                    lines[1] = f"{max_lines}\n"
-                    with open(pres_in, 'w') as f:
-                        f.writelines(lines)
-            except Exception:
-                pass
+    # Patch pres_in.NNNNNN file
+    # Line 2: max lines
+    # Line 4: config file path
+    # Line 5: flags (a b c d e f g h i j k l m)
+    pres_in = job_dir / f"pres_in.{backend_id:06d}"
+    if pres_in.exists():
+        try:
+            with open(pres_in, 'r') as f:
+                lines = f.readlines()
+            
+            modified = False
+            
+            # Line 2: Set max lines (for extractall/extractelement only)
+            if request_obj.request_type in ['extractall', 'extractelement'] and len(lines) >= 2:
+                lines[1] = f"{max_lines}\n"
+                modified = True
+            
+            # Line 4: Set personal config file path if user selected "personal"
+            params = request_obj.parameters
+            if params.get('pconf') == 'personal' and len(lines) >= 4:
+                user_config = settings.PERSCONFIG_DIR / f"{client_name}.cfg"
+                if user_config.exists():
+                    lines[3] = f"'{user_config}'\n"
+                    modified = True
+            
+            # Line 5: Set flags based on user preferences
+            if len(lines) >= 5:
+                # Parse current flags
+                current_flags = lines[4].strip().split()
+                if len(current_flags) >= 13:
+                    # Map preferences to flag positions
+                    # a (0): format - 0=short eV, 1=long eV, 3=short cm⁻¹, 4=long cm⁻¹
+                    format_val = params.get('format', 'short')
+                    energy = params.get('energyunit', 'eV')
+                    if energy == 'cm':
+                        current_flags[0] = '4' if format_val == 'long' else '3'
+                    else:
+                        current_flags[0] = '1' if format_val == 'long' else '0'
+                    
+                    # g (6): extended vdw - 1 if vdwformat is 'extended'
+                    if params.get('vdwformat') == 'extended':
+                        current_flags[6] = '1'
+                    
+                    # j (9): medium - 0=air, 1=vacuum
+                    if params.get('medium') == 'vacuum':
+                        current_flags[9] = '1'
+                    else:
+                        current_flags[9] = '0'
+                    
+                    # k (10): waveunit - 0=Å, 1=nm, 2=cm⁻¹
+                    waveunit = params.get('waveunit', 'angstrom')
+                    if waveunit == 'nm':
+                        current_flags[10] = '1'
+                    elif waveunit == 'cm':
+                        current_flags[10] = '2'
+                    else:
+                        current_flags[10] = '0'
+                    
+                    # l (11): isotopic scaling - default 1
+                    if params.get('isotopic_scaling') == 'off':
+                        current_flags[11] = '0'
+                    else:
+                        current_flags[11] = '1'
+                    
+                    lines[4] = ' '.join(current_flags) + '\n'
+                    modified = True
+            
+            if modified:
+                with open(pres_in, 'w') as f:
+                    f.writelines(lines)
+        except Exception:
+            pass
 
     # Define job execution function for queue
     def execute_job():
