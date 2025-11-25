@@ -168,6 +168,11 @@ class User(models.Model):
         first = self.emails.first()
         return first.email if first else None
 
+    def get_preferences(self):
+        """Get user preferences, creating defaults if none exist"""
+        prefs, _ = UserPreferences.objects.get_or_create(user=self)
+        return prefs
+
 
 class UserEmail(models.Model):
     """Email addresses for users - supports multiple emails per user"""
@@ -184,36 +189,71 @@ class UserEmail(models.Model):
         return f"{self.email} ({self.user.name})"
 
 
+class UserPreferences(models.Model):
+    """Store user unit preferences (energy unit, wavelength unit, medium, etc.)
+    
+    These preferences are used to pre-fill extraction forms and set the 
+    appropriate flags in pres_in files for the backend.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='preferences')
+    
+    # Unit preferences - these map to pres_in flags
+    ENERGY_CHOICES = [
+        ('eV', 'eV'),
+        ('cm', 'cm⁻¹'),
+    ]
+    MEDIUM_CHOICES = [
+        ('air', 'Air (λ > 200nm)'),
+        ('vacuum', 'Vacuum'),
+    ]
+    WAVEUNIT_CHOICES = [
+        ('angstrom', 'Ångström'),
+        ('nm', 'Nanometers'),
+        ('cm', 'cm⁻¹'),
+    ]
+    VDWFORMAT_CHOICES = [
+        ('default', 'Default (single value)'),
+        ('extended', 'Extended format'),
+    ]
+    ISOTOPIC_CHOICES = [
+        ('on', 'Apply isotopic scaling'),
+        ('off', 'No isotopic scaling'),
+    ]
+    
+    energyunit = models.CharField(max_length=10, choices=ENERGY_CHOICES, default='eV')
+    medium = models.CharField(max_length=10, choices=MEDIUM_CHOICES, default='air')
+    waveunit = models.CharField(max_length=10, choices=WAVEUNIT_CHOICES, default='angstrom')
+    vdwformat = models.CharField(max_length=20, choices=VDWFORMAT_CHOICES, default='default')
+    isotopic_scaling = models.CharField(max_length=10, choices=ISOTOPIC_CHOICES, default='on')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Preferences"
+        verbose_name_plural = "User Preferences"
+
+    def __str__(self):
+        return f"Preferences for {self.user.name}"
+    
+    def as_dict(self):
+        """Return preferences as a dictionary for form prefilling"""
+        return {
+            'energyunit': self.energyunit,
+            'medium': self.medium,
+            'waveunit': self.waveunit,
+            'vdwformat': self.vdwformat,
+            'isotopic_scaling': self.isotopic_scaling,
+        }
+
+
 # ============================================================================
 # DEPRECATED MODELS - File-based implementation only
 # ============================================================================
-# UserPreferences, PersonalConfig and LineList models were used for database-backed
-# configuration storage. All configs are now file-based and read directly from disk.
+# PersonalConfig and LineList models were used for database-backed
+# configuration storage. Personal configs are now file-based.
 # Models kept commented out for reference and migration history.
-# To remove completely: create migration to drop tables, then delete this code.
 # ============================================================================
-
-# class UserPreferences(models.Model):
-#     """Store user HTML defaults (energy unit, wavelength unit, medium, etc.)"""
-#     email = models.EmailField(unique=True, db_index=True)
-#     name = models.CharField(max_length=255)
-#
-#     # Unit preferences
-#     energyunit = models.CharField(max_length=10, default='eV')
-#     medium = models.CharField(max_length=10, default='air')
-#     waveunit = models.CharField(max_length=10, default='angstrom')
-#     vdwformat = models.CharField(max_length=20, default='default')
-#     isotopic_scaling = models.CharField(max_length=10, default='on')
-#
-#     created_at = models.DateTimeField(auto_now_add=True)
-#     updated_at = models.DateTimeField(auto_now=True)
-#
-#     class Meta:
-#         verbose_name_plural = "User Preferences"
-#
-#     def __str__(self):
-#         return f"{self.name} ({self.email})"
-#
 
 # class LineList(models.Model):
 #     """Represents a single linelist in a personal configuration"""

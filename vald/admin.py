@@ -4,7 +4,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
 from django import forms
-from .models import Request, User, UserEmail
+from .models import Request, User, UserEmail, UserPreferences
 
 
 class UserChangeForm(forms.ModelForm):
@@ -63,6 +63,12 @@ class UserEmailInline(admin.TabularInline):
     fields = ('email', 'is_primary')
 
 
+class UserPreferencesInline(admin.StackedInline):
+    model = UserPreferences
+    can_delete = False
+    verbose_name_plural = 'Preferences'
+
+
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     form = UserChangeForm
@@ -70,7 +76,7 @@ class UserAdmin(admin.ModelAdmin):
     list_filter = ('is_active', 'created_at')
     search_fields = ('name', 'affiliation', 'emails__email')
     readonly_fields = ('created_at', 'updated_at', 'activation_token')
-    inlines = [UserEmailInline]
+    inlines = [UserEmailInline, UserPreferencesInline]
     actions = ['approve_and_send_activation', 'approve_without_email', 'reject_registration']
     fieldsets = (
         ('User Information', {

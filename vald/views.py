@@ -41,8 +41,6 @@ def get_current_user(request):
 
 def get_user_context(request):
     """Get common context data for templates"""
-    from .userprefs import load_user_preferences
-
     context = {
         'sitename': settings.SITENAME,
         'user_email': request.session.get('email'),
@@ -52,9 +50,9 @@ def get_user_context(request):
     # Add user preferences if logged in
     user = get_current_user(request) if request.session.get('user_id') else None
     if user:
-        # Load preferences from file
-        prefs = load_user_preferences(user.client_name)
-        context.update(prefs)
+        # Load preferences from database
+        prefs = user.get_preferences()
+        context.update(prefs.as_dict())
 
     return context
 
@@ -783,15 +781,9 @@ def handle_extract_request(request):
         'user_email': user.primary_email,
     }
 
-    # Get user preferences from file
-    from .userprefs import load_user_preferences, DEFAULT_PREFERENCES
-
-    if user.client_name:
-        prefs = load_user_preferences(user.client_name)
-    else:
-        prefs = DEFAULT_PREFERENCES.copy()
-
-    email_context.update(prefs)
+    # Get user preferences from database
+    prefs = user.get_preferences()
+    email_context.update(prefs.as_dict())
 
     # Copy all cleaned data to context
     for key, value in form.cleaned_data.items():
@@ -945,27 +937,22 @@ def unitselection(request):
 @require_login
 def save_units(request):
     """Save unit preferences"""
-    from .userprefs import save_user_preferences
-
     if request.method != 'POST':
         return redirect('vald:unitselection')
 
     user = get_current_user(request)
-    if not user or not user.client_name:
+    if not user:
         messages.error(request, 'Could not save preferences: user not found.')
         return redirect('vald:unitselection')
 
-    # Build preferences dict from POST data
-    prefs = {
-        'energyunit': request.POST.get('energyunit', 'eV'),
-        'medium': request.POST.get('medium', 'air'),
-        'waveunit': request.POST.get('waveunit', 'angstrom'),
-        'vdwformat': request.POST.get('vdwformat', 'default'),
-        'isotopic_scaling': request.POST.get('isotopic_scaling', 'on'),
-    }
-
-    # Save to file
-    save_user_preferences(user.client_name, prefs)
+    # Get or create preferences and update from POST data
+    prefs = user.get_preferences()
+    prefs.energyunit = request.POST.get('energyunit', 'eV')
+    prefs.medium = request.POST.get('medium', 'air')
+    prefs.waveunit = request.POST.get('waveunit', 'angstrom')
+    prefs.vdwformat = request.POST.get('vdwformat', 'default')
+    prefs.isotopic_scaling = request.POST.get('isotopic_scaling', 'on')
+    prefs.save()
 
     messages.success(request, 'Your unit preferences have been saved successfully.')
     context = get_user_context(request)

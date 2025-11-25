@@ -34,10 +34,10 @@ Technical context for Claude Code sessions. See README.md for user documentation
 - `JobQueue` - Thread pool for parallel processing
 
 **vald/models.py**:
-- `Request` - Tracks submissions (UUID, JSONField parameters, status)
+- `Request` - Tracks submissions (UUID, FK to User, JSONField parameters, status)
 - `User`, `UserEmail` - Password authentication with activation tokens
-- `UserPreferences` - File-based per-user settings (energy units, etc.)
-- `PersonalConfig`, `LineList` - Custom linelist configurations
+- `UserPreferences` - OneToOne with User, stores unit preferences (energy, wavelength, medium, etc.)
+- `PersonalConfig`, `LineList` - Custom linelist configurations (file-based)
 
 **vald/views.py**:
 - `handle_extract_request()` - Routes to direct or email mode
