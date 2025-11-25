@@ -28,9 +28,19 @@ from .utils import (
 )
 
 
+def get_current_user(request):
+    """Get the User object from session. Returns None if not logged in."""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return None
+    try:
+        return User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return None
+
+
 def get_user_context(request):
     """Get common context data for templates"""
-    from .backend import get_client_name
     from .userprefs import load_user_preferences
 
     context = {
@@ -40,9 +50,10 @@ def get_user_context(request):
     }
 
     # Add user preferences if logged in
-    if context['user_email']:
-        # Get client name to determine file path
-        client_name = get_client_name(context['user_email'])
+    user = get_current_user(request) if request.session.get('user_id') else None
+    if user:
+        # Get client name from user object
+        client_name = ''.join(c for c in user.name if c.isalnum())
         if client_name:
             # Load preferences from file
             prefs = load_user_preferences(client_name)
@@ -398,7 +409,7 @@ def reset_password(request, token):
 def require_login(view_func):
     """Decorator to require login"""
     def wrapper(request, *args, **kwargs):
-        if not request.session.get('email'):
+        if not request.session.get('user_id'):
             messages.error(request, 'You are not logged in. Please log in and try again.')
             return redirect('vald:index')
         return view_func(request, *args, **kwargs)
@@ -409,6 +420,7 @@ def require_login(view_func):
 def extractall(request):
     """Extract All form"""
     context = get_user_context(request)
+    user = get_current_user(request)
 
     # Check if modifying an existing request
     modify_uuid = request.GET.get('modify')
@@ -418,7 +430,7 @@ def extractall(request):
         try:
             req_obj = Request.objects.get(uuid=modify_uuid)
             # Security: only allow user to modify their own requests
-            if req_obj.user and req_obj.user.emails.filter(email=request.session.get('email')).exists():
+            if req_obj.user_id == user.id:
                 initial_data = req_obj.parameters
                 messages.info(request, 'Form pre-filled with previous request values.')
             else:
@@ -434,6 +446,7 @@ def extractall(request):
 def extractelement(request):
     """Extract Element form"""
     context = get_user_context(request)
+    user = get_current_user(request)
 
     # Check if modifying an existing request
     modify_uuid = request.GET.get('modify')
@@ -443,7 +456,7 @@ def extractelement(request):
         try:
             req_obj = Request.objects.get(uuid=modify_uuid)
             # Security: only allow user to modify their own requests
-            if req_obj.user and req_obj.user.emails.filter(email=request.session.get('email')).exists():
+            if req_obj.user_id == user.id:
                 initial_data = req_obj.parameters
                 messages.info(request, 'Form pre-filled with previous request values.')
             else:
@@ -459,6 +472,7 @@ def extractelement(request):
 def extractstellar(request):
     """Extract Stellar form"""
     context = get_user_context(request)
+    user = get_current_user(request)
 
     # Check if modifying an existing request
     modify_uuid = request.GET.get('modify')
@@ -468,7 +482,7 @@ def extractstellar(request):
         try:
             req_obj = Request.objects.get(uuid=modify_uuid)
             # Security: only allow user to modify their own requests
-            if req_obj.user and req_obj.user.emails.filter(email=request.session.get('email')).exists():
+            if req_obj.user_id == user.id:
                 initial_data = req_obj.parameters
                 messages.info(request, 'Form pre-filled with previous request values.')
             else:
@@ -484,6 +498,7 @@ def extractstellar(request):
 def showline(request):
     """Show Line form"""
     context = get_user_context(request)
+    user = get_current_user(request)
 
     # Check if modifying an existing request
     modify_uuid = request.GET.get('modify')
@@ -493,7 +508,7 @@ def showline(request):
         try:
             req_obj = Request.objects.get(uuid=modify_uuid)
             # Security: only allow user to modify their own requests
-            if req_obj.user and req_obj.user.emails.filter(email=request.session.get('email')).exists():
+            if req_obj.user_id == user.id:
                 initial_data = req_obj.parameters
                 messages.info(request, 'Form pre-filled with previous request values.')
             else:
@@ -517,7 +532,6 @@ def showline_online(request):
 def showline_online_submit(request):
     """Execute Show Line Online and display results"""
     import subprocess
-    from .backend import get_client_name
 
     context = get_user_context(request)
 
@@ -543,10 +557,10 @@ def showline_online_submit(request):
     isotopic_scaling = form.cleaned_data['isotopic_scaling']
 
     # Determine config file to use
-    email = request.session.get('email')
-    if pconf == 'personal':
+    user = get_current_user(request)
+    if pconf == 'personal' and user:
         # Try to get user's personal config file
-        client_name = get_client_name(email)
+        client_name = ''.join(c for c in user.name if c.isalnum())
         if client_name:
             user_config_path = settings.PERSCONFIG_DIR / f"{client_name}.cfg"
             if user_config_path.exists():
@@ -619,7 +633,7 @@ def submit_request(request):
         return handle_registration_request(request)
 
     # All other requests require login
-    if not request.session.get('email'):
+    if not request.session.get('user_id'):
         context['error'] = 'You are not logged in. Please log in and try again.'
         return render(request, 'vald/error.html', context)
 
@@ -743,13 +757,9 @@ def handle_extract_request(request):
     """Handle extract/showline form submissions"""
     context = get_user_context(request)
     reqtype = request.POST.get('reqtype')
-    user_email = request.session.get('email')
+    user = get_current_user(request)
 
-    # Get the User object from session email
-    try:
-        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
-        user = user_email_obj.user
-    except UserEmail.DoesNotExist:
+    if not user:
         messages.error(request, 'User not found. Please log in again.')
         return redirect('vald:index')
 
@@ -785,16 +795,17 @@ def handle_extract_request(request):
         return render(request, template_map[reqtype], context)
 
     # Build email context from validated form data
+    user_email = user.emails.filter(is_primary=True).first()
+    user_email = user_email.email if user_email else user.emails.first().email if user.emails.exists() else None
     email_context = {
         'reqtype': reqtype,
         'user_email': user_email,
     }
 
     # Get user preferences from file
-    from .backend import get_client_name
     from .userprefs import load_user_preferences, DEFAULT_PREFERENCES
 
-    client_name = get_client_name(user_email)
+    client_name = ''.join(c for c in user.name if c.isalnum())
     if client_name:
         prefs = load_user_preferences(client_name)
     else:
@@ -954,16 +965,18 @@ def unitselection(request):
 @require_login
 def save_units(request):
     """Save unit preferences"""
-    from .backend import get_client_name
     from .userprefs import save_user_preferences
 
     if request.method != 'POST':
         return redirect('vald:unitselection')
 
-    email = request.session.get('email')
+    user = get_current_user(request)
+    if not user:
+        messages.error(request, 'Could not save preferences: user not found.')
+        return redirect('vald:unitselection')
 
-    # Get client name to determine file path
-    client_name = get_client_name(email)
+    # Get client name from user
+    client_name = ''.join(c for c in user.name if c.isalnum())
     if not client_name:
         messages.error(request, 'Could not save preferences: unable to determine user.')
         return redirect('vald:unitselection')
@@ -1060,15 +1073,14 @@ def news(request, newsitem=None):
 def persconf(request):
     """Personal configuration page - file-based implementation"""
     from .persconfig import read_persconfig_file, write_persconfig_file
-    from .backend import get_client_name
 
     context = get_user_context(request)
-    email = request.session.get('email')
+    user = get_current_user(request)
 
-    # Get client name and config file path
-    client_name = get_client_name(email)
+    # Get client name from user
+    client_name = ''.join(c for c in user.name if c.isalnum()) if user else None
     if not client_name:
-        messages.error(request, 'Could not determine user name from email.')
+        messages.error(request, 'Could not determine user name.')
         return redirect('vald:index')
 
     user_config_path = settings.PERSCONFIG_DIR / f"{client_name}.cfg"
@@ -1242,15 +1254,7 @@ def persconf(request):
 def my_requests(request):
     """Show all requests for the current user"""
     context = get_user_context(request)
-    user_email = request.session.get('email')
-
-    # Get user from session email
-    try:
-        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
-        user = user_email_obj.user
-    except UserEmail.DoesNotExist:
-        messages.error(request, 'User not found. Please log in again.')
-        return redirect('vald:index')
+    user = get_current_user(request)
 
     # Get all requests for this user (regardless of which email they used)
     requests = Request.objects.filter(user=user).order_by('-created_at')
@@ -1274,15 +1278,7 @@ def my_requests(request):
 def request_detail(request, uuid):
     """Show details of a specific request"""
     context = get_user_context(request)
-    user_email = request.session.get('email')
-
-    # Get user from session email
-    try:
-        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
-        user = user_email_obj.user
-    except UserEmail.DoesNotExist:
-        messages.error(request, 'User not found. Please log in again.')
-        return redirect('vald:index')
+    user = get_current_user(request)
 
     try:
         req_obj = Request.objects.get(uuid=uuid)
@@ -1331,15 +1327,7 @@ def download_request(request, uuid):
     from django.http import FileResponse, Http404
     import mimetypes
 
-    user_email = request.session.get('email')
-
-    # Get user from session email
-    try:
-        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
-        user = user_email_obj.user
-    except UserEmail.DoesNotExist:
-        messages.error(request, 'User not found. Please log in again.')
-        return redirect('vald:index')
+    user = get_current_user(request)
 
     try:
         req_obj = Request.objects.get(uuid=uuid)
@@ -1386,15 +1374,7 @@ def download_bib_request(request, uuid):
     from django.http import FileResponse, Http404
     import mimetypes
 
-    user_email = request.session.get('email')
-
-    # Get user from session email
-    try:
-        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
-        user = user_email_obj.user
-    except UserEmail.DoesNotExist:
-        messages.error(request, 'User not found. Please log in again.')
-        return redirect('vald:index')
+    user = get_current_user(request)
 
     try:
         req_obj = Request.objects.get(uuid=uuid)
