@@ -17,9 +17,8 @@ class Request(models.Model):
     # Unique identifier for URLs
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
 
-    # User and request info
-    user_email = models.EmailField(db_index=True)
-    user_name = models.CharField(max_length=255)
+    # User reference (nullable for migration, but required in practice)
+    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='requests', null=True)
     request_type = models.CharField(max_length=20, db_index=True)  # extractall, extractelement, etc.
 
     # All request parameters stored as JSON (flexible for different request types)
@@ -44,7 +43,24 @@ class Request(models.Model):
         verbose_name_plural = "Requests"
 
     def __str__(self):
-        return f"{self.request_type} by {self.user_email} ({self.status})"
+        user_display = self.user.name if self.user else 'Unknown'
+        return f"{self.request_type} by {user_display} ({self.status})"
+
+    @property
+    def user_email(self):
+        """Get primary email for the user (for email sending)"""
+        if not self.user:
+            return None
+        primary = self.user.emails.filter(is_primary=True).first()
+        if primary:
+            return primary.email
+        first = self.user.emails.first()
+        return first.email if first else None
+
+    @property
+    def user_name(self):
+        """Get user name"""
+        return self.user.name if self.user else 'Unknown'
 
     def is_complete(self):
         """Check if request has completed"""

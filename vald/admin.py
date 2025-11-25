@@ -25,13 +25,13 @@ class UserChangeForm(forms.ModelForm):
 
 @admin.register(Request)
 class RequestAdmin(admin.ModelAdmin):
-    list_display = ('uuid', 'request_type', 'user_email', 'status', 'created_at', 'has_output')
+    list_display = ('uuid', 'request_type', 'get_user_email', 'status', 'created_at', 'has_output')
     list_filter = ('status', 'request_type', 'created_at')
-    search_fields = ('uuid', 'user_email', 'user_name')
+    search_fields = ('uuid', 'user__name', 'user__emails__email')
     readonly_fields = ('uuid', 'created_at', 'updated_at')
     fieldsets = (
         ('Request Information', {
-            'fields': ('uuid', 'request_type', 'user_email', 'user_name')
+            'fields': ('uuid', 'request_type', 'user')
         }),
         ('Parameters', {
             'fields': ('parameters',),
@@ -44,6 +44,11 @@ class RequestAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at', 'completed_at')
         }),
     )
+
+    def get_user_email(self, obj):
+        """Display user's primary email"""
+        return obj.user_email
+    get_user_email.short_description = 'User Email'
 
     def has_output(self, obj):
         """Show if output file exists"""

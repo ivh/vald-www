@@ -418,7 +418,7 @@ def extractall(request):
         try:
             req_obj = Request.objects.get(uuid=modify_uuid)
             # Security: only allow user to modify their own requests
-            if req_obj.user_email == request.session.get('email'):
+            if req_obj.user and req_obj.user.emails.filter(email=request.session.get('email')).exists():
                 initial_data = req_obj.parameters
                 messages.info(request, 'Form pre-filled with previous request values.')
             else:
@@ -443,7 +443,7 @@ def extractelement(request):
         try:
             req_obj = Request.objects.get(uuid=modify_uuid)
             # Security: only allow user to modify their own requests
-            if req_obj.user_email == request.session.get('email'):
+            if req_obj.user and req_obj.user.emails.filter(email=request.session.get('email')).exists():
                 initial_data = req_obj.parameters
                 messages.info(request, 'Form pre-filled with previous request values.')
             else:
@@ -468,7 +468,7 @@ def extractstellar(request):
         try:
             req_obj = Request.objects.get(uuid=modify_uuid)
             # Security: only allow user to modify their own requests
-            if req_obj.user_email == request.session.get('email'):
+            if req_obj.user and req_obj.user.emails.filter(email=request.session.get('email')).exists():
                 initial_data = req_obj.parameters
                 messages.info(request, 'Form pre-filled with previous request values.')
             else:
@@ -493,7 +493,7 @@ def showline(request):
         try:
             req_obj = Request.objects.get(uuid=modify_uuid)
             # Security: only allow user to modify their own requests
-            if req_obj.user_email == request.session.get('email'):
+            if req_obj.user and req_obj.user.emails.filter(email=request.session.get('email')).exists():
                 initial_data = req_obj.parameters
                 messages.info(request, 'Form pre-filled with previous request values.')
             else:
@@ -745,6 +745,14 @@ def handle_extract_request(request):
     reqtype = request.POST.get('reqtype')
     user_email = request.session.get('email')
 
+    # Get the User object from session email
+    try:
+        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
+        user = user_email_obj.user
+    except UserEmail.DoesNotExist:
+        messages.error(request, 'User not found. Please log in again.')
+        return redirect('vald:index')
+
     # Determine which form to use
     form_map = {
         'extractall': ExtractAllForm,
@@ -816,8 +824,7 @@ def handle_extract_request(request):
 
     # Create Request record for tracking
     req_obj = Request.objects.create(
-        user_email=user_email,
-        user_name=request.session.get('name', user_email),
+        user=user,
         request_type=reqtype,
         parameters=form.cleaned_data,
         status='pending'
@@ -1237,8 +1244,16 @@ def my_requests(request):
     context = get_user_context(request)
     user_email = request.session.get('email')
 
-    # Get all requests for this user
-    requests = Request.objects.filter(user_email=user_email).order_by('-created_at')
+    # Get user from session email
+    try:
+        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
+        user = user_email_obj.user
+    except UserEmail.DoesNotExist:
+        messages.error(request, 'User not found. Please log in again.')
+        return redirect('vald:index')
+
+    # Get all requests for this user (regardless of which email they used)
+    requests = Request.objects.filter(user=user).order_by('-created_at')
 
     # Count by status
     pending_count = requests.filter(status__in=['pending', 'processing']).count()
@@ -1261,11 +1276,19 @@ def request_detail(request, uuid):
     context = get_user_context(request)
     user_email = request.session.get('email')
 
+    # Get user from session email
+    try:
+        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
+        user = user_email_obj.user
+    except UserEmail.DoesNotExist:
+        messages.error(request, 'User not found. Please log in again.')
+        return redirect('vald:index')
+
     try:
         req_obj = Request.objects.get(uuid=uuid)
 
         # Security: only allow user to view their own requests
-        if req_obj.user_email != user_email:
+        if req_obj.user_id != user.id:
             messages.error(request, 'You do not have permission to view this request.')
             return redirect('vald:my_requests')
 
@@ -1310,11 +1333,19 @@ def download_request(request, uuid):
 
     user_email = request.session.get('email')
 
+    # Get user from session email
+    try:
+        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
+        user = user_email_obj.user
+    except UserEmail.DoesNotExist:
+        messages.error(request, 'User not found. Please log in again.')
+        return redirect('vald:index')
+
     try:
         req_obj = Request.objects.get(uuid=uuid)
 
         # Security: only allow user to download their own requests
-        if req_obj.user_email != user_email:
+        if req_obj.user_id != user.id:
             messages.error(request, 'You do not have permission to download this file.')
             return redirect('vald:my_requests')
 
@@ -1357,11 +1388,19 @@ def download_bib_request(request, uuid):
 
     user_email = request.session.get('email')
 
+    # Get user from session email
+    try:
+        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email)
+        user = user_email_obj.user
+    except UserEmail.DoesNotExist:
+        messages.error(request, 'User not found. Please log in again.')
+        return redirect('vald:index')
+
     try:
         req_obj = Request.objects.get(uuid=uuid)
 
         # Security: only allow user to download their own requests
-        if req_obj.user_email != user_email:
+        if req_obj.user_id != user.id:
             messages.error(request, 'You do not have permission to download this file.')
             return redirect('vald:my_requests')
 
