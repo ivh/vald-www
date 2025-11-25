@@ -281,6 +281,11 @@ def submit_request_direct(request_obj):
                 modified = True
                 break
 
+        # Remove cleanup of pres_in so we can debug
+        if f'rm pres_in.{backend_id:06d}' in job_script:
+            job_script = job_script.replace(f'rm pres_in.{backend_id:06d}\n', '')
+            modified = True
+
         if modified:
             with open(job_file, 'w') as f:
                 f.write(job_script)
