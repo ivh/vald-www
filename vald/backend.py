@@ -331,7 +331,8 @@ def submit_request_direct(request_obj):
             
             # Line 4: Set personal config file path if user selected "personal"
             params = request_obj.parameters
-            if params.get('pconf') == 'personal' and len(lines) >= 4:
+            pconf = params.get('pconf')
+            if pconf == 'personal' and len(lines) >= 4:
                 user_config = settings.PERSCONFIG_DIR / f"{client_name}.cfg"
                 if user_config.exists():
                     lines[3] = f"'{user_config}'\n"
