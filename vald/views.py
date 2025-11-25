@@ -805,11 +805,15 @@ def handle_extract_request(request):
         else:
             email_context[key] = value
 
+    # Merge user preferences into parameters for backend processing
+    request_params = form.cleaned_data.copy()
+    request_params.update(prefs.as_dict())
+
     # Create Request record for tracking
     req_obj = Request.objects.create(
         user=user,
         request_type=reqtype,
-        parameters=form.cleaned_data,
+        parameters=request_params,
         status='pending'
     )
 
