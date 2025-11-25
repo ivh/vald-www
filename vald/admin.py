@@ -206,4 +206,9 @@ class UserEmailAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at',)
 
 
-# UserPreferences, PersonalConfig and LineList models removed - file-based implementation only
+@admin.register(UserPreferences)
+class UserPreferencesAdmin(admin.ModelAdmin):
+    list_display = ('user', 'energyunit', 'waveunit', 'medium', 'vdwformat', 'isotopic_scaling')
+    list_filter = ('energyunit', 'waveunit', 'medium')
+    search_fields = ('user__name',)
+    readonly_fields = ('created_at', 'updated_at')
