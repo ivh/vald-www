@@ -17,6 +17,7 @@ Technical context for Claude Code sessions. See README.md for user documentation
 - Creates job subdirectory: `working/NNNNNN/`
 - Creates `request.NNNNNN` in subdirectory
 - **CRITICAL**: Runs `parserequest` FROM subdirectory for correct file naming
+- Patches `pres_in.NNNNNN` with user preferences (config path, unit flags)
 - Executes `job.NNNNNN` script in isolated directory
 - Status tracking: pending → processing → complete/failed
 - Job queue with worker threads (default 2, configurable via `VALD_MAX_WORKERS`)
@@ -31,45 +32,59 @@ Technical context for Claude Code sessions. See README.md for user documentation
 - `uuid_to_6digit()` - Converts UUID to 6-digit number via SHA256
 - `submit_request_direct()` - Main handler, runs parserequest from job subdirectory
 - `format_request_file()` - Converts form data to VALD request format
+- Patches `pres_in.NNNNNN`: line 4 (config path), line 5 (flags for units/format)
 - `JobQueue` - Thread pool for parallel processing
 
 **vald/models.py**:
 - `Request` - Tracks submissions (UUID, FK to User, JSONField parameters, status)
 - `User`, `UserEmail` - Password authentication with activation tokens
-- `UserPreferences` - OneToOne with User, stores unit preferences (energy, wavelength, medium, etc.)
-- `PersonalConfig`, `LineList` - Custom linelist configurations (file-based)
+- `UserPreferences` - OneToOne with User, stores unit preferences (energyunit, waveunit, medium, vdwformat, isotopic_scaling)
+- `User.client_name` property - Alphanumeric name for file paths
+- `User.primary_email` property - Primary email address
+- `User.get_preferences()` - Returns UserPreferences, creates defaults if needed
 
 **vald/views.py**:
-- `handle_extract_request()` - Routes to direct or email mode
+- `get_current_user()` - Gets User from `session['user_id']`
+- `handle_extract_request()` - Routes to direct or email mode, merges user prefs into params
 - `request_detail()` - Status page with auto-refresh
-- `download_request()` - Serves output files (checks ownership)
+- `download_request()` - Serves output files (checks ownership via User FK)
 
 **vald/forms.py**:
 - Server-side validation for all request types
 - Fixed: viaftp empty string, showline None values, JS numeric validation bugs
+
+## pres_in File Format
+
+The `pres_in.NNNNNN` file controls preselect3 behavior:
+- Line 1: wavelength range
+- Line 2: max lines
+- Line 3: element filter (empty for extract all)
+- Line 4: config file path (quoted, absolute path)
+- Line 5: 13 flags (a b c d e f g h i j k l m)
+
+**Flags (from preselect3 docs):**
+- a: format (0=short eV, 1=long eV, 3=short cm⁻¹, 4=long cm⁻¹)
+- b-f: have rad/stark/waals/lande/term
+- g: extended vdw (1 if vdwformat='extended')
+- h-i: Zeeman/Stark (not implemented)
+- j: medium (0=air, 1=vacuum)
+- k: waveunit (0=Å, 1=nm, 2=cm⁻¹)
+- l: isotopic scaling (0=off, 1=on)
+- m: HFS splitting
 
 ## Critical Bug Fixes
 
 ### 1. Showline None Values (2025-11-24)
 **Problem**: Empty form fields stored as Python `None` → written as string `"None"` in request file → parser errors
 **Fix**: `format_request_file()` now checks `if wvl is not None and win is not None` before adding lines
-**Location**: vald/backend.py:470-479
 
 ### 2. Parserequest Working Directory (2025-11-24)
 **Problem**: `parserequest` extracts ID from filename → creates `pres_in.000000` when run as `parserequest 917714/request.917714`
 **Fix**: Run `parserequest` FROM job subdirectory, not parent → creates `pres_in.917714` correctly
-**Location**: vald/backend.py:174-220
-**Impact**: All extract requests (extractall/element/stellar)
 
-### 3. Show_in File Movement (2025-11-24)
-**Problem**: `show_in.NNNNNN_*` files not moved to job subdirectory → job script fails with "No such file"
-**Fix**: Added glob pattern to move all `show_in.*` files
-**Location**: vald/backend.py:297-300
-
-### 4. Showline vs Extract Output (2025-11-24)
-**Problem**: Code expected `.gz` files for all requests, showline creates `result.NNNNNN` text file
-**Fix**: Check `request_type == 'showline'` → move `result.*` to FTP as `.txt`, skip bib file handling
-**Location**: vald/backend.py:336-383
+### 3. User Preferences Not Applied (2025-11-25)
+**Problem**: Unit preferences (waveunit, energyunit, medium) not included in request parameters
+**Fix**: Merge `user.get_preferences().as_dict()` into params before creating Request; patch pres_in line 5 flags
 
 ## Output Files
 
@@ -89,11 +104,13 @@ Technical context for Claude Code sessions. See README.md for user documentation
 ## Design Decisions
 
 - Single `Request` model for all types (JSONField for flexibility)
+- Request ownership via User FK (not email string) - works across multiple emails
+- Session stores `user_id` for efficient lookups (not repeated email→user queries)
+- UserPreferences in database (not file-based) for atomic updates
+- Personal linelist configs remain file-based in `config/personal_configs/`
 - UUID → 6-digit conversion for backend compatibility
-- Synchronous job execution in direct mode (simpler, immediate feedback)
 - Job isolation via subdirectories (prevents race conditions)
 - Keep email mode available (proven system, gradual migration)
-- Reuse original HTML/CSS (user familiarity)
 
 ## Adding New Request Types
 

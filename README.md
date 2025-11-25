@@ -9,7 +9,8 @@ Django replacement for the 30-year-old PHP-based VALD (Vienna Atomic Line Databa
 - **Request tracking** - real-time status updates, download links
 - **Direct backend submission** - calls VALD binaries directly, bypasses email
 - **Hybrid architecture** - supports both direct and email-based modes
-- User preferences (energy units, wavelength, medium, linelist configs)
+- User preferences stored in database (energy units, wavelength, medium)
+- Personal linelist configurations (file-based)
 - Job queue system with parallel processing
 - Re-uses original HTML/CSS for familiarity
 
