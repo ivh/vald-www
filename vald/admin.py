@@ -7,6 +7,40 @@ from django import forms
 from .models import Request, User, UserEmail, UserPreferences
 
 
+class HasPasswordFilter(admin.SimpleListFilter):
+    title = 'has password'
+    parameter_name = 'has_password'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('yes', 'Yes'),
+            ('no', 'No'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'yes':
+            return queryset.exclude(password__isnull=True).exclude(password='')
+        if self.value() == 'no':
+            return queryset.filter(password__isnull=True) | queryset.filter(password='')
+
+
+class PendingApprovalFilter(admin.SimpleListFilter):
+    title = 'pending approval'
+    parameter_name = 'pending_approval'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('yes', 'Yes'),
+            ('no', 'No'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'yes':
+            return queryset.filter(is_active=False, password__isnull=True)
+        if self.value() == 'no':
+            return queryset.exclude(is_active=False, password__isnull=True)
+
+
 class UserChangeForm(forms.ModelForm):
     """Custom form for User admin with proper password display"""
     password = ReadOnlyPasswordHashField(
@@ -73,7 +107,7 @@ class UserPreferencesInline(admin.StackedInline):
 class UserAdmin(admin.ModelAdmin):
     form = UserChangeForm
     list_display = ('name', 'get_emails', 'has_password', 'is_active', 'is_pending', 'created_at')
-    list_filter = ('is_active', 'created_at')
+    list_filter = ('is_active', HasPasswordFilter, PendingApprovalFilter, 'created_at')
     search_fields = ('name', 'affiliation', 'emails__email')
     readonly_fields = ('created_at', 'updated_at', 'activation_token')
     inlines = [UserEmailInline, UserPreferencesInline]
@@ -144,6 +178,7 @@ class UserAdmin(admin.ModelAdmin):
         return bool(obj.password)
     has_password.boolean = True
     has_password.short_description = 'Has Password'
+    has_password.admin_order_field = 'password'
 
     def is_pending(self, obj):
         """Show if user is pending approval (inactive with no password)"""
