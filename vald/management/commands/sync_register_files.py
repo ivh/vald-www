@@ -118,20 +118,35 @@ class Command(BaseCommand):
         if existing_email:
             # Update existing user
             user = existing_email.user
-            user.name = name
-            if affiliation:
+
+            # If name changed, preserve old name in affiliation
+            if user.name != name:
+                old_name = user.name
+                # Prepend old name to affiliation
+                if affiliation:
+                    user.affiliation = f"{old_name}\n{affiliation}"
+                elif user.affiliation:
+                    user.affiliation = f"{old_name}\n{user.affiliation}"
+                else:
+                    user.affiliation = old_name
+                # Update to new name
+                user.name = name
+            elif affiliation:
+                # Same name, just update affiliation if provided
                 user.affiliation = affiliation
+
             user.save()
 
-            # Add any new emails
+            # Add any new emails that don't exist globally (silently skip existing)
             existing_user_emails = set(user.emails.values_list('email', flat=True))
             for email in emails:
                 if email not in existing_user_emails:
-                    UserEmail.objects.create(
-                        user=user,
-                        email=email,
-                        is_primary=(len(existing_user_emails) == 0)
-                    )
+                    if not UserEmail.objects.filter(email=email).exists():
+                        UserEmail.objects.create(
+                            user=user,
+                            email=email,
+                            is_primary=(len(existing_user_emails) == 0)
+                        )
 
             return user, False
         else:
@@ -143,12 +158,13 @@ class Command(BaseCommand):
                 is_active=True
             )
 
-            # Create email records
+            # Create email records (silently skip any that already exist)
             for idx, email in enumerate(emails):
-                UserEmail.objects.create(
-                    user=user,
-                    email=email,
-                    is_primary=(idx == 0)  # First email is primary
-                )
+                if not UserEmail.objects.filter(email=email).exists():
+                    UserEmail.objects.create(
+                        user=user,
+                        email=email,
+                        is_primary=(idx == 0)  # First email is primary
+                    )
 
             return user, True
