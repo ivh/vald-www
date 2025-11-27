@@ -1,0 +1,36 @@
+[Unit]
+Description=VALD Django Web Application
+After=network.target
+
+[Service]
+Type=notify
+# Adjust user/group for production (e.g., www-data or vald)
+User=tom
+Group=tom
+
+# Adjust WorkingDirectory to deployment path (e.g., /srv/vald-www or /var/www/vald)
+WorkingDirectory=/Users/tom/vald-www
+
+# Environment variables
+Environment="VALD_HOME=/home/tom/VALD3"
+Environment="PATH=/Users/tom/vald-www/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Gunicorn command
+ExecStart=/Users/tom/vald-www/.venv/bin/gunicorn \
+    --bind unix:/var/run/vald.socket \
+    --workers 4 \
+    --timeout 60 \
+    --access-logfile - \
+    --error-logfile - \
+    vald_web.wsgi:application
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
