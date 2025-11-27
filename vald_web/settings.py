@@ -133,7 +133,8 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')  # Set via environment variable
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')  # Set via environment variable
 DEFAULT_FROM_EMAIL = 'vald@tmy.se'
-VALD_REQUEST_EMAIL = 'vald@tmy.se'  # Where to send requests
+VALD_ADMIN_EMAIL = 'vald@tmy.se'
+VALD_WEBMASTER_EMAIL = 'vald@tmy.se'
 
 # VALD-specific configuration
 VALD_HOME = Path(os.getenv('VALD_HOME', '/home/tom/VALD3'))

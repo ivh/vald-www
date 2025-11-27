@@ -139,7 +139,8 @@ EMAIL_HOST = 'localhost'
 EMAIL_PORT = 25
 EMAIL_USE_TLS = False
 DEFAULT_FROM_EMAIL = 'vald@physics.uu.se'
-VALD_REQUEST_EMAIL = 'vald@physics.uu.se'  # Where to send requests
+VALD_ADMIN_EMAIL = 'thomas.marquart@physics.uu.se'
+VALD_WEBMASTER_EMAIL = 'thomas.marquart@physics.uu.se'
 
 # VALD-specific configuration
 VALD_HOME = Path(os.getenv('VALD_HOME', ''))

@@ -670,10 +670,10 @@ def handle_contact_request(request):
     # Determine recipient based on manager selection
     manager = form.cleaned_data['manager']
     recipient_map = {
-        'valdadministrator': settings.VALD_REQUEST_EMAIL,
-        'webmaster': settings.VALD_REQUEST_EMAIL,
+        'valdadministrator': settings.VALD_ADMIN_EMAIL,
+        'webmaster': settings.VALD_WEBMASTER_EMAIL,
     }
-    recipient = recipient_map.get(manager, settings.VALD_REQUEST_EMAIL)
+    recipient = recipient_map.get(manager, settings.VALD_ADMIN_EMAIL)
 
     try:
         send_mail(
