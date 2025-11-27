@@ -1,15 +1,8 @@
-The following was submitted through the VALD contact page :
+The following was submitted through the VALD contact page:
 
-From	: $contactemail ($contactname)
+From: $contactemail
 
 $message
-
---------------------
-
-#$ $contactname
-#    $affiliation
-#
-$contactemail
 
 --------------------
 
