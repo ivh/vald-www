@@ -347,7 +347,7 @@ def submit_request_direct(request_obj):
                     # a (0): format - 0=short eV, 1=long eV, 3=short cm⁻¹, 4=long cm⁻¹
                     format_val = params.get('format', 'short')
                     energy = params.get('energyunit', 'eV')
-                    if energy == 'cm':
+                    if energy == '1/cm':
                         current_flags[0] = '4' if format_val == 'long' else '3'
                     else:
                         current_flags[0] = '1' if format_val == 'long' else '0'
@@ -366,7 +366,7 @@ def submit_request_direct(request_obj):
                     waveunit = params.get('waveunit', 'angstrom')
                     if waveunit == 'nm':
                         current_flags[10] = '1'
-                    elif waveunit == 'cm':
+                    elif waveunit == '1/cm':
                         current_flags[10] = '2'
                     else:
                         current_flags[10] = '0'
