@@ -200,7 +200,7 @@ class UserPreferences(models.Model):
     # Unit preferences - these map to pres_in flags
     ENERGY_CHOICES = [
         ('eV', 'eV'),
-        ('cm', 'cm⁻¹'),
+        ('1/cm', 'cm⁻¹'),
     ]
     MEDIUM_CHOICES = [
         ('air', 'Air (λ > 200nm)'),
@@ -209,7 +209,7 @@ class UserPreferences(models.Model):
     WAVEUNIT_CHOICES = [
         ('angstrom', 'Ångström'),
         ('nm', 'Nanometers'),
-        ('cm', 'cm⁻¹'),
+        ('1/cm', 'cm⁻¹'),
     ]
     VDWFORMAT_CHOICES = [
         ('default', 'Default (single value)'),
