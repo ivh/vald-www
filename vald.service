@@ -5,19 +5,19 @@ After=network.target
 [Service]
 Type=notify
 # Adjust user/group for production (e.g., www-data or vald)
-User=tom
-Group=tom
+User=vald
+Group=vald
 
 # Adjust WorkingDirectory to deployment path (e.g., /srv/vald-www or /var/www/vald)
-WorkingDirectory=/Users/tom/vald-www
+WorkingDirectory=/home/vald/vald-www.git
 
 # Environment variables
-Environment="VALD_HOME=/home/tom/VALD3"
-Environment="PATH=/Users/tom/vald-www/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="VALD_HOME=/home/vald/VALD3"
+Environment="PATH=/home/vald/vald-www.git/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 
 # Gunicorn command
-ExecStart=/Users/tom/vald-www/.venv/bin/gunicorn \
-    --bind unix:/var/run/vald.socket \
+ExecStart=/home/vald/vald-www.git/.venv/bin/gunicorn \
+    --bind unix:/run/vald/vald.socket \
     --workers 4 \
     --timeout 60 \
     --access-logfile - \
@@ -27,6 +27,10 @@ ExecStart=/Users/tom/vald-www/.venv/bin/gunicorn \
 # Restart policy
 Restart=on-failure
 RestartSec=5s
+
+#Runtime directory - systemd creates /run/vald/ owned by User
+RuntimeDirectory=vald
+RuntimeDirectoryMode=0755
 
 # Security hardening
 PrivateTmp=true
