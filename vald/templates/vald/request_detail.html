@@ -41,15 +41,15 @@
 </table>
 
 <h3>Request File</h3>
-<pre style="background-color: #f5f5f5; padding: 10px; overflow-x: auto; font-size: 0.85em;">{{ request_file_content }}</pre>
+<pre style="padding: 10px; overflow-x: auto; font-size: 0.85em;">{{ request_file_content }}</pre>
 
-<p> 
+<p>
     <a href="{% url 'vald:'|add:req.request_type %}?modify={{ req.uuid }}">Modify Request</a>
 </p>
 
 {% if output_content %}
 <h3>Results</h3>
-<pre style="background-color: #f5f5f5; padding: 10px; overflow-x: auto; font-size: 0.75em;">{{ output_content }}</pre>
+<pre style="padding: 10px; overflow-x: auto; font-size: 0.75em;">{{ output_content }}</pre>
 {% endif %}
 
 {% if req.is_complete and not output_ready %}
