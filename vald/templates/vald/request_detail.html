@@ -11,8 +11,12 @@
 <hr>
 
 <table border="0" cellpadding="5">
-<tr><td><b>Request ID:</b></td><td>{{ req.uuid }}</td></tr>
+<tr><td><b>Request ID:</b></td><td>{{ req.uuid }} (backend: {{ backend_id }})</td></tr>
 <tr><td><b>Type:</b></td><td>{{ req.request_type }}</td></tr>
+<tr><td><b>Submitted:</b></td><td>{{ req.created_at|date:"Y-m-d H:i:s" }}</td></tr>
+{% if req.completed_at %}
+<tr><td><b>Completed:</b></td><td>{{ req.completed_at|date:"Y-m-d H:i:s" }}</td></tr>
+{% endif %}
 <tr><td><b>Status:</b></td><td>
     {% if req.status == 'complete' %}
     <span style="color: green; font-weight: bold;">✓ Complete</span>
@@ -24,12 +28,16 @@
     <span style="color: gray;">⋯ Pending</span>
     {% endif %}
 </td></tr>
-<tr><td><b>Submitted:</b></td><td>{{ req.created_at|date:"Y-m-d H:i:s" }}</td></tr>
-{% if req.completed_at %}
-<tr><td><b>Completed:</b></td><td>{{ req.completed_at|date:"Y-m-d H:i:s" }}</td></tr>
-{% endif %}
 {% if queue_position %}
 <tr><td><b>Queue Position:</b></td><td>#{{ queue_position }}</td></tr>
+{% endif %}
+{% if req.is_complete and output_ready %}
+<tr><td><b>Download:</b></td><td>
+    <a href="{% url 'vald:download_request' req.uuid %}"><button>Results ({{ output_size }})</button></a>
+    {% if bib_output_ready %}
+    <a href="{% url 'vald:download_bib_request' req.uuid %}"><button>Bibliography ({{ bib_output_size }})</button></a>
+    {% endif %}
+</td></tr>
 {% endif %}
 </table>
 
@@ -40,22 +48,13 @@
 
 <hr>
 
-{% if req.is_complete and output_ready %}
-    <h3>✓ Results Ready</h3>
-    <p>Your results are ready for download.</p>
-    <p>
-        <a href="{% url 'vald:download_request' req.uuid %}"><button>Download Results ({{ output_size }})</button></a>
-        {% if bib_output_ready %}
-        <a href="{% url 'vald:download_bib_request' req.uuid %}"><button>Download Bibliography ({{ bib_output_size }})</button></a>
-        {% endif %}
-    </p>
+{% if output_content %}
+<h3>Results</h3>
+<pre style="background-color: #f5f5f5; padding: 10px; overflow-x: auto; font-size: 0.75em;">{{ output_content }}</pre>
+<hr>
+{% endif %}
 
-    {% if output_content %}
-    <hr>
-    <h3>Results</h3>
-    <pre style="background-color: #f5f5f5; padding: 10px; overflow-x: auto; font-size: 0.75em;">{{ output_content }}</pre>
-    {% endif %}
-{% elif req.is_complete %}
+{% if req.is_complete and not output_ready %}
     <p><i>Request completed but output file not found. Please contact support.</i></p>
 {% elif req.is_failed %}
     <h3>Request Failed</h3>
