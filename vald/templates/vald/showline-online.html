@@ -1,12 +1,12 @@
 {% extends "vald/base.html" %}
 
 {% block content %}
-<form name="bottomform" method="post" action="{% url 'vald:showline_online_submit' %}">
+<form name="bottomform" method="post" action="{% url 'vald:submit_request' %}">
 {% csrf_token %}
 <table border=0 cellpadding=0 width="100%">
 
 <tr><td colspan=3>
-<hr><h3>Show Line - ONLINE EXTRACTION - EXPERIMENTAL</h3><hr>
+<hr><h3>Show Line</h3><hr>
 
 <tr><td>Approximate wavelength<td>Wavelength window<td>Element [ +
 ionization ]
@@ -28,7 +28,7 @@ ionization ]
 <tr><td colspan=3><hr>
 
 <tr>
-<input type="hidden" name="reqtype" value="showline-online">
+<input type="hidden" name="reqtype" value="showline">
 <td><input type="submit" value="Submit request">
 
 </table>

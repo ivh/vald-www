@@ -482,7 +482,7 @@ def extractstellar(request):
 
 @require_login
 def showline(request):
-    """Show Line form"""
+    """Show Line form - uses simplified ONLINE form"""
     context = get_user_context(request)
     user = get_current_user(request)
 
@@ -502,16 +502,14 @@ def showline(request):
         except Request.DoesNotExist:
             messages.error(request, 'Request not found.')
 
-    context['form'] = ShowLineForm(initial=initial_data)
-    return render(request, 'vald/showline.html', context)
+    context['form'] = ShowLineOnlineForm(initial=initial_data)
+    return render(request, 'vald/showline-online.html', context)
 
 
 @require_login
 def showline_online(request):
-    """Show Line Online form"""
-    context = get_user_context(request)
-    context['form'] = ShowLineOnlineForm()
-    return render(request, 'vald/showline-online.html', context)
+    """Show Line form - same as showline()"""
+    return showline(request)
 
 
 @require_login
@@ -1259,6 +1257,15 @@ def request_detail(request, uuid):
         bib_output_ready = req_obj.bib_output_exists()
         bib_output_size = req_obj.get_bib_output_size() if bib_output_ready else None
 
+        # For showline requests, read and display output content inline
+        output_content = None
+        if req_obj.request_type == 'showline' and output_ready:
+            try:
+                with open(req_obj.output_file, 'r') as f:
+                    output_content = f.read()
+            except Exception:
+                pass
+
         # Calculate queue position (rough estimate)
         if req_obj.status == 'pending':
             queue_position = Request.objects.filter(
@@ -1275,6 +1282,7 @@ def request_detail(request, uuid):
             'bib_output_ready': bib_output_ready,
             'bib_output_size': bib_output_size,
             'queue_position': queue_position,
+            'output_content': output_content,
         })
 
         return render(request, 'vald/request_detail.html', context)
