@@ -8,7 +8,6 @@
 
 {% block content %}
 <h2>Request Details</h2>
-<hr>
 
 <table border="0" cellpadding="5">
 <tr><td><b>Request ID:</b></td><td>{{ req.uuid }} (backend: {{ backend_id }})</td></tr>
@@ -41,8 +40,6 @@
 {% endif %}
 </table>
 
-<hr>
-
 <h3>Request File</h3>
 <pre style="background-color: #f5f5f5; padding: 10px; overflow-x: auto; font-size: 0.85em;">{{ request_file_content }}</pre>
 
@@ -51,7 +48,6 @@
 {% if output_content %}
 <h3>Results</h3>
 <pre style="background-color: #f5f5f5; padding: 10px; overflow-x: auto; font-size: 0.75em;">{{ output_content }}</pre>
-<hr>
 {% endif %}
 
 {% if req.is_complete and not output_ready %}
@@ -72,7 +68,6 @@
     <p><i>Processing typically takes a few minutes. You can close this page and return later.</i></p>
 {% endif %}
 
-<hr>
 
 <h3>Request Parameters</h3>
 <details>
