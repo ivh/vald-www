@@ -503,7 +503,7 @@ def showline(request):
             messages.error(request, 'Request not found.')
 
     context['form'] = ShowLineOnlineForm(initial=initial_data)
-    return render(request, 'vald/showline-online.html', context)
+    return render(request, 'vald/showline.html', context)
 
 
 @require_login
@@ -512,89 +512,7 @@ def showline_online(request):
     return showline(request)
 
 
-@require_login
-def showline_online_submit(request):
-    """Execute Show Line Online and display results"""
-    import subprocess
-
-    context = get_user_context(request)
-
-    if request.method != 'POST':
-        return redirect('vald:showline_online')
-
-    # Validate form
-    form = ShowLineOnlineForm(request.POST)
-    if not form.is_valid():
-        # Show form errors with field names
-        for field, errors in form.errors.items():
-            for error in errors:
-                field_label = form.fields[field].label if field in form.fields else field
-                messages.error(request, f"{field_label}: {error}")
-        context['form'] = form
-        return render(request, 'vald/showline-online.html', context)
-
-    # Get validated form data
-    wvl0 = form.cleaned_data['wvl0']
-    win0 = form.cleaned_data['win0']
-    el0 = form.cleaned_data['el0']
-    pconf = form.cleaned_data['pconf']
-    isotopic_scaling = form.cleaned_data['isotopic_scaling']
-
-    # Determine config file to use
-    user = get_current_user(request)
-    if pconf == 'personal' and user and user.client_name:
-        # Try to get user's personal config file
-        user_config_path = settings.PERSCONFIG_DIR / f"{user.client_name}.cfg"
-        if user_config_path.exists():
-            configfile = str(user_config_path)
-            note = None
-        else:
-            configfile = str(settings.PERSCONFIG_DEFAULT)
-            note = "NOTE: Personal configuration file does not exist. Using default configuration instead."
-    else:
-        configfile = str(settings.PERSCONFIG_DEFAULT)
-        note = None
-
-    # Build request content (same format as showline-online-req.txt)
-    request_content = f"{wvl0}, {win0}\n{el0}\n{configfile}\n"
-
-    # Build command arguments
-    args = [str(settings.VALD_SHOWLINE_BIN), '-html']
-    if isotopic_scaling == 'off':
-        args.append('-noisotopic')
-
-    # Execute the showline binary
-    try:
-        if not settings.VALD_SHOWLINE_BIN.exists():
-            messages.error(request, f'Show Line binary not found at: {settings.VALD_SHOWLINE_BIN}')
-            return redirect('vald:showline_online')
-
-        process = subprocess.Popen(
-            args,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-
-        stdout, stderr = process.communicate(input=request_content, timeout=30)
-
-        if process.returncode != 0:
-            messages.error(request, f'Show Line execution failed with return code {process.returncode}. Error: {stderr}')
-            return redirect('vald:showline_online')
-
-        context['output'] = stdout
-        context['note'] = note
-        if note:
-            messages.warning(request, note)
-        return render(request, 'vald/showline-online-result.html', context)
-
-    except subprocess.TimeoutExpired:
-        messages.error(request, 'Show Line execution timed out (30 seconds)')
-        return redirect('vald:showline_online')
-    except Exception as e:
-        messages.error(request, f'Error executing Show Line: {e}')
-        return redirect('vald:showline_online')
+# Removed - showline now uses queue like other extracts
 
 
 def submit_request(request):

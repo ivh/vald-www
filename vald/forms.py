@@ -542,7 +542,7 @@ the world."""
 
 
 class ShowLineOnlineForm(forms.Form):
-    """Show Line Online form - single wavelength/window/element set for immediate execution"""
+    """Show Line form - single wavelength/window/element set"""
     wvl0 = forms.FloatField(
         label='Approximate wavelength',
         required=True,
@@ -561,6 +561,12 @@ class ShowLineOnlineForm(forms.Form):
         required=True,
         max_length=20,
         widget=forms.TextInput(attrs={'size': '5'})
+    )
+    viaftp = forms.ChoiceField(
+        label='Retrieve data via',
+        choices=[('ftp', 'Download only'), ('email', 'Email')],
+        initial='ftp',
+        widget=forms.RadioSelect
     )
     pconf = forms.ChoiceField(
         label='Linelist configuration',

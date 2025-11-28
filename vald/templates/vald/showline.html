@@ -13,26 +13,14 @@ ionization ]
 <tr><td>{{ form.wvl0 }}  &Aring; (air)
 <td>{{ form.win0 }}  &Aring; (air)
 <td>{{ form.el0 }}
-<tr><td>{{ form.wvl1 }}  &Aring; (air)
-<td>{{ form.win1 }}  &Aring; (air)
-<td>{{ form.el1 }}
-<tr><td>{{ form.wvl2 }}  &Aring; (air)
-<td>{{ form.win2 }}  &Aring; (air)
-<td>{{ form.el2 }}
-<tr><td>{{ form.wvl3 }}  &Aring; (air)
-<td>{{ form.win3 }}  &Aring; (air)
-<td>{{ form.el3 }}
-<tr><td>{{ form.wvl4 }}  &Aring; (air)
-<td>{{ form.win4 }}  &Aring; (air)
-<td>{{ form.el4 }}
 
 <tr><td colspan=3><hr>
 <tr><td>Retrieve data via
-<td>{% for radio in form.viaftp %}<div>{{ radio }}</div>{% endfor %}
+<td colspan=2>{% for radio in form.viaftp %}<div>{{ radio }}</div>{% endfor %}
 
 <tr><td colspan=3><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
+<td colspan=2>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
 
 <tr><td colspan=3><hr>
 <tr><td>Isotopic scaling of oscillator strength
@@ -40,12 +28,7 @@ ionization ]
 <td>
 <i>(Takes precendence over the default value set in the
 <a href="{% url 'vald:unitselection' %}">unit selection</a> dialog)</i>
-<tr><td colspan=3><hr>
-<tr><td>Hyperfine structure<td>{{ form.hfssplit }} Include HFS splitting
-<td><i>(Only those HFS components that fall into selected window will be shown)</i>
 
-<tr><td colspan=3><hr>
-<tr><td>Optional comment for request<td colspan=2>{{ form.subject }}
 <tr><td colspan=3><hr>
 
 <tr>
