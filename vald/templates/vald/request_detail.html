@@ -63,7 +63,7 @@
     {% else %}
     <p>The request failed during processing. Please try again or contact support.</p>
     {% endif %}
-{% else %}
+{% elif not req.is_complete %}
     <h3>Request in Progress</h3>
     <p>Your request is being processed. This page will automatically refresh every 10 seconds.</p>
     {% if queue_position %}
