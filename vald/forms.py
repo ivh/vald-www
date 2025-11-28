@@ -564,8 +564,8 @@ class ShowLineOnlineForm(forms.Form):
     )
     viaftp = forms.ChoiceField(
         label='Retrieve data via',
-        choices=[('ftp', 'Download only'), ('email', 'Email')],
-        initial='ftp',
+        choices=[('via ftp', 'Download'), ('email', 'Email')],
+        initial='via ftp',
         widget=forms.RadioSelect
     )
     pconf = forms.ChoiceField(
