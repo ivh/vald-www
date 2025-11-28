@@ -19,6 +19,11 @@ if (("{{ waveunit }}" == "1/cm")                               ) {wavelabel1 = "
 
 <tr><td colspan=2>
 <hr><h3>Extract All</h3><hr>
+
+<tr><td><a href="{% url 'vald:unitselection' %}">Unit selection</a>
+<td><i>Energy unit: {{ energyunit }} - Medium: {{ medium }} - Wavelength unit: {{ waveunit }} - VdW syntax: {{ vdwformat }}</i>
+<tr><td colspan=2><hr>
+
 <p><tr><td>Starting <script>document.write(wavelabel1);</script> :
 <td>{{ form.stwvl }} <script>document.write(wavelabel2);</script>
 
@@ -44,9 +49,6 @@ if (("{{ waveunit }}" == "1/cm")                               ) {wavelabel1 = "
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
 <td>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
 
-<tr><td colspan=2><hr>
-<tr><td><a href="{% url 'vald:unitselection' %}">Unit selection</a>
-<td><i>Energy unit: {{ energyunit }} - Medium: {{ medium }} - Wavelength unit: {{ waveunit }} - VdW syntax: {{ vdwformat }}</i>
 <tr><td colspan=2><hr>
 <tr><td>Optional comment for request<td>{{ form.subject }}
 <tr><td colspan=2><hr>
