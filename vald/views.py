@@ -1156,6 +1156,8 @@ def my_requests(request):
 @require_login
 def request_detail(request, uuid):
     """Show details of a specific request"""
+    from .backend import format_request_file
+
     context = get_user_context(request)
     user = get_current_user(request)
 
@@ -1166,6 +1168,9 @@ def request_detail(request, uuid):
         if req_obj.user_id != user.id:
             messages.error(request, 'You do not have permission to view this request.')
             return redirect('vald:my_requests')
+
+        # Format request file content for display
+        request_file_content = format_request_file(req_obj)
 
         # Check if output file exists
         output_ready = req_obj.output_exists()
@@ -1195,6 +1200,7 @@ def request_detail(request, uuid):
 
         context.update({
             'req': req_obj,
+            'request_file_content': request_file_content,
             'output_ready': output_ready,
             'output_size': output_size,
             'bib_output_ready': bib_output_ready,
