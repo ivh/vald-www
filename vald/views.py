@@ -735,7 +735,14 @@ def handle_extract_request(request):
             f'Server is busy processing requests ({current_count}/{max_size} in queue). '
             'Please try again in a few minutes.'
         )
-        return render(request, template, context)
+        context['form'] = form
+        template_map = {
+            'extractall': 'vald/extractall.html',
+            'extractelement': 'vald/extractelement.html',
+            'extractstellar': 'vald/extractstellar.html',
+            'showline': 'vald/showline.html',
+        }
+        return render(request, template_map[reqtype], context)
 
     # Create Request record for tracking
     req_obj = Request.objects.create(
