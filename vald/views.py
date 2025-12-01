@@ -742,7 +742,7 @@ def handle_extract_request(request):
 
         try:
             # Import here to avoid circular imports
-            from .backend import submit_request_direct
+            from .backend import submit_request_direct, QueueFullError, notify_queue_full
 
             # Update status to processing
             req_obj.status = 'processing'
@@ -831,6 +831,13 @@ Vienna Atomic Line Database (VALD)
                 req_obj.status = 'failed'
                 req_obj.error_message = result
                 req_obj.save()
+
+        except QueueFullError as e:
+            # Queue is full - notify webmaster and mark request as failed
+            notify_queue_full()
+            req_obj.status = 'failed'
+            req_obj.error_message = str(e)
+            req_obj.save()
 
         except Exception as e:
             # Mark request as failed

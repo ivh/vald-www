@@ -163,4 +163,5 @@ VALD_SHOWLINE_BIN = VALD_BIN / 'showline4.1'  # parserequest binary
 VALD_PARSEREQUEST_BIN = VALD_BIN / 'parserequest'  # parserequest binary
 VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request processing
 VALD_FTP_DIR = VALD_HOME / 'WWW' / 'public_html' / 'FTP'  # Output directory for results
-VALD_MAX_WORKERS = 5 # Maximum parallel job executions (FIFO queue)
+VALD_MAX_WORKERS = 5  # Maximum parallel job executions (FIFO queue)
+VALD_MAX_QUEUE_SIZE = 10  # Maximum pending jobs in queue before rejecting new requests

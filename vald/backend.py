@@ -9,6 +9,12 @@ import queue
 import threading
 from pathlib import Path
 from django.conf import settings
+from django.core.mail import send_mail
+
+
+class QueueFullError(Exception):
+    """Raised when job queue is full and cannot accept new requests."""
+    pass
 
 
 class JobQueue:
@@ -19,15 +25,17 @@ class JobQueue:
     Jobs submitted while workers are busy will wait in queue.
     """
 
-    def __init__(self, max_workers=2):
+    def __init__(self, max_workers=2, max_queue_size=10):
         """
         Initialize job queue with worker threads.
 
         Args:
             max_workers: Maximum number of jobs to run in parallel (default: 2)
+            max_queue_size: Maximum number of jobs waiting in queue (default: 10)
         """
-        self.job_queue = queue.Queue()
+        self.job_queue = queue.Queue(maxsize=max_queue_size)
         self.max_workers = max_workers
+        self.max_queue_size = max_queue_size
         self.workers = []
         self._start_workers()
 
@@ -65,10 +73,17 @@ class JobQueue:
             Result from job_func()
 
         Raises:
+            QueueFullError: If queue is full and cannot accept new jobs
             Exception: If job_func raises an exception
         """
         result_queue = queue.Queue()
-        self.job_queue.put((job_func, result_queue))
+        try:
+            self.job_queue.put_nowait((job_func, result_queue))
+        except queue.Full:
+            raise QueueFullError(
+                f"Server is busy processing requests. Queue limit ({self.max_queue_size}) reached. "
+                "Please try again in a few minutes."
+            )
         status, result = result_queue.get()
 
         if status == 'error':
@@ -95,9 +110,33 @@ def get_job_queue():
             # Double-check locking pattern
             if _job_queue is None:
                 max_workers = getattr(settings, 'VALD_MAX_WORKERS', 2)
-                _job_queue = JobQueue(max_workers)
+                max_queue_size = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
+                _job_queue = JobQueue(max_workers, max_queue_size)
 
     return _job_queue
+
+
+def notify_queue_full():
+    """Send email notification to webmaster when queue is full."""
+    webmaster_email = getattr(settings, 'VALD_WEBMASTER_EMAIL', None)
+    if not webmaster_email:
+        return
+
+    try:
+        send_mail(
+            subject='[VALD] Job queue full - requests being rejected',
+            message=(
+                'The VALD job queue has reached its maximum size and is rejecting new requests.\n\n'
+                'This may indicate high load or stuck jobs. Please check the server.\n\n'
+                f'Queue settings: VALD_MAX_QUEUE_SIZE={getattr(settings, "VALD_MAX_QUEUE_SIZE", 10)}, '
+                f'VALD_MAX_WORKERS={getattr(settings, "VALD_MAX_WORKERS", 2)}'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[webmaster_email],
+            fail_silently=True,
+        )
+    except Exception:
+        pass  # Don't let email failure break request handling
 
 
 def uuid_to_6digit(uuid_obj):
