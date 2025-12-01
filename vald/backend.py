@@ -139,6 +139,27 @@ def notify_queue_full():
         pass  # Don't let email failure break request handling
 
 
+def check_queue_capacity():
+    """
+    Check if the job queue has capacity for new requests.
+    Only counts requests from the last 30 minutes to avoid stuck requests blocking the queue.
+    
+    Returns:
+        tuple: (has_capacity: bool, current_count: int, max_size: int)
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import Request
+    
+    cutoff = timezone.now() - timedelta(minutes=30)
+    pending_count = Request.objects.filter(
+        status__in=['pending', 'processing'],
+        created_at__gte=cutoff
+    ).count()
+    max_queue_size = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
+    return (pending_count < max_queue_size, pending_count, max_queue_size)
+
+
 def uuid_to_6digit(uuid_obj):
     """
     Convert a UUID to a 6-digit number for legacy backend compatibility.

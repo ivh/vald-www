@@ -725,6 +725,18 @@ def handle_extract_request(request):
     request_params = form.cleaned_data.copy()
     request_params.update(prefs.as_dict())
 
+    # Check queue capacity before creating request
+    from .backend import check_queue_capacity, notify_queue_full
+    has_capacity, current_count, max_size = check_queue_capacity()
+    if not has_capacity:
+        notify_queue_full()
+        messages.error(
+            request,
+            f'Server is busy processing requests ({current_count}/{max_size} in queue). '
+            'Please try again in a few minutes.'
+        )
+        return render(request, template, context)
+
     # Create Request record for tracking
     req_obj = Request.objects.create(
         user=user,
@@ -742,7 +754,7 @@ def handle_extract_request(request):
 
         try:
             # Import here to avoid circular imports
-            from .backend import submit_request_direct, QueueFullError, notify_queue_full
+            from .backend import submit_request_direct
 
             # Update status to processing
             req_obj.status = 'processing'
@@ -831,13 +843,6 @@ Vienna Atomic Line Database (VALD)
                 req_obj.status = 'failed'
                 req_obj.error_message = result
                 req_obj.save()
-
-        except QueueFullError as e:
-            # Queue is full - notify webmaster and mark request as failed
-            notify_queue_full()
-            req_obj.status = 'failed'
-            req_obj.error_message = str(e)
-            req_obj.save()
 
         except Exception as e:
             # Mark request as failed

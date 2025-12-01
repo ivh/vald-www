@@ -8,17 +8,23 @@ from .models import Request, User, UserEmail, UserPreferences
 
 
 def get_queue_stats():
-    """Get current job queue statistics."""
-    try:
-        from .backend import get_job_queue
-        jq = get_job_queue()
-        return {
-            'queue_size': jq.job_queue.qsize(),
-            'max_queue_size': jq.max_queue_size,
-            'max_workers': jq.max_workers,
-        }
-    except Exception:
-        return None
+    """Get current job queue statistics from database."""
+    from django.utils import timezone
+    from datetime import timedelta
+    from .models import Request
+    
+    cutoff = timezone.now() - timedelta(minutes=30)
+    pending_count = Request.objects.filter(
+        status__in=['pending', 'processing'],
+        created_at__gte=cutoff
+    ).count()
+    max_queue_size = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
+    max_workers = getattr(settings, 'VALD_MAX_WORKERS', 2)
+    return {
+        'queue_size': pending_count,
+        'max_queue_size': max_queue_size,
+        'max_workers': max_workers,
+    }
 
 
 class HasPasswordFilter(admin.SimpleListFilter):
