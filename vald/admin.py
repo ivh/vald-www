@@ -7,6 +7,20 @@ from django import forms
 from .models import Request, User, UserEmail, UserPreferences
 
 
+def get_queue_stats():
+    """Get current job queue statistics."""
+    try:
+        from .backend import get_job_queue
+        jq = get_job_queue()
+        return {
+            'queue_size': jq.job_queue.qsize(),
+            'max_queue_size': jq.max_queue_size,
+            'max_workers': jq.max_workers,
+        }
+    except Exception:
+        return None
+
+
 class HasPasswordFilter(admin.SimpleListFilter):
     title = 'has password'
     parameter_name = 'has_password'
@@ -78,6 +92,12 @@ class RequestAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at', 'completed_at')
         }),
     )
+
+    def changelist_view(self, request, extra_context=None):
+        """Add queue stats to the changelist view."""
+        extra_context = extra_context or {}
+        extra_context['queue_stats'] = get_queue_stats()
+        return super().changelist_view(request, extra_context=extra_context)
 
     def get_user_email(self, obj):
         """Display user's primary email"""
