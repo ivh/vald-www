@@ -20,12 +20,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-b78@6-7-x-+3y9cu82==f(4q!juta8elrb8hjp$y4plpw6ale3"
+# see secrets.txt
+SECRET_KEY = os.environ["SECRET_KEY"]
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-DEBUG = False
+DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1')
 
 ALLOWED_HOSTS = ['vald.astro.uu.se','localhost','127.0.0.1']
 
@@ -141,6 +140,9 @@ EMAIL_USE_TLS = False
 DEFAULT_FROM_EMAIL = 'vald@physics.uu.se'
 VALD_ADMIN_EMAIL = 'thomas.marquart@physics.uu.se'
 VALD_WEBMASTER_EMAIL = 'thomas.marquart@physics.uu.se'
+# Use os.environ["VALD_WEBMASTER_PASSWORD"] and set it in secrets.txt, if needed
+# It gets read by systemd service file.
+
 
 # VALD-specific configuration
 VALD_HOME = Path(os.getenv('VALD_HOME', ''))

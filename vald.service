@@ -4,14 +4,11 @@ After=network.target
 
 [Service]
 Type=notify
-# Adjust user/group for production (e.g., www-data or vald)
 User=vald
 Group=vald
 
-# Adjust WorkingDirectory to deployment path (e.g., /srv/vald-www or /var/www/vald)
 WorkingDirectory=/home/vald/vald-www.git
-
-# Environment variables
+EnvironmentFile=/home/vald/vald-www.git/secrets.txt
 Environment="VALD_HOME=/home/vald/VALD3"
 Environment="PATH=/home/vald/vald-www.git/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 
