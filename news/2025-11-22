@@ -1,4 +1,21 @@
-<h3>New Website</h3>
+<h3>New VALD front-end</h3>
 
+<p>Welcome to the new VALD! The website was put on new technical underpinnings. Everything should feel familiar but
+please note that</p>
+
+<p>
+<ul>
+<li>You do not need to register anew, but to set a password. Simply leave it empty the first time
+ you try logging in, and you will get an activation link to your email. This allows you to
+ set the password that you then use for future logins.</li>
+<li>Under "My Requests" you can now see the status and download links of your queries.</li>
+<li>The "Modify"-link allows to re-fill the fiedls with the values from an earlier query, then edit and re-submit.</li>
+<li>Requests are now handled immediately and and in parallel, so results should appear quicker. Some queries can
+ however still take minutes to finish.</li>
+</ul>
+</p>
+<p>
+For feedback and bug-reports, please feel free to contact us the usual way.
+</p>
 
 describe password transition process...
