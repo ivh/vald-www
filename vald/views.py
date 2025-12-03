@@ -1022,14 +1022,18 @@ def news(request, newsitem=None):
     # Build file list for navigation
     file_list = [Path(f).name for f in news_files]
 
+    # Base URL for resolving relative links in news content
+    base_url = reverse('vald:index')
+
     # If newsitem is None, show all news items
     if newsitem is None:
         all_news = []
         for news_file in news_files:
             with open(news_file, 'r') as f:
+                content = f.read().replace('href="doc/', f'href="{base_url}doc/')
                 all_news.append({
                     'filename': Path(news_file).name,
-                    'content': f.read()
+                    'content': content
                 })
 
         context.update({
@@ -1045,7 +1049,7 @@ def news(request, newsitem=None):
 
         # Read news content
         with open(news_files[newsitem], 'r') as f:
-            news_content = f.read()
+            news_content = f.read().replace('href="doc/', f'href="{base_url}doc/')
 
         context.update({
             'show_all': False,
