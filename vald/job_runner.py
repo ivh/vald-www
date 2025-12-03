@@ -204,19 +204,24 @@ class JobRunner:
             cwd=cwd
         )
         
-        # Pipe to presformat
-        with open(output_file, 'w') as out:
-            presformat_proc = subprocess.Popen(
-                [str(self.presformat)],
-                stdin=preselect_proc.stdout,
-                stdout=out,
-                stderr=subprocess.PIPE,
-                cwd=cwd
-            )
+        # Pipe to presformat, writing to output file
+        out = open(output_file, 'w')
+        presformat_proc = subprocess.Popen(
+            [str(self.presformat)],
+            stdin=preselect_proc.stdout,
+            stdout=out,
+            stderr=subprocess.PIPE,
+            cwd=cwd
+        )
         
-        # Wait for completion
+        # Close preselect's stdout in parent to allow SIGPIPE
         preselect_proc.stdout.close()
+        
+        # Wait for presformat to complete
         _, presformat_stderr = presformat_proc.communicate(timeout=3600)
+        out.close()
+        
+        # Wait for preselect
         preselect_proc.wait()
         
         if preselect_proc.returncode != 0:
@@ -265,18 +270,19 @@ class JobRunner:
         presformat_proc.stdout.close()
         
         # Pipe to post_hfs_format
-        with open(output_file, 'w') as out:
-            post_hfs_proc = subprocess.Popen(
-                [str(self.post_hfs_format)],
-                stdin=hfs_proc.stdout,
-                stdout=out,
-                stderr=subprocess.PIPE,
-                cwd=cwd
-            )
+        out = open(output_file, 'w')
+        post_hfs_proc = subprocess.Popen(
+            [str(self.post_hfs_format)],
+            stdin=hfs_proc.stdout,
+            stdout=out,
+            stderr=subprocess.PIPE,
+            cwd=cwd
+        )
         hfs_proc.stdout.close()
         
         # Wait for completion
         _, post_hfs_stderr = post_hfs_proc.communicate(timeout=3600)
+        out.close()
         hfs_proc.wait()
         presformat_proc.wait()
         preselect_proc.wait()
@@ -341,17 +347,18 @@ class JobRunner:
                     )
                     select_proc.stdout.close()
                     
-                    with open(output_file, 'w') as out:
-                        post_hfs_proc = subprocess.Popen(
-                            [str(self.post_hfs_format)],
-                            stdin=hfs_proc.stdout,
-                            stdout=out,
-                            stderr=subprocess.PIPE,
-                            cwd=config.job_dir
-                        )
+                    out = open(output_file, 'w')
+                    post_hfs_proc = subprocess.Popen(
+                        [str(self.post_hfs_format)],
+                        stdin=hfs_proc.stdout,
+                        stdout=out,
+                        stderr=subprocess.PIPE,
+                        cwd=config.job_dir
+                    )
                     hfs_proc.stdout.close()
                     
                     _, stderr = post_hfs_proc.communicate(timeout=3600)
+                    out.close()
                     hfs_proc.wait()
                     select_proc.wait()
                     preselect_proc.wait()
@@ -365,17 +372,18 @@ class JobRunner:
                         shutil.move(str(select_bib), str(bib_file))
                 else:
                     # preselect | select
-                    with open(output_file, 'w') as out:
-                        select_proc = subprocess.Popen(
-                            [str(self.select)],
-                            stdin=preselect_proc.stdout,
-                            stdout=out,
-                            stderr=subprocess.PIPE,
-                            cwd=config.job_dir
-                        )
+                    out = open(output_file, 'w')
+                    select_proc = subprocess.Popen(
+                        [str(self.select)],
+                        stdin=preselect_proc.stdout,
+                        stdout=out,
+                        stderr=subprocess.PIPE,
+                        cwd=config.job_dir
+                    )
                     preselect_proc.stdout.close()
                     
                     _, stderr = select_proc.communicate(timeout=3600)
+                    out.close()
                     preselect_proc.wait()
                     
                     if select_proc.returncode != 0:
