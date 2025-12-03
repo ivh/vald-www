@@ -1204,7 +1204,7 @@ def request_detail(request, uuid):
         # Calculate backend ID (6-digit hash of UUID)
         backend_id = uuid_to_6digit(req_obj.uuid)
 
-        # Format request file content for display
+        # Format request parameters for display (email format for copy-paste)
         request_file_content = format_request_file(req_obj)
 
         # Check if output file exists

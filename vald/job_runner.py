@@ -79,26 +79,14 @@ def get_config_path_for_user(user, job_dir: Path, use_personal: bool = True) -> 
     """
     from vald.models import Config
     
-    # Check if we should use database configs
-    use_db_config = getattr(settings, 'VALD_USE_DB_CONFIG', False)
-    
-    if not use_db_config:
-        # Use file-based config
-        if use_personal and user:
-            personal_config = settings.PERSCONFIG_DIR / f"{user.client_name}.cfg"
-            if personal_config.exists():
-                return str(personal_config)
-        return str(settings.PERSCONFIG_DEFAULT)
-    
-    # Use database config
+    # Get config from database
     if use_personal:
         config = Config.get_user_config(user)
     else:
         config = Config.get_default_config()
     
     if not config:
-        # Fall back to file
-        return str(settings.PERSCONFIG_DEFAULT)
+        raise ValueError("No default config found in database")
     
     # Generate temp config file
     temp_config_path = job_dir / 'config.cfg'

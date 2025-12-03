@@ -221,21 +221,6 @@ def get_config_path_for_user(user, job_dir, use_personal=True):
 
 ---
 
-## Integration with Backend
-
-The backend dispatches to either the new or legacy system:
-
-```python
-# In backend.py
-def submit_request_direct(request_obj, params, client_name, user):
-    if getattr(settings, 'VALD_USE_JOB_RUNNER', False):
-        return _submit_with_job_runner(request_obj, params, client_name, user)
-    else:
-        return _submit_with_parserequest(request_obj, params, client_name, user)
-```
-
----
-
 ## Benefits of the New System
 
 1. **No C compilation**: Pure Python, works on any platform with Python 3.11+
@@ -248,23 +233,11 @@ def submit_request_direct(request_obj, params, client_name, user):
 
 ---
 
-## Settings
-
-```python
-# Enable Python job runner (default: True)
-VALD_USE_JOB_RUNNER = True
-
-# Enable database configs (default: True)
-VALD_USE_DB_CONFIG = True
-```
-
----
-
 ## File Locations
 
 - **Job runner**: `vald/job_runner.py`
 - **Config models**: `vald/models.py` (Linelist, Config, ConfigLinelist)
-- **Backend dispatch**: `vald/backend.py`
+- **Backend**: `vald/backend.py`
 - **Fortran binaries**: `$VALD_BIN/` (preselect5, presformat5, select5, etc.)
 
 ---
