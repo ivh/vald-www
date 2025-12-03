@@ -758,6 +758,10 @@ def handle_extract_request(request):
     def process_request_background():
         """Process request in background thread"""
         from django.core.mail import send_mail
+        from django import db
+
+        # Close inherited DB connections from parent thread
+        db.connections.close_all()
 
         try:
             # Import here to avoid circular imports
