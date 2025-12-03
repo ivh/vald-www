@@ -480,7 +480,8 @@ class Config(models.Model):
         lines = []
         
         # Line 1: global parameters
-        lines.append(f"{self.wl_window_ref},{self.wl_ref}.,{self.max_ionization},{self.max_excitation_eV}")
+        # Format: wl_window,wl_ref.,max_ion,max_exc.
+        lines.append(f"{self.wl_window_ref},{self.wl_ref:.0f}.,{self.max_ionization},{self.max_excitation_eV:.0f}.")
         
         # Linelist lines (sorted by priority)
         for cl in self.configlinelist_set.select_related('linelist').order_by('priority'):
