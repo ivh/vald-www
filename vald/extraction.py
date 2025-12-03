@@ -368,12 +368,12 @@ def _merge_lines_full(
             # Past wavelength window - stop searching
             if wl_k - wl_i > wl_window:
                 break
-            
+
             # Skip already-used or non-mergeable lines
             if used[k] or not all_mergeable[k]:
                 k += 1
                 continue
-            
+
             # Check forbid flag compatibility (Fortran logic from preselect5.f90:1192-1195)
             # Don't merge if one is forbidden and other is allowed (unless autoionizing)
             # Note: forbid flags only apply to atoms (species < 10000). Molecules use
@@ -391,7 +391,7 @@ def _merge_lines_full(
                 if not forbid_compatible:
                     k += 1
                     continue
-            
+
             # Check if lines are equivalent
             if _lines_are_equivalent(
                 wl_i, species_i, all_j_lower[i], all_j_upper[i], all_e_upper[i], linelist_i,
@@ -415,6 +415,8 @@ def _merge_lines_full(
                         all_ranks,
                     )
                     used[k] = True
+                    # Clear replacement_list flag on survivor (Fortran line 1411)
+                    all_is_replacement_list[i] = False
                 else:
                     # Line k is primary (better wavelength), merge i into k
                     _merge_parameters(
@@ -425,6 +427,8 @@ def _merge_lines_full(
                         all_ranks,
                     )
                     used[i] = True
+                    # Clear replacement_list flag on survivor (Fortran line 1408)
+                    all_is_replacement_list[k] = False
                     break  # Line i is now used, move to next
             
             k += 1
