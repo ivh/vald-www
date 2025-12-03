@@ -51,6 +51,14 @@ class LineData:
     # Merge flags per line
     mergeable: Optional[np.ndarray] = None  # bool array
     
+    # Replacement list flag - lines from replacement lists only provide parameters,
+    # they don't create new output lines if unmerged
+    is_replacement_list: Optional[np.ndarray] = None  # bool array
+    
+    # Forbidden line flag - character at position 191 of info string
+    # ' ' = allowed, 'A' = autoionizing, other = forbidden with selection rule
+    forbid_flag: Optional[np.ndarray] = None  # uint8 array (ASCII char codes)
+    
     @property
     def nlines(self) -> int:
         return len(self.wavelength)
@@ -83,6 +91,7 @@ class LineData:
         linelist_idx: int = 0,
         ranks: Optional[tuple] = None,
         mergeable: bool = True,
+        is_replacement_list: bool = False,
     ) -> 'LineData':
         """
         Create LineData from VALD3Reader.query_range() result.
@@ -92,6 +101,7 @@ class LineData:
             linelist_idx: Index of source linelist
             ranks: Tuple of 9 rank values (wl, gf, E_low, E_high, lande, rad, stark, vdw, term)
             mergeable: Whether lines from this source can be merged
+            is_replacement_list: If True, lines only provide parameters, not new output lines
         """
         if result['nlines'] == 0:
             return cls.empty()
@@ -103,6 +113,16 @@ class LineData:
             rank_array = np.tile(np.array(ranks, dtype=np.int8), (nlines, 1))
         else:
             rank_array = np.full((nlines, 9), 3, dtype=np.int8)  # Default rank 3
+        
+        # Extract forbid flag from string_data position 190 (Fortran position 191)
+        # ' ' = allowed, 'A' = autoionizing, other = forbidden with selection rule
+        forbid_array = np.full(nlines, ord(' '), dtype=np.uint8)
+        string_data = result.get('string_data')
+        if string_data and len(string_data) >= nlines:
+            line_len = len(string_data) // nlines
+            if line_len >= 191:  # Need at least 191 bytes per line
+                for i in range(nlines):
+                    forbid_array[i] = string_data[i * line_len + 190]
         
         return cls(
             wavelength=np.asarray(result['wavelength'], dtype=np.float64),
@@ -117,10 +137,12 @@ class LineData:
             gamma_rad=np.asarray(result['gamma_rad'], dtype=np.float32),
             gamma_stark=np.asarray(result['gamma_stark'], dtype=np.float32),
             gamma_vdw=np.asarray(result['gamma_vdw'], dtype=np.float32),
-            string_data=result.get('string_data'),
+            string_data=string_data,
             linelist_idx=np.full(nlines, linelist_idx, dtype=np.int32),
             ranks=rank_array,
             mergeable=np.full(nlines, mergeable, dtype=bool),
+            is_replacement_list=np.full(nlines, is_replacement_list, dtype=bool),
+            forbid_flag=forbid_array,
         )
     
     def filter_by_species(self, species_codes: list[int]) -> 'LineData':
@@ -155,6 +177,8 @@ class LineData:
             linelist_idx=self.linelist_idx[mask] if self.linelist_idx is not None else None,
             ranks=self.ranks[mask] if self.ranks is not None else None,
             mergeable=self.mergeable[mask] if self.mergeable is not None else None,
+            is_replacement_list=self.is_replacement_list[mask] if self.is_replacement_list is not None else None,
+            forbid_flag=self.forbid_flag[mask] if self.forbid_flag is not None else None,
         )
 
 
@@ -288,6 +312,8 @@ def _merge_lines_full(
     all_linelist_idx = np.concatenate([ld.linelist_idx for ld in line_lists])
     all_ranks = np.concatenate([ld.ranks for ld in line_lists])
     all_mergeable = np.concatenate([ld.mergeable for ld in line_lists])
+    all_is_replacement_list = np.concatenate([ld.is_replacement_list for ld in line_lists])
+    all_forbid = np.concatenate([ld.forbid_flag for ld in line_lists])
     
     n = len(all_wl)
     
@@ -308,6 +334,8 @@ def _merge_lines_full(
     all_linelist_idx = all_linelist_idx[sort_idx]
     all_ranks = all_ranks[sort_idx]
     all_mergeable = all_mergeable[sort_idx]
+    all_is_replacement_list = all_is_replacement_list[sort_idx]
+    all_forbid = all_forbid[sort_idx]
     
     # Track which lines have been merged into another
     used = np.zeros(n, dtype=bool)
@@ -346,6 +374,24 @@ def _merge_lines_full(
                 k += 1
                 continue
             
+            # Check forbid flag compatibility (Fortran logic from preselect5.f90:1192-1195)
+            # Don't merge if one is forbidden and other is allowed (unless autoionizing)
+            # Note: forbid flags only apply to atoms (species < 10000). Molecules use
+            # position 191 for parity/branch info, so we skip this check for molecules.
+            forbid_i = all_forbid[i]
+            forbid_k = all_forbid[k]
+            SPACE = ord(' ')
+            AUTO = ord('A')
+            is_molecule = (species_i >= 10000)
+            if not is_molecule:
+                # For atoms: Allow merge if same forbid flag, or one is autoionizing and other is allowed
+                forbid_compatible = (forbid_i == forbid_k) or \
+                                   (forbid_i == AUTO and forbid_k == SPACE) or \
+                                   (forbid_i == SPACE and forbid_k == AUTO)
+                if not forbid_compatible:
+                    k += 1
+                    continue
+            
             # Check if lines are equivalent
             if _lines_are_equivalent(
                 wl_i, species_i, all_j_lower[i], all_j_upper[i], all_e_upper[i], linelist_i,
@@ -383,8 +429,10 @@ def _merge_lines_full(
             
             k += 1
     
-    # Filter out used lines
-    keep = ~used
+    # Filter out used lines AND unmerged replacement list lines
+    # Replacement list lines only provide parameters to other lines, they don't
+    # create new output lines if they don't find a merge partner
+    keep = ~used & ~all_is_replacement_list
     
     return LineData(
         wavelength=all_wl[keep],
@@ -402,6 +450,8 @@ def _merge_lines_full(
         linelist_idx=all_linelist_idx[keep],
         ranks=all_ranks[keep],
         mergeable=all_mergeable[keep],
+        is_replacement_list=all_is_replacement_list[keep],
+        forbid_flag=all_forbid[keep],
     )
 
 
@@ -539,6 +589,8 @@ def extract_lines(
         # Determine if this linelist is mergeable
         # mergeable: 0=can merge, 1=standalone (never merge), 2=replacement list (always merge)
         is_mergeable = (cl.mergeable != 1)
+        # Replacement lists only provide parameters, they don't add new lines
+        is_replacement = (cl.mergeable == 2)
         
         # Get rank weights
         ranks = (
@@ -577,6 +629,7 @@ def extract_lines(
                         linelist_idx=idx,
                         ranks=ranks_internal,
                         mergeable=is_mergeable,
+                        is_replacement_list=is_replacement,
                     )
                     
                     # Apply element filter

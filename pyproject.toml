@@ -34,3 +34,7 @@ CMAKE_INTERPROCEDURAL_OPTIMIZATION = "ON"
 DJANGO_SETTINGS_MODULE = "vald_web.settings"
 python_files = ["test_*.py"]
 testpaths = ["tests"]
+markers = [
+    "preselect5: tests that require preselect5 binary (deselect with '-m \"not preselect5\"')",
+]
+addopts = "-m 'not preselect5'"
