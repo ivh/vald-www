@@ -1,158 +1,310 @@
-# VALD Backend Modernization - Consolidated Plan
+# VALD Backend Modernization
 
-**Goal:** Replace file-based config and C/shell job handling with Django, leaving only Fortran binary DB access (wrapped via f2py).
+## Overview
 
-**Current state:**
-- ✅ Auth: Django-based (User, UserEmail, UserPreferences)
-- ❌ Configs: File-based (default.cfg, personal_configs/*.cfg)
-- ❌ Job handling: parserequest.c → job.NNNNNN shell scripts → Fortran
-- ❌ Fortran: Standalone binaries called via subprocess
+The `job_runner.py` module replaces the legacy orchestration system that used C parsing and shell scripts to execute VALD extraction jobs. Instead of generating and executing shell scripts, it directly manages Fortran binary pipelines from Python using `subprocess`.
 
-**Target state:**
-- ✅ Auth: Django-based (already done)
-- ✅ Configs: Django DB models
-- ✅ Job handling: Python direct subprocess calls (no C, no shell scripts)
-- ✅ Fortran: f2py wrapper for binary DB access only
+Linelist configurations are now stored in Django database models instead of `.cfg` files.
+
+## Legacy System (Before)
+
+```
+User Request
+     ↓
+backend.py: format_request_file() → request.NNNNNN
+     ↓
+parserequest.c: Parse request file → Generate job.NNNNNN shell script
+                                   → Generate pres_in.NNNNNN
+     ↓
+backend.py: Patch pres_in with user preferences
+     ↓
+Execute job.NNNNNN shell script:
+     ┌─────────────────────────────────────────────────┐
+     │  #!/bin/sh                                      │
+     │  cd /working/NNNNNN                             │
+     │  preselect5 < pres_in.NNNNNN | \                │
+     │  presformat5 > output.NNNNNN                    │
+     │  gzip output.NNNNNN                             │
+     │  mv output.NNNNNN.gz /FTP/                      │
+     └─────────────────────────────────────────────────┘
+     ↓
+Output files in public_html/FTP/
+```
+
+### Problems with the Legacy System
+
+1. **C dependency**: Required compiling `parserequest.c` on each platform
+2. **Fragile parsing**: C code parsed request files with fixed-format assumptions
+3. **Shell script generation**: Text-based script generation prone to escaping issues
+4. **File patching**: Had to modify generated files to inject user preferences
+5. **No error context**: Shell script failures gave minimal diagnostics
+6. **Hard to extend**: Adding new request types required C code changes
+7. **Config files**: Manual editing of `.cfg` files, no validation, no audit trail
+
+## New System (Current)
+
+```
+User Request
+     ↓
+backend.py: Create Request model with parameters
+     ↓
+job_runner.py: create_job_config() → JobConfig dataclass
+     ↓
+job_runner.py: JobRunner.run()
+     ├── Generate pres_in.NNNNNN directly from JobConfig
+     ├── Generate config.cfg from database (Config model)
+     └── Execute pipeline via subprocess.Popen:
+         
+         preselect5 ──pipe──→ presformat5 ──→ output file
+              ↑                    
+         pres_in.NNNNNN            
+     ↓
+job_runner.py: Compress and move to FTP directory
+     ↓
+Output files in public_html/FTP/
+```
 
 ---
 
-## Phase 1: Replace parserequest.c with Python (1-2 days) ✅ COMPLETE
+## Key Components
 
-**Status:** Implemented in `vald/job_runner.py`
+### JobConfig Dataclass
 
-**What was done:**
-- Created `JobConfig` dataclass for job parameters
-- Created `JobRunner` class that:
-  - Generates `pres_in.NNNNNN` files directly
-  - Generates `select.input` for stellar extractions
-  - Generates `show_in.NNNNNN_NNN` for showline queries
-  - Runs Fortran binaries directly via subprocess.Popen pipes
-  - Handles HFS splitting pipeline
-  - Compresses and moves output to FTP directory
-- Updated `backend.py` with:
-  - `_submit_with_job_runner()` - New Python implementation
-  - `_submit_with_parserequest()` - Legacy C implementation
-  - `submit_request_direct()` dispatches based on `VALD_USE_JOB_RUNNER` setting
-- Added `VALD_USE_JOB_RUNNER = False` setting (opt-in for testing)
+Holds all parameters needed to run a job:
 
-**To enable:** Set `VALD_USE_JOB_RUNNER = True` in settings.py
+```python
+@dataclass
+class JobConfig:
+    job_id: int              # 6-digit job ID
+    job_dir: Path            # Working directory
+    client_name: str         # User's name for output files
+    request_type: str        # extractall, extractelement, extractstellar, showline
+    wl_start: float          # Wavelength range start
+    wl_end: float            # Wavelength range end
+    max_lines: int           # Maximum lines to extract
+    element: str             # Element filter (for extractelement)
+    config_path: str         # Path to linelist config file
+    format_flags: List[int]  # 13 format flags for preselect
+    # ... stellar parameters, showline queries, etc.
+```
+
+### JobRunner Class
+
+Manages the execution of Fortran binaries:
+
+```python
+class JobRunner:
+    def __init__(self):
+        self.preselect = settings.VALD_BIN / 'preselect5'
+        self.presformat = settings.VALD_BIN / 'presformat5'
+        self.select = settings.VALD_BIN / 'select5'
+        # ...
+
+    def run(self, config: JobConfig) -> Tuple[bool, str]:
+        """Execute the appropriate pipeline based on request type."""
+        if config.request_type == 'showline':
+            return self._run_showline(config)
+        elif config.request_type == 'extractstellar':
+            return self._run_stellar(config)
+        else:
+            return self._run_extract(config)
+```
+
+### Pipeline Execution
+
+Pipelines are constructed using `subprocess.Popen` with pipes:
+
+```python
+def _run_pipeline_simple(self, pres_in, output_file, bib_file, cwd):
+    """Run preselect | presformat pipeline."""
+    
+    # Start preselect, reading from pres_in file
+    preselect_proc = subprocess.Popen(
+        [str(self.preselect)],
+        stdin=pres_in,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=cwd
+    )
+    
+    # Pipe preselect output to presformat
+    out = open(output_file, 'w')
+    presformat_proc = subprocess.Popen(
+        [str(self.presformat)],
+        stdin=preselect_proc.stdout,
+        stdout=out,
+        stderr=subprocess.PIPE,
+        cwd=cwd
+    )
+    
+    # Close pipe in parent to allow SIGPIPE propagation
+    preselect_proc.stdout.close()
+    
+    # Wait for completion
+    _, presformat_stderr = presformat_proc.communicate(timeout=3600)
+    out.close()
+    preselect_proc.wait()
+    
+    # Check return codes (downstream first for better error messages)
+    if presformat_proc.returncode != 0:
+        return (False, f"presformat failed: {presformat_stderr.decode()}")
+    if preselect_proc.returncode != 0:
+        return (False, f"preselect failed with code {preselect_proc.returncode}")
+    
+    return (True, str(output_file))
+```
 
 ---
 
-## Phase 2: Config Management in Django DB (2-3 days) ✅ COMPLETE
+## Pipeline Types
 
-**Status:** Implemented with models, migration, import command, and admin UI.
+### Extract All / Extract Element
+```
+preselect5 < pres_in | presformat5 > output
+```
 
-**What was done:**
-- Created models in `vald/models.py`:
-  - `Linelist` - Master catalog of available linelists
-  - `Config` - Configuration sets (user-specific or system default)
-  - `ConfigLinelist` - Many-to-many with priority and rank weights
-- Created migration `0008_add_config_models.py`
-- Created `import_default_config` management command
-- Imported default.cfg (377 linelists)
-- Created admin UI with inline editing
-- Added `get_config_path_for_user()` to job_runner
-- Added `VALD_USE_DB_CONFIG` setting
+### Extract All / Element with HFS
+```
+preselect5 < pres_in | presformat5 | hfs_split | post_hfs_format5 > output
+```
 
-**To enable:** Set `VALD_USE_DB_CONFIG = True` in settings.py
+### Extract Stellar
+```
+preselect5 < pres_in | select5 > output
+```
 
-### Benefits:
-- No manual .cfg file editing
+### Extract Stellar with HFS
+```
+preselect5 < pres_in | select5 | hfs_split | post_hfs_format5 > output
+```
+
+### Show Line
+```
+showline5 < show_in > output  (run once per query)
+```
+
+---
+
+## Configuration System
+
+### Database Models
+
+Linelist configurations are stored in Django models:
+
+1. **`Linelist`** - Master catalog of all available linelists (377 imported from default.cfg)
+2. **`Config`** - Configuration sets (system default or user-specific)
+3. **`ConfigLinelist`** - Links configs to linelists with priority and rank weights
+
+### Config Generation
+
+The job runner generates a temporary `config.cfg` file from the database:
+
+```python
+def get_config_path_for_user(user, job_dir, use_personal=True):
+    config = Config.get_user_config(user) if use_personal else Config.get_default_config()
+    
+    # Generate temp config file
+    temp_config_path = job_dir / 'config.cfg'
+    with open(temp_config_path, 'w') as f:
+        f.write(config.generate_cfg_content())
+    
+    return str(temp_config_path)
+```
+
+### Benefits of DB Configs
+
+- No manual `.cfg` file editing
 - Validation (can't create invalid configs)
 - Audit trail (who changed what when)
 - Query: "Which users use deprecated linelist X?"
+- Admin UI for config management
 
 ---
 
-## Phase 3: f2py Fortran Wrapper (DEFERRED - Complex)
+## Integration with Backend
 
-**Status:** After analysis, full f2py wrapping is complex due to:
+The backend dispatches to either the new or legacy system:
+
+```python
+# In backend.py
+def submit_request_direct(request_obj, params, client_name, user):
+    if getattr(settings, 'VALD_USE_JOB_RUNNER', False):
+        return _submit_with_job_runner(request_obj, params, client_name, user)
+    else:
+        return _submit_with_parserequest(request_obj, params, client_name, user)
+```
+
+---
+
+## Benefits of the New System
+
+1. **No C compilation**: Pure Python, works on any platform with Python 3.11+
+2. **Better error handling**: Full Python tracebacks, stderr capture from Fortran
+3. **Database integration**: Configs stored in Django models, editable via admin
+4. **Testable**: Can unit test job creation without running Fortran
+5. **Extensible**: Adding new request types is just Python code
+6. **Type-safe**: Dataclasses with type hints catch errors early
+7. **Debuggable**: Can inspect JobConfig before execution, log all steps
+
+---
+
+## Settings
+
+```python
+# Enable Python job runner (default: True)
+VALD_USE_JOB_RUNNER = True
+
+# Enable database configs (default: True)
+VALD_USE_DB_CONFIG = True
+```
+
+---
+
+## File Locations
+
+- **Job runner**: `vald/job_runner.py`
+- **Config models**: `vald/models.py` (Linelist, Config, ConfigLinelist)
+- **Backend dispatch**: `vald/backend.py`
+- **Fortran binaries**: `$VALD_BIN/` (preselect5, presformat5, select5, etc.)
+
+---
+
+## Future: f2py Fortran Wrapper (DEFERRED)
+
+### Current State
+
+Fortran binaries are called via subprocess. This works well but requires:
+- Compiling Fortran code on each platform
+- `-std=legacy` flag for gfortran on macOS (old format strings)
+- File-based IPC (pres_in files, stdout pipes)
+
+### Potential f2py Approach
+
+Instead of subprocess calls, wrap Fortran routines with f2py for direct Python calls:
+
+1. **Wrap UKREAD** - Get raw line data directly into Python arrays
+2. **Python merging** - Port the merge algorithm to Python
+3. **Python formatting** - Port presformat to Python
+
+### Challenges
+
+After analysis, full f2py wrapping is complex due to:
 - 2227 lines of Fortran with 14+ STOP statements
 - Heavy use of C interop (UKOPEN/UKREAD for binary DB)
 - Complex global state in the merging algorithm
 - Would require significant refactoring of production Fortran code
 
-### Revised Approach: Hybrid
+### Decision
 
-Instead of full f2py, implement a **hybrid approach**:
+The subprocess approach works well enough. f2py is deferred until there's a compelling need (e.g., performance issues with very large extractions, or need to modify merge logic).
 
-1. **Keep preselect5 as binary** - It reads the proprietary DB format via C functions
-2. **Implement Python merging** - Port the merge algorithm to Python (optional, for flexibility)
-3. **Implement Python formatting** - Port presformat to Python (simpler than f2py)
+### Current Status
 
-### What's Already Done:
-- Phase 1: No more shell scripts or C parsing - Python calls Fortran directly via subprocess
-- Phase 2: Config in database - no more file parsing for config
-
-### Future Options:
-1. **Minimal f2py:** Just wrap UKREAD to get raw line data, then process in Python
-2. **Full Python:** Reverse-engineer binary format and read directly in Python
-3. **Keep status quo:** The subprocess approach works well enough
-
-### Benefits of Current State:
-- No C compilation needed (parserequest.c eliminated)
-- No shell script generation
-- Config management in Django
-- Better error handling via Python
-- Foundation for future improvements
-
----
-
-## Current Status Summary
-
-| Component | Old | New | Status |
-|-----------|-----|-----|--------|
-| Request parsing | parserequest.c | job_runner.py | ✅ Done |
-| Job execution | Shell scripts | subprocess.Popen | ✅ Done |
-| Config storage | .cfg files | Django DB | ✅ Done |
-| Config generation | Static files | On-the-fly from DB | ✅ Done |
-| Binary DB access | Fortran subprocess | Fortran subprocess | No change |
-| Line merging | Fortran | Fortran | No change |
-| Output formatting | Fortran | Fortran | No change |
-
----
-
-## How to Enable New Features
-
-### Enable Python Job Runner:
-```python
-# In settings.py
-VALD_USE_JOB_RUNNER = True
-```
-
-### Enable Database Configs:
-```python
-# In settings.py  
-VALD_USE_DB_CONFIG = True
-```
-
-### Import Default Config:
-```bash
-python manage.py import_default_config /path/to/default.cfg
-```
-
----
-
-## Decisions Made
-
-1. **Config migration:** Fresh start - no import of existing personal configs
-2. **f2py scope:** DEFERRED - Fortran binaries called via subprocess (works well enough)
-3. **No external binaries:** C parsing eliminated; Fortran called directly via subprocess
-4. **Testing:** Manual verification via queries after implementation
-
----
-
-## Files Created/Modified
-
-### Phase 1 (Complete):
-- CREATED: `vald/job_runner.py` - Direct Fortran execution
-- MODIFIED: `vald/backend.py` - Added `_submit_with_job_runner()` and dispatch logic
-- MODIFIED: `vald_web/settings.py` - Added `VALD_USE_JOB_RUNNER` setting
-
-### Phase 2 (Complete):
-- MODIFIED: `vald/models.py` - Added Linelist, Config, ConfigLinelist models
-- CREATED: `vald/migrations/0008_add_config_models.py`
-- CREATED: `vald/management/commands/import_default_config.py`
-- MODIFIED: `vald/admin.py` - Added admin classes for config management
-- MODIFIED: `vald_web/settings.py` - Added `VALD_USE_DB_CONFIG` setting
+| Component | Implementation | Notes |
+|-----------|---------------|-------|
+| Request parsing | Python (job_runner.py) | ✅ No more C |
+| Job execution | subprocess.Popen | ✅ No more shell scripts |
+| Config storage | Django DB | ✅ No more .cfg files |
+| Binary DB access | Fortran subprocess | Unchanged |
+| Line merging | Fortran subprocess | Unchanged |
+| Output formatting | Fortran subprocess | Unchanged |
