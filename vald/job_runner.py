@@ -224,10 +224,11 @@ class JobRunner:
         # Wait for preselect
         preselect_proc.wait()
         
-        if preselect_proc.returncode != 0:
-            return (False, f"preselect failed with code {preselect_proc.returncode}")
+        # Check presformat first (it's downstream, so its failure causes SIGPIPE upstream)
         if presformat_proc.returncode != 0:
             return (False, f"presformat failed: {presformat_stderr.decode()}")
+        if preselect_proc.returncode != 0:
+            return (False, f"preselect failed with code {preselect_proc.returncode}")
         
         # presformat creates 'selected.bib' in cwd
         selected_bib = cwd / 'selected.bib'
