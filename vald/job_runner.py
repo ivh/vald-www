@@ -506,20 +506,22 @@ class JobRunner:
     
     def _find_model(self, teff: float, logg: float) -> str:
         """Find nearest model atmosphere file."""
-        # Model filename format: 05500g35.krz (Teff 5500K, logg 3.5)
+        # Model filename format: 05500G35.KRZ (Teff 5500K, logg 3.5)
         iteff = int(round(teff))
         ilogg = int(round(logg * 10))
-        target = f"{iteff:05d}g{ilogg:02d}.krz"
+        
+        # Models are in MODELS/STELLAR/ subdirectory
+        stellar_dir = self.models_dir / 'STELLAR'
         
         # Find nearest
         best_match = None
         best_dist = float('inf')
         
-        if self.models_dir.exists():
-            for model_file in self.models_dir.iterdir():
-                if model_file.suffix == '.krz':
+        if stellar_dir.exists():
+            for model_file in stellar_dir.iterdir():
+                if model_file.suffix.upper() == '.KRZ':
                     try:
-                        name = model_file.stem
+                        name = model_file.stem.upper()
                         m_teff = int(name[:5])
                         m_logg = int(name[6:8])
                         
@@ -534,8 +536,9 @@ class JobRunner:
         if best_match:
             return best_match
         
-        # Fallback to exact name
-        return str(self.models_dir / target)
+        # Fallback to exact name (uppercase)
+        target = f"{iteff:05d}G{ilogg:02d}.KRZ"
+        return str(stellar_dir / target)
     
     def _finalize_output(self, config: JobConfig, output_file: Path, 
                          bib_file: Path) -> Tuple[bool, str]:
