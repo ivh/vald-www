@@ -37,10 +37,14 @@
     <td>{{ req.created_at|date:"Y-m-d H:i" }}</td>
     <td>
         {% if req.is_complete and req.output_exists %}
-        <a href="{% url 'vald:download_request' req.uuid %}">Results</a>
-        {% if req.bib_output_exists %}
-        | <a href="{% url 'vald:download_bib_request' req.uuid %}">Bib</a>
-        {% endif %}
+            {% if req.output_is_empty %}
+            <i>No lines</i>
+            {% else %}
+            <a href="{% url 'vald:download_request' req.uuid %}">Results</a>
+            {% if req.bib_output_exists %}
+            | <a href="{% url 'vald:download_bib_request' req.uuid %}">Bib</a>
+            {% endif %}
+            {% endif %}
         {% else %}
         —
         {% endif %}
