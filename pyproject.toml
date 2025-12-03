@@ -10,4 +10,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = []
+dev = [
+    "pytest>=9.0.1",
+    "pytest-django>=4.11.1",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "vald_web.settings"
+python_files = ["test_*.py"]
+testpaths = ["tests"]

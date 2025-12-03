@@ -500,8 +500,8 @@ class Config(models.Model):
             line += f"{cl.linelist.element_min}, {cl.linelist.element_max}, "
             line += f"{cl.mergeable}, {ranks}, '{cl.linelist.name}'"
             
-            # Add replacement window if different from default
-            if cl.replacement_window != 0.05:
+            # Add replacement window for mergeable=2 (replacement lists) or if non-default
+            if cl.mergeable == 2 or cl.replacement_window != 0.05:
                 line += f", {cl.replacement_window}"
             
             lines.append(line)
