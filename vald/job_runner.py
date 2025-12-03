@@ -65,13 +65,14 @@ class JobConfig:
             self.showline_queries = []
 
 
-def get_config_path_for_user(user, job_dir: Path) -> str:
+def get_config_path_for_user(user, job_dir: Path, use_personal: bool = True) -> str:
     """
-    Get config file path for user, generating from database if needed.
+    Get config file path, generating from database if needed.
     
     Args:
-        user: User model instance or None
+        user: User model instance (required - only logged-in users make requests)
         job_dir: Job working directory for temp file generation
+        use_personal: If True, use user's personal config; if False, use system default
         
     Returns:
         str: Path to config file to use
@@ -83,14 +84,18 @@ def get_config_path_for_user(user, job_dir: Path) -> str:
     
     if not use_db_config:
         # Use file-based config
-        if user:
+        if use_personal and user:
             personal_config = settings.PERSCONFIG_DIR / f"{user.client_name}.cfg"
             if personal_config.exists():
                 return str(personal_config)
         return str(settings.PERSCONFIG_DEFAULT)
     
     # Use database config
-    config = Config.get_user_config(user)
+    if use_personal:
+        config = Config.get_user_config(user)
+    else:
+        config = Config.get_default_config()
+    
     if not config:
         # Fall back to file
         return str(settings.PERSCONFIG_DEFAULT)
@@ -599,15 +604,8 @@ def create_job_config(request_obj, backend_id: int, job_dir: Path,
     
     # Config file - use database config if enabled, otherwise file-based
     pconf = params.get('pconf', 'default')
-    if pconf == 'personal':
-        # Personal config - use database or file based on setting
-        config.config_path = get_config_path_for_user(request_obj.user, job_dir)
-    else:
-        # Default config
-        use_db_config = getattr(settings, 'VALD_USE_DB_CONFIG', False)
-        if use_db_config:
-            config.config_path = get_config_path_for_user(None, job_dir)
-        # If not using DB config, leave config_path empty to use Fortran default
+    use_personal = (pconf == 'personal')
+    config.config_path = get_config_path_for_user(request_obj.user, job_dir, use_personal)
     
     # Build format flags
     flags = [0] * 13
