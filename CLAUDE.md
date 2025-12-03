@@ -8,6 +8,8 @@ Technical context for Claude Code sessions. See README.md for user documentation
 
 **Status**: Production-ready. All request types working (Extract All/Element/Stellar, Show Line, Show Line ONLINE).
 
+**Python Extraction**: Modern Python implementation (`vald/extraction.py`) available as alternative to Fortran binaries. See EXTRACTION_COMPARISON.md and MODERNIZATION_PLAN.md.
+
 **User**: Tom (sysadmin, prefers concise technical explanations, "pls" not "please")
 
 ## Architecture
@@ -64,6 +66,32 @@ Technical context for Claude Code sessions. See README.md for user documentation
 - `handle_extract_request()` - Routes to direct or email mode
 - `request_detail()` - Status page with auto-refresh
 - `download_request()` - Serves output files
+
+**Python Extraction Implementation (F2Py/nanobind):**
+
+**vald/extraction.py** - Pure Python extraction (replaces preselect5 + presformat5):
+- `extract_lines()` - Main extraction function with merging logic
+- `LineData` - Dataclass holding spectral line arrays
+- `_merge_lines_full()` - Implements Fortran merge algorithm with forbid flag checks
+- `_parse_element_filter()` - Converts "Fe 1" → species codes
+- Unit conversions (vacuum ↔ air, eV ↔ cm⁻¹, Å ↔ nm)
+
+**vald/vald3_reader.py** - High-level Python interface to C++ extension:
+- `VALD3Reader` class wraps C++ decompressor
+- `query_range(wl_min, wl_max)` - Returns dict of numpy arrays
+
+**vald/species.py** - Element/ion name parsing:
+- `find_species_by_name()` - "Ca" + charge → species codes (including isotopes)
+- Loads from `vald/species.csv` (generated from VALD data)
+
+**vald/lib/vald3/** - C++ nanobind extension (built via CMake):
+- `unkompress3.c` - LZW decompression from original VALD3 Fortran
+- `vald3_decompress.cpp` - nanobind wrapper exposing to Python
+- `CMakeLists.txt` - Build configuration
+
+**Known Differences from Fortran**:
+- Python outputs ~0.1% more lines (isotope duplicate handling)
+- See EXTRACTION_COMPARISON.md for detailed analysis
 
 ## pres_in File Format
 
