@@ -2,11 +2,124 @@
 
 ## Overview
 
-The `job_runner.py` module replaces the legacy orchestration system that used C parsing and shell scripts to execute VALD extraction jobs. Instead of generating and executing shell scripts, it directly manages Fortran binary pipelines from Python using `subprocess`.
+**Current Status**: Phase 1 in progress (Python backend branch)
 
-Linelist configurations are now stored in Django database models instead of `.cfg` files.
+The goal is to replace all Fortran subprocess calls with native Python code that uses
+a C extension for the performance-critical compressed database reading.
 
-## Legacy System (Before)
+### Architecture
+
+```
+User Request → Django views → Python job processor
+                                      ↓
+                              ┌───────────────────┐
+                              │  vald/lib/vald3/  │  ← nanobind C extension
+                              │  (LZW decompress) │
+                              └───────────────────┘
+                                      ↓
+                              ┌───────────────────┐
+                              │  Python merging   │  ← Port from Fortran
+                              │  & formatting     │
+                              └───────────────────┘
+                                      ↓
+                              Output files (same format as before)
+```
+
+### Implementation Phases
+
+| Phase | Component | Status | Notes |
+|-------|-----------|--------|-------|
+| 1 | DB Reader (vald3_decompress) | In Progress | nanobind wrapper for unkompress3.c |
+| 2 | presformat replacement | Planned | Python output formatting |
+| 3 | showline replacement | Planned | Simpler than preselect |
+| 4 | select (stellar) | Deferred | Complex atmosphere models |
+
+---
+
+## Historical Context
+
+The `job_runner.py` module replaced the legacy orchestration system that used C parsing
+and shell scripts. It currently manages Fortran binary pipelines via `subprocess`.
+
+Linelist configurations are stored in Django database models instead of `.cfg` files.
+
+---
+
+## Phase 1: C Extension for Database Reading
+
+### Components
+
+The `vald/lib/vald3/` directory contains:
+
+1. **`unkompress3.c`** - C library for LZW decompression of CVALD3 binary files
+   - `ukopen_()` - Open compressed data + descriptor files
+   - `ukread_()` - Read lines in wavelength range → arrays
+   - `uknext_()` - Read next record (for iteration)
+   - `ukclose_()` - Cleanup
+
+2. **`vald3_decompress.cpp`** - nanobind wrapper exposing `VALD3Reader` class
+   - `query_range(wl_min, wl_max)` → dict of numpy arrays
+
+3. **`vald3_reader.py`** - High-level Python interface
+   - Wavelength queries, DataFrame conversion, air/vacuum conversion
+
+### Build System
+
+The C extension is built via scikit-build-core + CMake + nanobind.
+See `vald/lib/vald3/CMakeLists.txt` and `pyproject.toml`.
+
+### Data Format
+
+CVALD3 files are LZW-compressed binary records:
+- Each record = 1024 lines × 270 bytes/line (uncompressed)
+- Descriptor file (.DSC3) = wavelength index for binary search
+- Line format: wavelength(8) + species(4) + loggf(4) + energies(16) + J(8) + 
+  Landé(8) + damping(12) + terms(210)
+
+---
+
+## Phase 2: Output Formatting (presformat replacement)
+
+### Goal
+
+Replace `presformat5` Fortran binary with Python formatting code.
+
+### Components
+
+1. **Unit conversions** (from `air_vac.f90`, `lconv.f90`)
+   - Vacuum ↔ air wavelength
+   - eV ↔ cm⁻¹ energy
+   - Å ↔ nm ↔ cm⁻¹ wavelength
+
+2. **Output formats**
+   - Short format (single line per transition)
+   - Long format (multi-line with term designations)
+   - Model format (for synthesis codes)
+
+3. **Bibliography tracking** - Already in Django models
+
+---
+
+## Phase 3: Showline (showline4.1 replacement)
+
+Single-query line lookups. Simpler than preselect since no merging needed.
+
+---
+
+## Phase 4: Stellar Extraction (Deferred)
+
+The `select5` binary involves:
+- Model atmosphere reading
+- Opacity calculations
+- Line depth estimation
+
+This is kept as subprocess for now.
+
+---
+
+## Legacy System Reference
+
+### Old Flow (Before job_runner.py)
 
 ```
 User Request
@@ -31,7 +144,7 @@ Execute job.NNNNNN shell script:
 Output files in public_html/FTP/
 ```
 
-### Problems with the Legacy System
+### Problems Solved
 
 1. **C dependency**: Required compiling `parserequest.c` on each platform
 2. **Fragile parsing**: C code parsed request files with fixed-format assumptions
@@ -41,7 +154,9 @@ Output files in public_html/FTP/
 6. **Hard to extend**: Adding new request types required C code changes
 7. **Config files**: Manual editing of `.cfg` files, no validation, no audit trail
 
-## New System (Current)
+---
+
+## Current System (job_runner.py with subprocess)
 
 ```
 User Request
@@ -60,6 +175,29 @@ job_runner.py: JobRunner.run()
          pres_in.NNNNNN            
      ↓
 job_runner.py: Compress and move to FTP directory
+     ↓
+Output files in public_html/FTP/
+```
+
+---
+
+## Target System (Pure Python with C extension)
+
+```
+User Request
+     ↓
+backend.py: Create Request model with parameters
+     ↓
+job_runner.py: create_job_config() → JobConfig dataclass
+     ↓
+vald/extraction.py: extract()
+     ├── Load linelist configs from database
+     ├── For each linelist:
+     │   └── vald3_reader.query_range() → numpy arrays
+     ├── Merge lines (K-way merge by wavelength)
+     ├── Apply element filter if needed
+     ├── Format output (short/long format)
+     └── Write + compress output
      ↓
 Output files in public_html/FTP/
 ```
@@ -235,49 +373,32 @@ def get_config_path_for_user(user, job_dir, use_personal=True):
 
 ## File Locations
 
+- **C extension**: `vald/lib/vald3/` (unkompress3.c, vald3_decompress.cpp)
+- **Python extraction**: `vald/extraction.py` (to be created)
 - **Job runner**: `vald/job_runner.py`
 - **Config models**: `vald/models.py` (Linelist, Config, ConfigLinelist)
 - **Backend**: `vald/backend.py`
-- **Fortran binaries**: `$VALD_BIN/` (preselect5, presformat5, select5, etc.)
 
 ---
 
-## Future: f2py Fortran Wrapper (DEFERRED)
+## Development Notes
 
-### Current State
+### Building the C Extension
 
-Fortran binaries are called via subprocess. This works well but requires:
-- Compiling Fortran code on each platform
-- `-std=legacy` flag for gfortran on macOS (old format strings)
-- File-based IPC (pres_in files, stdout pipes)
+```bash
+cd vald-www
+uv sync  # Installs dependencies and builds extension
+```
 
-### Potential f2py Approach
+### Testing
 
-Instead of subprocess calls, wrap Fortran routines with f2py for direct Python calls:
+```bash
+uv run pytest tests/test_vald3_reader.py -v
+```
 
-1. **Wrap UKREAD** - Get raw line data directly into Python arrays
-2. **Python merging** - Port the merge algorithm to Python
-3. **Python formatting** - Port presformat to Python
+### Data Files
 
-### Challenges
+CVALD3 test data in `~/VALD3/CVALD3/ATOMS/`:
+- `H_lines_NIST+Kurucz.CVALD3` / `.DSC3` - Hydrogen lines
+- `Fe1_K14_*.CVALD3` - Iron lines (many files)
 
-After analysis, full f2py wrapping is complex due to:
-- 2227 lines of Fortran with 14+ STOP statements
-- Heavy use of C interop (UKOPEN/UKREAD for binary DB)
-- Complex global state in the merging algorithm
-- Would require significant refactoring of production Fortran code
-
-### Decision
-
-The subprocess approach works well enough. f2py is deferred until there's a compelling need (e.g., performance issues with very large extractions, or need to modify merge logic).
-
-### Current Status
-
-| Component | Implementation | Notes |
-|-----------|---------------|-------|
-| Request parsing | Python (job_runner.py) | ✅ No more C |
-| Job execution | subprocess.Popen | ✅ No more shell scripts |
-| Config storage | Django DB | ✅ No more .cfg files |
-| Binary DB access | Fortran subprocess | Unchanged |
-| Line merging | Fortran subprocess | Unchanged |
-| Output formatting | Fortran subprocess | Unchanged |
