@@ -12,52 +12,62 @@ Technical context for Claude Code sessions. See README.md for user documentation
 
 ## Architecture
 
-**Direct Mode (default, `VALD_DIRECT_SUBMISSION = True`):**
-- Converts UUID → 6-digit ID via SHA256 hash (backend uses `atol()`)
-- Creates job subdirectory: `working/NNNNNN/`
-- Creates `request.NNNNNN` in subdirectory
-- **CRITICAL**: Runs `parserequest` FROM subdirectory for correct file naming
-- Patches `pres_in.NNNNNN` with user preferences (config path, unit flags)
-- Executes `job.NNNNNN` script in isolated directory
-- Status tracking: pending → processing → complete/failed
-- Job queue with worker threads (default 2, configurable via `VALD_MAX_WORKERS`)
+**Two Job Runner Modes (controlled by `VALD_USE_JOB_RUNNER` setting):**
 
-**Email Mode (`VALD_DIRECT_SUBMISSION = False`):**
-- Sends email to mail spool, backend daemon processes async
-- Sequential IDs, no real-time status updates
+### Legacy Mode (`VALD_USE_JOB_RUNNER = False`, default):
+- Uses `parserequest.c` binary to generate job scripts
+- Patches generated `pres_in.NNNNNN` and `job.NNNNNN` files
+- Executes shell scripts that pipe Fortran binaries
+
+### New Python Mode (`VALD_USE_JOB_RUNNER = True`):
+- Uses `job_runner.py` for direct Fortran execution
+- Generates `pres_in` files directly from request parameters
+- Calls Fortran binaries via `subprocess.Popen` pipes
+- No shell scripts, no C compilation required
+
+**Two Config Modes (controlled by `VALD_USE_DB_CONFIG` setting):**
+
+### File Mode (`VALD_USE_DB_CONFIG = False`, default):
+- Uses `.cfg` files in `config/` directory
+- Personal configs in `config/personal_configs/{ClientName}.cfg`
+
+### Database Mode (`VALD_USE_DB_CONFIG = True`):
+- Uses `Linelist`, `Config`, `ConfigLinelist` models
+- Generates `.cfg` file on-the-fly from database
+- Admin UI for linelist management
 
 ## Key Files
 
-**vald/backend.py** - Direct submission logic:
+**vald/backend.py** - Request submission:
+- `submit_request_direct()` - Dispatches to `_submit_with_job_runner()` or `_submit_with_parserequest()`
+- `_submit_with_job_runner()` - New Python implementation
+- `_submit_with_parserequest()` - Legacy C implementation
 - `uuid_to_6digit()` - Converts UUID to 6-digit number via SHA256
-- `submit_request_direct()` - Main handler, runs parserequest from job subdirectory
-- `format_request_file()` - Converts form data to VALD request format
-- Patches `pres_in.NNNNNN`: line 4 (config path), line 5 (flags for units/format)
 - `JobQueue` - Thread pool for parallel processing
+
+**vald/job_runner.py** - New Python job execution:
+- `JobConfig` - Dataclass with all job parameters
+- `JobRunner` - Runs Fortran binaries via subprocess
+- `create_job_config()` - Creates JobConfig from Request model
+- `get_config_path_for_user()` - Gets config file (file or database)
 
 **vald/models.py**:
 - `Request` - Tracks submissions (UUID, FK to User, JSONField parameters, status)
 - `User`, `UserEmail` - Password authentication with activation tokens
-- `UserPreferences` - OneToOne with User, stores unit preferences (energyunit, waveunit, medium, vdwformat, isotopic_scaling)
-- `User.client_name` property - Alphanumeric name for file paths
-- `User.primary_email` property - Primary email address
-- `User.get_preferences()` - Returns UserPreferences, creates defaults if needed
+- `UserPreferences` - Unit preferences (energyunit, waveunit, medium, vdwformat)
+- `Linelist` - Master catalog of available linelists (377 imported from default.cfg)
+- `Config` - Configuration sets (user-specific or system default)
+- `ConfigLinelist` - Many-to-many with priority and rank weights
 
 **vald/views.py**:
 - `get_current_user()` - Gets User from `session['user_id']`
-- `handle_extract_request()` - Routes to direct or email mode, merges user prefs into params
+- `handle_extract_request()` - Routes to direct or email mode
 - `request_detail()` - Status page with auto-refresh
-- `download_request()` - Serves output files (checks ownership via User FK)
-
-**vald/forms.py**:
-- Server-side validation for all request types
-- Fixed: viaftp empty string, showline None values, JS numeric validation bugs
+- `download_request()` - Serves output files
 
 ## pres_in File Format
 
-The `pres_in.NNNNNN` file controls preselect3 behavior:
-- Line 1: wavelength range
-- Line 2: max lines
+The `pres_in.NNNNNN` file controls preselect5 behavior:
 - Line 3: element filter (empty for extract all)
 - Line 4: config file path (quoted, absolute path)
 - Line 5: 13 flags (a b c d e f g h i j k l m)

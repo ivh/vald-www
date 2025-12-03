@@ -4,7 +4,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.urls import reverse
 from django import forms
-from .models import Request, User, UserEmail, UserPreferences
+from .models import Request, User, UserEmail, UserPreferences, Linelist, Config, ConfigLinelist
 
 
 def get_queue_stats():
@@ -273,3 +273,106 @@ class UserPreferencesAdmin(admin.ModelAdmin):
     list_filter = ('energyunit', 'waveunit', 'medium')
     search_fields = ('user__name',)
     readonly_fields = ('created_at', 'updated_at')
+
+
+# ============================================================================
+# Linelist Configuration Admin
+# ============================================================================
+
+class ConfigLinelistInline(admin.TabularInline):
+    model = ConfigLinelist
+    extra = 0
+    fields = ('linelist', 'priority', 'is_enabled', 'mergeable')
+    autocomplete_fields = ['linelist']
+    ordering = ['priority']
+
+
+@admin.register(Linelist)
+class LinelistAdmin(admin.ModelAdmin):
+    list_display = ('name', 'path', 'element_range', 'default_priority', 'is_molecular', 'is_active')
+    list_filter = ('is_active', 'is_molecular', 'source')
+    search_fields = ('name', 'path', 'source')
+    readonly_fields = ('created_at', 'updated_at')
+    ordering = ['default_priority', 'path']
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('path', 'name', 'source', 'is_molecular', 'is_active')
+        }),
+        ('Element Range', {
+            'fields': ('element_min', 'element_max')
+        }),
+        ('Default Settings', {
+            'fields': ('default_priority',),
+        }),
+        ('Default Rank Weights', {
+            'fields': (
+                ('default_rank_wl', 'default_rank_gf', 'default_rank_rad'),
+                ('default_rank_stark', 'default_rank_waals', 'default_rank_lande'),
+                ('default_rank_term', 'default_rank_ext_vdw', 'default_rank_zeeman'),
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Notes', {
+            'fields': ('notes',),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+    
+    def element_range(self, obj):
+        return f"{obj.element_min} - {obj.element_max}"
+    element_range.short_description = 'Element Range'
+
+
+@admin.register(Config)
+class ConfigAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'is_default', 'linelist_count', 'updated_at')
+    list_filter = ('is_default', 'user')
+    search_fields = ('name', 'user__name', 'description')
+    readonly_fields = ('created_at', 'updated_at')
+    inlines = [ConfigLinelistInline]
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'user', 'is_default', 'description')
+        }),
+        ('Global Parameters', {
+            'fields': (
+                ('wl_window_ref', 'wl_ref'),
+                ('max_ionization', 'max_excitation_eV'),
+            )
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+    
+    def linelist_count(self, obj):
+        return obj.configlinelist_set.count()
+    linelist_count.short_description = 'Linelists'
+
+
+@admin.register(ConfigLinelist)
+class ConfigLinelistAdmin(admin.ModelAdmin):
+    list_display = ('config', 'linelist', 'priority', 'is_enabled', 'mergeable')
+    list_filter = ('is_enabled', 'mergeable', 'config')
+    search_fields = ('config__name', 'linelist__name', 'linelist__path')
+    autocomplete_fields = ['config', 'linelist']
+    ordering = ['config', 'priority']
+    fieldsets = (
+        ('Association', {
+            'fields': ('config', 'linelist', 'priority', 'is_enabled')
+        }),
+        ('Merge Settings', {
+            'fields': ('mergeable', 'replacement_window')
+        }),
+        ('Rank Weights', {
+            'fields': (
+                ('rank_wl', 'rank_gf', 'rank_rad'),
+                ('rank_stark', 'rank_waals', 'rank_lande'),
+                ('rank_term', 'rank_ext_vdw', 'rank_zeeman'),
+            ),
+            'classes': ('collapse',)
+        }),
+    )

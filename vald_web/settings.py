@@ -164,3 +164,9 @@ VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request process
 VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'  # Output directory for results
 VALD_MAX_WORKERS = 2  # Maximum parallel job executions (FIFO queue)
 VALD_MAX_QUEUE_SIZE = 10  # Maximum pending jobs in queue before rejecting new requests
+
+# Job runner mode: False = legacy parserequest.c, True = Python job_runner
+VALD_USE_JOB_RUNNER = False  # Set to True to enable new Python-based job runner
+
+# Config mode: False = file-based .cfg files, True = database configs
+VALD_USE_DB_CONFIG = False  # Set to True to use database-stored configurations

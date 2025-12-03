@@ -1,6 +1,9 @@
 """
 Backend processing functions for direct VALD request submission.
-Bypasses email system and calls parserequest binary directly.
+
+Two modes available (controlled by VALD_USE_JOB_RUNNER setting):
+- False (default): Uses parserequest.c binary and shell scripts (legacy)
+- True: Uses Python job_runner module with direct Fortran execution (new)
 """
 import os
 import re
@@ -211,12 +214,103 @@ def get_client_name(user_email):
 def submit_request_direct(request_obj):
     """
     Submit a request directly to the backend processing system.
+    
+    Dispatches to either the new Python job_runner or legacy parserequest.c
+    based on VALD_USE_JOB_RUNNER setting.
 
     Args:
         request_obj: Request model instance with user, request_type, parameters
 
     Returns:
         tuple: (success, output_file_path or error_message)
+    """
+    # Check which implementation to use
+    use_job_runner = getattr(settings, 'VALD_USE_JOB_RUNNER', False)
+    
+    if use_job_runner:
+        return _submit_with_job_runner(request_obj)
+    else:
+        return _submit_with_parserequest(request_obj)
+
+
+def _submit_with_job_runner(request_obj):
+    """
+    Submit request using the new Python job_runner (no C binaries or shell scripts).
+    """
+    from .job_runner import JobRunner, create_job_config
+    
+    # Get client name from user
+    if not request_obj.user:
+        return (False, "User not found")
+    client_name = request_obj.user.client_name
+    if not client_name:
+        return (False, "User not registered")
+    
+    # Ensure working directory exists
+    working_dir = settings.VALD_WORKING_DIR
+    working_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Convert UUID to 6-digit number for backend compatibility
+    backend_id = uuid_to_6digit(request_obj.uuid)
+    
+    # Create isolated subdirectory for this job
+    job_dir = working_dir / f"{backend_id:06d}"
+    uuid_marker = job_dir / '.uuid'
+    
+    # Check for UUID collision
+    max_collision_retries = 100
+    for retry in range(max_collision_retries):
+        if job_dir.exists() and uuid_marker.exists():
+            try:
+                existing_uuid = uuid_marker.read_text().strip()
+                if existing_uuid == str(request_obj.uuid):
+                    break  # Our directory, reuse it
+                else:
+                    # Collision! Try next ID
+                    backend_id = (backend_id + 1) % 1000000
+                    job_dir = working_dir / f"{backend_id:06d}"
+                    uuid_marker = job_dir / '.uuid'
+                    continue
+            except Exception:
+                backend_id = (backend_id + 1) % 1000000
+                job_dir = working_dir / f"{backend_id:06d}"
+                uuid_marker = job_dir / '.uuid'
+                continue
+        else:
+            break
+    else:
+        return (False, f"Could not find available backend ID after {max_collision_retries} attempts")
+    
+    # Create directory and UUID marker
+    try:
+        job_dir.mkdir(exist_ok=True)
+        uuid_marker.write_text(str(request_obj.uuid))
+    except Exception as e:
+        return (False, f"Failed to create job directory: {e}")
+    
+    # Create job config from request
+    job_config = create_job_config(request_obj, backend_id, job_dir, client_name)
+    
+    # Define job execution function for queue
+    def execute_job():
+        runner = JobRunner()
+        return runner.run(job_config)
+    
+    # Submit job to queue
+    try:
+        job_queue = get_job_queue()
+        success, result = job_queue.submit(execute_job)
+        return (success, result)
+    except QueueFullError as e:
+        notify_queue_full()
+        return (False, str(e))
+    except Exception as e:
+        return (False, f"Error executing job: {e}")
+
+
+def _submit_with_parserequest(request_obj):
+    """
+    Submit request using legacy parserequest.c binary and shell scripts.
     """
     # Get client name from user
     if not request_obj.user:

@@ -354,3 +354,239 @@ class UserPreferences(models.Model):
 #             return self.linelists.get(list_id=list_id)
 #         except LineList.DoesNotExist:
 #             return None
+
+
+# ============================================================================
+# LINELIST CONFIGURATION MODELS
+# ============================================================================
+# These models replace the file-based .cfg configuration system.
+# Each user can have their own Config with customized linelist selection.
+# ============================================================================
+
+class Linelist(models.Model):
+    """
+    Master catalog of available linelists in the VALD database.
+    
+    Each linelist represents a data source (file) containing spectral line data.
+    Linelists have element ranges and quality rankings for different parameters.
+    """
+    # Path to the binary data file (relative to VALD data root)
+    path = models.CharField(max_length=255, unique=True, 
+                           help_text="Path to linelist file, e.g., '/CVALD3/ATOMS/Fe_NBS_cut_V3'")
+    
+    # Human-readable name
+    name = models.CharField(max_length=200, 
+                           help_text="Description, e.g., 'Fe: NBS data'")
+    
+    # Element range (using VALD element codes)
+    # 1=H, 2=He, ... 326=Fe I, 327=Fe II, etc.
+    element_min = models.IntegerField(help_text="Minimum element code (e.g., 326 for Fe I)")
+    element_max = models.IntegerField(help_text="Maximum element code (e.g., 334 for Fe IX)")
+    
+    # Classification
+    is_molecular = models.BooleanField(default=False)
+    source = models.CharField(max_length=100, blank=True, 
+                             help_text="Data source (NBS, Kurucz, NIST, etc.)")
+    
+    # Default priority (lower = higher priority in merging)
+    default_priority = models.IntegerField(default=1000)
+    
+    # Default rank weights (1-9, higher = better quality)
+    # These are used when merging duplicate lines from multiple sources
+    default_rank_wl = models.IntegerField(default=3, help_text="Wavelength quality rank (1-9)")
+    default_rank_gf = models.IntegerField(default=3, help_text="Oscillator strength quality rank")
+    default_rank_rad = models.IntegerField(default=3, help_text="Radiative damping quality rank")
+    default_rank_stark = models.IntegerField(default=3, help_text="Stark damping quality rank")
+    default_rank_waals = models.IntegerField(default=3, help_text="Van der Waals damping quality rank")
+    default_rank_lande = models.IntegerField(default=3, help_text="Lande factor quality rank")
+    default_rank_term = models.IntegerField(default=3, help_text="Term designation quality rank")
+    default_rank_ext_vdw = models.IntegerField(default=3, help_text="Extended VdW quality rank")
+    default_rank_zeeman = models.IntegerField(default=3, help_text="Zeeman data quality rank")
+    
+    # Metadata
+    is_active = models.BooleanField(default=True, help_text="Whether this linelist is currently available")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Linelist"
+        verbose_name_plural = "Linelists"
+        ordering = ['default_priority', 'path']
+    
+    def __str__(self):
+        return f"{self.name} ({self.path})"
+
+
+class Config(models.Model):
+    """
+    A configuration set defining which linelists to use and their settings.
+    
+    Users can have personal configs that customize the default selection.
+    The system default config (user=NULL, is_default=True) is used when
+    no personal config is specified.
+    """
+    name = models.CharField(max_length=100, help_text="Configuration name")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True,
+                            related_name='configs',
+                            help_text="Owner (NULL = system config)")
+    is_default = models.BooleanField(default=False,
+                                     help_text="Whether this is the default config for this user")
+    
+    # Global parameters (line 1 of .cfg file)
+    wl_window_ref = models.FloatField(default=0.05,
+                                      help_text="Wavelength window reference (Å)")
+    wl_ref = models.FloatField(default=5000.0,
+                               help_text="Reference wavelength (Å)")
+    max_ionization = models.IntegerField(default=9,
+                                         help_text="Maximum ionization stage")
+    max_excitation_eV = models.FloatField(default=150.0,
+                                          help_text="Maximum excitation potential (eV)")
+    
+    # Many-to-many relationship with linelists through ConfigLinelist
+    linelists = models.ManyToManyField(Linelist, through='ConfigLinelist',
+                                       related_name='configs')
+    
+    # Metadata
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Configuration"
+        verbose_name_plural = "Configurations"
+        ordering = ['user', 'name']
+        # Ensure only one default config per user (or system)
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'is_default'],
+                condition=models.Q(is_default=True),
+                name='unique_default_config_per_user'
+            )
+        ]
+    
+    def __str__(self):
+        owner = self.user.name if self.user else "System"
+        default_marker = " (default)" if self.is_default else ""
+        return f"{owner}: {self.name}{default_marker}"
+    
+    def generate_cfg_content(self):
+        """
+        Generate the .cfg file content from this configuration.
+        
+        Returns:
+            str: Content of the .cfg file for use with Fortran preselect
+        """
+        lines = []
+        
+        # Line 1: global parameters
+        lines.append(f"{self.wl_window_ref},{self.wl_ref}.,{self.max_ionization},{self.max_excitation_eV}")
+        
+        # Linelist lines (sorted by priority)
+        for cl in self.configlinelist_set.select_related('linelist').order_by('priority'):
+            if not cl.is_enabled:
+                prefix = ";"  # Comment out disabled linelists
+            else:
+                prefix = ""
+            
+            # Build rank weights string
+            ranks = f"{cl.rank_wl},{cl.rank_gf},{cl.rank_rad},{cl.rank_stark},"
+            ranks += f"{cl.rank_waals},{cl.rank_lande},{cl.rank_term},"
+            ranks += f"{cl.rank_ext_vdw},{cl.rank_zeeman}"
+            
+            # Format: 'path', priority, elem_min, elem_max, mergeable, ranks, 'name'
+            line = f"{prefix}'{cl.linelist.path}', {cl.priority}, "
+            line += f"{cl.linelist.element_min}, {cl.linelist.element_max}, "
+            line += f"{cl.mergeable}, {ranks}, '{cl.linelist.name}'"
+            
+            # Add replacement window if different from default
+            if cl.replacement_window != 0.05:
+                line += f", {cl.replacement_window}"
+            
+            lines.append(line)
+        
+        return '\n'.join(lines)
+    
+    @classmethod
+    def get_default_config(cls):
+        """Get the system default configuration."""
+        return cls.objects.filter(user__isnull=True, is_default=True).first()
+    
+    @classmethod
+    def get_user_config(cls, user):
+        """Get the user's default config, falling back to system default."""
+        if user:
+            user_config = cls.objects.filter(user=user, is_default=True).first()
+            if user_config:
+                return user_config
+        return cls.get_default_config()
+
+
+class ConfigLinelist(models.Model):
+    """
+    Junction table defining which linelists are in a config and their settings.
+    
+    This allows per-config customization of priority, rank weights, and enabled status.
+    """
+    config = models.ForeignKey(Config, on_delete=models.CASCADE)
+    linelist = models.ForeignKey(Linelist, on_delete=models.CASCADE)
+    
+    # Per-config settings
+    priority = models.IntegerField(help_text="Read order (lower = higher priority)")
+    is_enabled = models.BooleanField(default=True,
+                                     help_text="Whether this linelist is active (False = commented out)")
+    
+    # Mergeable flag
+    MERGEABLE_CHOICES = [
+        (0, 'Mergeable'),
+        (1, 'Standalone (never merge)'),
+        (2, 'Replacement list (always merge)'),
+    ]
+    mergeable = models.IntegerField(choices=MERGEABLE_CHOICES, default=0)
+    replacement_window = models.FloatField(default=0.05,
+                                           help_text="Wavelength tolerance for merging (Å)")
+    
+    # Override rank weights (if different from linelist defaults)
+    rank_wl = models.IntegerField(default=3)
+    rank_gf = models.IntegerField(default=3)
+    rank_rad = models.IntegerField(default=3)
+    rank_stark = models.IntegerField(default=3)
+    rank_waals = models.IntegerField(default=3)
+    rank_lande = models.IntegerField(default=3)
+    rank_term = models.IntegerField(default=3)
+    rank_ext_vdw = models.IntegerField(default=3)
+    rank_zeeman = models.IntegerField(default=3)
+    
+    class Meta:
+        verbose_name = "Config Linelist"
+        verbose_name_plural = "Config Linelists"
+        ordering = ['priority']
+        unique_together = ['config', 'linelist']
+    
+    def __str__(self):
+        status = "" if self.is_enabled else " (disabled)"
+        return f"{self.config.name}: {self.linelist.name} @ priority {self.priority}{status}"
+    
+    def save(self, *args, **kwargs):
+        # If rank weights are default (3), inherit from linelist
+        if not self.pk:  # New record
+            ll = self.linelist
+            if self.rank_wl == 3:
+                self.rank_wl = ll.default_rank_wl
+            if self.rank_gf == 3:
+                self.rank_gf = ll.default_rank_gf
+            if self.rank_rad == 3:
+                self.rank_rad = ll.default_rank_rad
+            if self.rank_stark == 3:
+                self.rank_stark = ll.default_rank_stark
+            if self.rank_waals == 3:
+                self.rank_waals = ll.default_rank_waals
+            if self.rank_lande == 3:
+                self.rank_lande = ll.default_rank_lande
+            if self.rank_term == 3:
+                self.rank_term = ll.default_rank_term
+            if self.rank_ext_vdw == 3:
+                self.rank_ext_vdw = ll.default_rank_ext_vdw
+            if self.rank_zeeman == 3:
+                self.rank_zeeman = ll.default_rank_zeeman
+        super().save(*args, **kwargs)
