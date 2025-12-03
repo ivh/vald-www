@@ -5,6 +5,7 @@ from django.core.mail import send_mail
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
+from django_ratelimit.decorators import ratelimit
 from pathlib import Path
 import glob
 
@@ -90,9 +91,15 @@ def index(request):
     return render(request, 'vald/index.html', context)
 
 
+@ratelimit(key='ip', rate='5/m', method='POST')
 def login(request):
     """Handle user login with password authentication"""
     if request.method == 'POST':
+        # Check if rate limited
+        if getattr(request, 'limited', False):
+            messages.error(request, 'Too many login attempts. Please try again in 1 minute.')
+            return redirect('vald:index')
+
         email = request.POST.get('user', '').strip().lower()
         password = request.POST.get('password', '').strip()
 
@@ -217,9 +224,15 @@ def activate_account(request, token):
         return redirect('vald:index')
 
 
+@ratelimit(key='ip', rate='5/h', method='POST')
 def set_password(request):
     """Handle password setting for first-time activation"""
     if request.method != 'POST':
+        return redirect('vald:index')
+
+    # Check if rate limited
+    if getattr(request, 'limited', False):
+        messages.error(request, 'Too many attempts. Please try again later.')
         return redirect('vald:index')
 
     activation_email = request.session.get('activation_email')
@@ -285,11 +298,18 @@ def set_password(request):
         return redirect('vald:index')
 
 
+@ratelimit(key='ip', rate='3/h', method='POST')
 def request_password_reset(request):
     """Handle password reset request form"""
     context = get_user_context(request)
 
     if request.method == 'POST':
+        # Check if rate limited
+        if getattr(request, 'limited', False):
+            messages.error(request, 'Too many password reset requests. Please try again later.')
+            context['form'] = PasswordResetRequestForm()
+            return render(request, 'vald/request_password_reset.html', context)
+
         form = PasswordResetRequestForm(request.POST)
 
         if not form.is_valid():
@@ -356,6 +376,7 @@ VALD Team
     return render(request, 'vald/request_password_reset.html', context)
 
 
+@ratelimit(key='ip', rate='5/h', method='POST')
 def reset_password(request, token):
     """Handle password reset with token"""
     context = get_user_context(request)
@@ -550,9 +571,18 @@ def submit_request(request):
     return render(request, 'vald/error.html', context)
 
 
+@ratelimit(key='ip', rate='5/h', method='POST')
 def handle_contact_request(request):
     """Handle contact form submission"""
     context = get_user_context(request)
+
+    # Check if rate limited
+    if getattr(request, 'limited', False):
+        messages.error(request, 'Too many contact form submissions. Please try again later.')
+        context['form'] = ContactForm()
+        context['registration_form'] = RegistrationForm()
+        return render(request, 'vald/contact.html', context)
+
     form = ContactForm(request.POST)
 
     if not form.is_valid():
@@ -608,9 +638,18 @@ def handle_contact_request(request):
         return render(request, 'vald/contact.html', context)
 
 
+@ratelimit(key='ip', rate='3/h', method='POST')
 def handle_registration_request(request):
     """Handle registration form submission"""
     context = get_user_context(request)
+
+    # Check if rate limited
+    if getattr(request, 'limited', False):
+        messages.error(request, 'Too many registration attempts. Please try again later.')
+        context['registration_form'] = RegistrationForm()
+        context['form'] = ContactForm()
+        return render(request, 'vald/contact.html', context)
+
     form = RegistrationForm(request.POST)
 
     if not form.is_valid():
@@ -941,7 +980,24 @@ def documentation(request, docpage):
         context['form'] = ContactForm()
         return render(request, 'vald/contact.html', context)
 
-    doc_file = settings.DOCUMENTATION_DIR / docpage
+    # Path traversal protection: ensure no '..' in path and not absolute
+    docpage_path = Path(docpage)
+    if '..' in docpage_path.parts or docpage_path.is_absolute():
+        context['error'] = 'Invalid documentation page.'
+        return render(request, 'vald/error.html', context)
+
+    # Resolve full path and verify it's within DOCUMENTATION_DIR
+    doc_file = (settings.DOCUMENTATION_DIR / docpage).resolve()
+    doc_dir_resolved = settings.DOCUMENTATION_DIR.resolve()
+
+    # Security check: ensure resolved path is within documentation directory
+    try:
+        doc_file.relative_to(doc_dir_resolved)
+    except ValueError:
+        # Path is outside DOCUMENTATION_DIR
+        context['error'] = 'Invalid documentation page.'
+        return render(request, 'vald/error.html', context)
+
     if doc_file.exists() and doc_file.is_file():
         with open(doc_file, 'r') as f:
             content_html = f.read()
