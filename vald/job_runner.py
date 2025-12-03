@@ -400,7 +400,6 @@ class JobRunner:
         output_file = config.job_dir / f"result.{config.job_id:06d}"
         
         # Generate show_in files for each query
-        # Config has wl_start/wl_end for single query, or multiple queries in element
         queries = self._parse_showline_queries(config)
         
         with open(output_file, 'w') as out:
@@ -408,8 +407,9 @@ class JobRunner:
                 show_in_path = config.job_dir / f"show_in.{config.job_id:06d}_{i:03d}"
                 self._write_show_in(config, show_in_path, wl_center, wl_window, element)
                 
-                # Separator
-                out.write(" " + "=" * 79 + "\n")
+                # Separator between queries
+                if i > 0:
+                    out.write("\n" + "=" * 79 + "\n\n")
                 
                 try:
                     # Build showline command
@@ -429,9 +429,20 @@ class JobRunner:
                             timeout=600
                         )
                     
-                    # Write output (limit lines via swallow equivalent)
-                    lines = result.stdout.decode().split('\n')
-                    for line in lines[:10]:  # Swallow default is 10 lines
+                    # Write output, skipping the interactive prompts
+                    # Prompts end after "Which data base information file..."
+                    output_text = result.stdout.decode()
+                    lines = output_text.split('\n')
+                    
+                    # Find where actual data starts (after the prompts)
+                    data_start = 0
+                    for j, line in enumerate(lines):
+                        if 'Which data base information file' in line:
+                            data_start = j + 1
+                            break
+                    
+                    # Write the actual data (skip prompts)
+                    for line in lines[data_start:]:
                         out.write(line + '\n')
                     
                 except Exception as e:
