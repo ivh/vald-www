@@ -152,6 +152,21 @@ VALD_WEBMASTER_EMAIL = 'thomas.marquart@physics.uu.se'
 
 # VALD-specific configuration
 VALD_HOME = Path(os.getenv('VALD_HOME', ''))
+
+# Validate VALD_HOME is set and exists
+if not VALD_HOME or str(VALD_HOME) == '.':
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        "VALD_HOME environment variable must be set. "
+        "Set it in your systemd service file or shell environment."
+    )
+if not VALD_HOME.exists():
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        f"VALD_HOME directory does not exist: {VALD_HOME}. "
+        "Please check the path in your VALD_HOME environment variable."
+    )
+
 CLIENTS_REGISTER = BASE_DIR / 'config' / 'clients.register'
 CLIENTS_REGISTER_LOCAL = BASE_DIR / 'config' / 'clients.register.local'
 PERSCONFIG_DIR = BASE_DIR / 'config' / 'personal_configs'

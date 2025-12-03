@@ -491,7 +491,7 @@ def submit_request_direct(request_obj):
             cwd=job_dir,
             capture_output=True,
             text=True,
-            timeout=1800  # 30 minute timeout for extraction
+            timeout=3600  # 1 hour timeout for extraction
         )
 
         if result.returncode != 0:
