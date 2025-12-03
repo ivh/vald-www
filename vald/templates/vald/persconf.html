@@ -4,7 +4,7 @@
 {% block content %}
 <h3>Personal linelist configuration</h3>
 
-<p>This page allows you to customize which linelists are used in your requests, and to modify the parameters for individual linelists.
+<p>This page allows you to customize which linelists are used in your requests, and to modify the rank parameters for individual linelists.
 
 <p><b>Note:</b> Modified parameters are highlighted in <span class="modified_data">red</span>.
 
@@ -22,65 +22,59 @@
 
 <table border=1 cellpadding=3>
 <tr align=center>
-<th>ID<th>Active<th>Name<th colspan=9>Parameters<th colspan=3>Options
+<th>ID<th>Active<th>Name<th>WL<th>gf<th>rad<th>stark<th>waals<th>lande<th>term<th>vdw<th>zeeman<th colspan=3>Options
 
 {% for linelist in linelists %}
-{% if editid == linelist.id %}
+{% if editid == linelist.config_linelist_id %}
   {# Editable row #}
   <tr align=center>
   <td align="right">{{ linelist.id }}</td>
   <td{% if linelist.mod_comment %} class="modified_data"{% endif %}>
-    <input type=checkbox {% if not linelist.commented %}checked{% endif %} name="linelist-checked">
+    <input type=checkbox {% if linelist.is_enabled %}checked{% endif %} name="linelist-checked">
   </td>
   <td align="left">{{ linelist.name }}</td>
 
-  {# Hidden parameters 1-4 #}
-  <input type="hidden" name="edit-val-1" value="{{ linelist|get_param:1 }}">
-  <input type="hidden" name="edit-val-2" value="{{ linelist|get_param:2 }}">
-  <input type="hidden" name="edit-val-3" value="{{ linelist|get_param:3 }}">
-  <input type="hidden" name="edit-val-4" value="{{ linelist|get_param:4 }}">
-
-  {# Editable parameters 5-13 #}
+  {# Editable rank parameters 0-8 #}
+  <td{% if linelist|get_mod_flag:0 %} class="modified_data"{% endif %}><input type="text" name="edit-val-0" value="{{ linelist|get_param:0 }}" size=2></td>
+  <td{% if linelist|get_mod_flag:1 %} class="modified_data"{% endif %}><input type="text" name="edit-val-1" value="{{ linelist|get_param:1 }}" size=2></td>
+  <td{% if linelist|get_mod_flag:2 %} class="modified_data"{% endif %}><input type="text" name="edit-val-2" value="{{ linelist|get_param:2 }}" size=2></td>
+  <td{% if linelist|get_mod_flag:3 %} class="modified_data"{% endif %}><input type="text" name="edit-val-3" value="{{ linelist|get_param:3 }}" size=2></td>
+  <td{% if linelist|get_mod_flag:4 %} class="modified_data"{% endif %}><input type="text" name="edit-val-4" value="{{ linelist|get_param:4 }}" size=2></td>
   <td{% if linelist|get_mod_flag:5 %} class="modified_data"{% endif %}><input type="text" name="edit-val-5" value="{{ linelist|get_param:5 }}" size=2></td>
   <td{% if linelist|get_mod_flag:6 %} class="modified_data"{% endif %}><input type="text" name="edit-val-6" value="{{ linelist|get_param:6 }}" size=2></td>
   <td{% if linelist|get_mod_flag:7 %} class="modified_data"{% endif %}><input type="text" name="edit-val-7" value="{{ linelist|get_param:7 }}" size=2></td>
   <td{% if linelist|get_mod_flag:8 %} class="modified_data"{% endif %}><input type="text" name="edit-val-8" value="{{ linelist|get_param:8 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:9 %} class="modified_data"{% endif %}><input type="text" name="edit-val-9" value="{{ linelist|get_param:9 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:10 %} class="modified_data"{% endif %}><input type="text" name="edit-val-10" value="{{ linelist|get_param:10 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:11 %} class="modified_data"{% endif %}><input type="text" name="edit-val-11" value="{{ linelist|get_param:11 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:12 %} class="modified_data"{% endif %}><input type="text" name="edit-val-12" value="{{ linelist|get_param:12 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:13 %} class="modified_data"{% endif %}><input type="text" name="edit-val-13" value="{{ linelist|get_param:13 }}" size=2></td>
 
-  <td><a href="javascript:void();" onClick="thisform.action.value='save'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Save</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='cancel'; thisform.editid.value='{{ linelist.id }}';thisform.submit(); return false;">Cancel</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Restore VALD default</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='save'; thisform.editid.value='{{ linelist.config_linelist_id }}'; thisform.submit(); return false;">Save</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='cancel'; thisform.editid.value='{{ linelist.config_linelist_id }}';thisform.submit(); return false;">Cancel</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.config_linelist_id }}'; thisform.submit(); return false;">Restore VALD default</a></td>
 
 {% else %}
   {# Read-only row #}
   <tr align=center>
   <td align="right">{{ linelist.id }}</td>
   <td{% if linelist.mod_comment %} class="modified_data"{% endif %}>
-    {% if not linelist.commented %} X {% else %} &nbsp; {% endif %}
+    {% if linelist.is_enabled %} X {% else %} &nbsp; {% endif %}
   </td>
   <td align="left">{{ linelist.name }}</td>
 
-  {# Display parameters 5-13 #}
+  {# Display rank parameters 0-8 #}
+  <td{% if linelist|get_mod_flag:0 %} class="modified_data"{% endif %}>{{ linelist|get_param:0 }}</td>
+  <td{% if linelist|get_mod_flag:1 %} class="modified_data"{% endif %}>{{ linelist|get_param:1 }}</td>
+  <td{% if linelist|get_mod_flag:2 %} class="modified_data"{% endif %}>{{ linelist|get_param:2 }}</td>
+  <td{% if linelist|get_mod_flag:3 %} class="modified_data"{% endif %}>{{ linelist|get_param:3 }}</td>
+  <td{% if linelist|get_mod_flag:4 %} class="modified_data"{% endif %}>{{ linelist|get_param:4 }}</td>
   <td{% if linelist|get_mod_flag:5 %} class="modified_data"{% endif %}>{{ linelist|get_param:5 }}</td>
   <td{% if linelist|get_mod_flag:6 %} class="modified_data"{% endif %}>{{ linelist|get_param:6 }}</td>
   <td{% if linelist|get_mod_flag:7 %} class="modified_data"{% endif %}>{{ linelist|get_param:7 }}</td>
   <td{% if linelist|get_mod_flag:8 %} class="modified_data"{% endif %}>{{ linelist|get_param:8 }}</td>
-  <td{% if linelist|get_mod_flag:9 %} class="modified_data"{% endif %}>{{ linelist|get_param:9 }}</td>
-  <td{% if linelist|get_mod_flag:10 %} class="modified_data"{% endif %}>{{ linelist|get_param:10 }}</td>
-  <td{% if linelist|get_mod_flag:11 %} class="modified_data"{% endif %}>{{ linelist|get_param:11 }}</td>
-  <td{% if linelist|get_mod_flag:12 %} class="modified_data"{% endif %}>{{ linelist|get_param:12 }}</td>
-  <td{% if linelist|get_mod_flag:13 %} class="modified_data"{% endif %}>{{ linelist|get_param:13 }}</td>
 
   {% if editid %}
     {# When editing another linelist, no options #}
     <td colspan=3> &nbsp;<br></td>
   {% else %}
     {# When browsing, show edit option #}
-    <td><a href="javascript:void();" onClick="thisform.action.value='edit'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Edit</a></td>
+    <td><a href="javascript:void();" onClick="thisform.action.value='edit'; thisform.editid.value='{{ linelist.config_linelist_id }}'; thisform.submit(); return false;">Edit</a></td>
     <td colspan=2>&nbsp;</td>
   {% endif %}
 {% endif %}

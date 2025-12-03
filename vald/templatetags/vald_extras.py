@@ -23,15 +23,24 @@ def call_method(obj, method_name_or_arg):
 
 @register.filter(name='get_param')
 def get_param(linelist, index):
-    """Get parameter by index - works with both dict and model objects"""
+    """
+    Get parameter by index.
+    
+    For DB-backed configs: indices 0-8 map to ranks[0-8]
+    For legacy file-based: indices 5-13 map to params[5-13]
+    """
     try:
         idx = int(index)
-        # Check if it's a dict (new file-based implementation)
         if isinstance(linelist, dict):
-            if 'params' in linelist and idx < len(linelist['params']):
+            # New DB-backed: use 'ranks' list with 0-8 indices
+            if 'ranks' in linelist:
+                if 0 <= idx < len(linelist['ranks']):
+                    return linelist['ranks'][idx]
+                return ''
+            # Legacy file-based: use 'params' list
+            elif 'params' in linelist and idx < len(linelist['params']):
                 return linelist['params'][idx]
             return ''
-        # Otherwise assume it's a model object (legacy)
         else:
             return linelist.get_param(idx)
     except (ValueError, AttributeError, KeyError, IndexError):
@@ -40,19 +49,23 @@ def get_param(linelist, index):
 
 @register.filter(name='get_mod_flag')
 def get_mod_flag(linelist, index):
-    """Get modification flag by index - works with both dict and model objects"""
+    """
+    Get modification flag by index.
+    
+    For DB-backed configs: indices 0-8 map to mod_flags[0-8]
+    For legacy file-based: indices 5-13 map to mod_flags[5-13]
+    """
     try:
         idx = int(index)
-        # Check if it's a dict (new file-based implementation)
         if isinstance(linelist, dict):
             if 'mod_flags' in linelist and idx < len(linelist['mod_flags']):
                 return linelist['mod_flags'][idx]
             return False
-        # Otherwise assume it's a model object (legacy)
         else:
             return linelist.get_mod_flag(idx)
     except (ValueError, AttributeError, KeyError, IndexError):
         return False
+
 
 @register.filter(name='pprint')
 def pprint_filter(value):
