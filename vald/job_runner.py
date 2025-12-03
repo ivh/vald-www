@@ -494,7 +494,8 @@ class JobRunner:
             f.write(f"{wl_center},{wl_window}\n")
             f.write(f"{element}\n")
             config_path = config.config_path or str(self.default_config)
-            f.write(f"'{config_path}'\n")
+            # showline expects path without quotes (unlike preselect)
+            f.write(f"{config_path}\n")
     
     def _parse_showline_queries(self, config: JobConfig) -> List[Tuple[float, float, str]]:
         """Parse showline queries from config. Returns list of (wl_center, wl_window, element)."""
