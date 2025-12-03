@@ -37,8 +37,8 @@ def run_preselect5(wl_min: float, wl_max: float, element: str = "", max_lines: i
     Run preselect5 and return the number of lines output.
     
     Args:
-        wl_min: Minimum wavelength (Å)
-        wl_max: Maximum wavelength (Å)
+        wl_min: Minimum wavelength (Å, vacuum)
+        wl_max: Maximum wavelength (Å, vacuum)
         element: Element filter (e.g., "Fe 1" or "" for all)
         max_lines: Maximum number of lines (0 = unlimited)
         
@@ -49,12 +49,13 @@ def run_preselect5(wl_min: float, wl_max: float, element: str = "", max_lines: i
     
     # Create pres_in content
     # Format: wl_range, max_lines, element, config_path, flags
-    # Flags: format(0=short), rad, stark, waals, lande, term, ext_vdw, zeeman, stark_ext, vacuum, nm, iso, hfs
+    # Flags: format(0=short), rad, stark, waals, lande, term, ext_vdw, zeeman, stark_ext, vacuum(1), nm, iso, hfs
+    # We use vacuum=1 (flag 10) to match our Python code which works in vacuum wavelengths
     pres_in = f"""{wl_min},{wl_max}
 {max_lines}
 {element}
 '{config_path}'
-0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 1 0 0 0
 """
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -205,9 +206,8 @@ class TestPreselect5Comparison:
         
         print(f"Fe I {wl_min}-{wl_max}: preselect5={preselect_nlines}, Python={python_nlines}")
         
-        # Allow 5% tolerance or 2 lines difference
-        tolerance = max(2, int(preselect_nlines * 0.05))
-        assert abs(preselect_nlines - python_nlines) <= tolerance, \
+        # Should match exactly
+        assert preselect_nlines == python_nlines, \
             f"Line count mismatch: preselect5={preselect_nlines}, Python={python_nlines}"
     
     def test_all_elements_narrow_range(self):
@@ -229,9 +229,8 @@ class TestPreselect5Comparison:
         
         print(f"All elements {wl_min}-{wl_max}: preselect5={preselect_nlines}, Python={python_nlines}")
         
-        # Allow 5% tolerance
-        tolerance = max(5, int(preselect_nlines * 0.05))
-        assert abs(preselect_nlines - python_nlines) <= tolerance, \
+        # Allow 1 line tolerance for boundary effects
+        assert abs(preselect_nlines - python_nlines) <= 1, \
             f"Line count mismatch: preselect5={preselect_nlines}, Python={python_nlines}"
     
     def test_ca_ii_wide_range(self):
@@ -253,8 +252,8 @@ class TestPreselect5Comparison:
         
         print(f"Ca II {wl_min}-{wl_max}: preselect5={preselect_nlines}, Python={python_nlines}")
         
-        tolerance = max(2, int(preselect_nlines * 0.05))
-        assert abs(preselect_nlines - python_nlines) <= tolerance, \
+        # Should match exactly
+        assert preselect_nlines == python_nlines, \
             f"Line count mismatch: preselect5={preselect_nlines}, Python={python_nlines}"
     
     def test_h_alpha_region(self):
@@ -276,8 +275,8 @@ class TestPreselect5Comparison:
         
         print(f"H-alpha region {wl_min}-{wl_max}: preselect5={preselect_nlines}, Python={python_nlines}")
         
-        tolerance = max(5, int(preselect_nlines * 0.05))
-        assert abs(preselect_nlines - python_nlines) <= tolerance, \
+        # Should match exactly
+        assert preselect_nlines == python_nlines, \
             f"Line count mismatch: preselect5={preselect_nlines}, Python={python_nlines}"
     
     def test_uv_region(self):
@@ -299,8 +298,8 @@ class TestPreselect5Comparison:
         
         print(f"UV region {wl_min}-{wl_max}: preselect5={preselect_nlines}, Python={python_nlines}")
         
-        tolerance = max(10, int(preselect_nlines * 0.05))
-        assert abs(preselect_nlines - python_nlines) <= tolerance, \
+        # Should match exactly
+        assert preselect_nlines == python_nlines, \
             f"Line count mismatch: preselect5={preselect_nlines}, Python={python_nlines}"
     
     def test_ir_region(self):
@@ -322,6 +321,6 @@ class TestPreselect5Comparison:
         
         print(f"IR region {wl_min}-{wl_max}: preselect5={preselect_nlines}, Python={python_nlines}")
         
-        tolerance = max(5, int(preselect_nlines * 0.05))
-        assert abs(preselect_nlines - python_nlines) <= tolerance, \
+        # Allow 1 line tolerance for boundary effects
+        assert abs(preselect_nlines - python_nlines) <= 1, \
             f"Line count mismatch: preselect5={preselect_nlines}, Python={python_nlines}"
