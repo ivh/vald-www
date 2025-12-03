@@ -1209,7 +1209,8 @@ def request_detail(request, uuid):
 
         # Check if output file exists
         output_ready = req_obj.output_exists()
-        output_size = req_obj.get_output_size() if output_ready else None
+        output_empty = req_obj.output_is_empty() if output_ready else False
+        output_size = req_obj.get_output_size() if output_ready and not output_empty else None
 
         # Check if bib output file exists
         bib_output_ready = req_obj.bib_output_exists()
@@ -1238,6 +1239,7 @@ def request_detail(request, uuid):
             'backend_id': backend_id,
             'request_file_content': request_file_content,
             'output_ready': output_ready,
+            'output_empty': output_empty,
             'output_size': output_size,
             'bib_output_ready': bib_output_ready,
             'bib_output_size': bib_output_size,

@@ -32,9 +32,13 @@
 {% endif %}
 {% if req.is_complete and output_ready %}
 <tr><td><b>Download:</b></td><td>
+    {% if output_empty %}
+    <i>No lines found matching your criteria.</i>
+    {% else %}
     <a href="{% url 'vald:download_request' req.uuid %}"><button>Results ({{ output_size }})</button></a>
     {% if bib_output_ready %}
     <a href="{% url 'vald:download_bib_request' req.uuid %}"><button>Bibliography ({{ bib_output_size }})</button></a>
+    {% endif %}
     {% endif %}
 </td></tr>
 {% endif %}

@@ -75,6 +75,14 @@ class Request(models.Model):
             return False
         return Path(self.output_file).exists()
 
+    def output_is_empty(self):
+        """Check if output file exists but contains no data (just gzip header)"""
+        if not self.output_exists():
+            return False
+        size = Path(self.output_file).stat().st_size
+        # Empty gzip is ~20-42 bytes (header only)
+        return size < 50
+
     def get_output_size(self):
         """Get size of output file in human-readable format"""
         if not self.output_exists():
