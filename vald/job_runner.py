@@ -361,31 +361,30 @@ class JobRunner:
                         shutil.move(str(select_bib), str(bib_file))
                 else:
                     # preselect | select
-                    out = open(output_file, 'w')
+                    # Note: select writes to 'select.out' file, not stdout
                     select_proc = subprocess.Popen(
                         [str(self.select)],
                         stdin=preselect_proc.stdout,
-                        stdout=out,
+                        stdout=subprocess.PIPE,  # Capture stdout (header info)
                         stderr=subprocess.PIPE,
                         cwd=config.job_dir
                     )
                     preselect_proc.stdout.close()
                     
                     _, stderr = select_proc.communicate(timeout=3600)
-                    out.close()
                     preselect_proc.wait()
                     
                     if select_proc.returncode != 0:
                         return (False, f"select failed: {stderr.decode()}")
                     
-                    # select creates 'selected.bib' in cwd
-                    select_bib = config.job_dir / 'selected.bib'
+                    # select creates 'select.bib' in cwd
+                    select_bib = config.job_dir / 'select.bib'
                     if select_bib.exists():
                         shutil.move(str(select_bib), str(bib_file))
             
-            # Move select.out to output file if created
+            # select writes output to 'select.out' file
             select_out = config.job_dir / 'select.out'
-            if select_out.exists() and not output_file.exists():
+            if select_out.exists():
                 shutil.move(str(select_out), str(output_file))
             
             return self._finalize_output(config, output_file, bib_file)
