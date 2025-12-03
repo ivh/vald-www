@@ -157,7 +157,11 @@ class User(models.Model):
     @property
     def client_name(self):
         """Get alphanumeric-only version of name for file paths"""
-        return ''.join(c for c in self.name if c.isalnum())
+        name = ''.join(c for c in self.name if c.isalnum())
+        if not name:
+            # Fallback for names with only special chars (e.g., Chinese, Arabic, symbols)
+            return f"user{self.id}"
+        return name
 
     @property
     def primary_email(self):

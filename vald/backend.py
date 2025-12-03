@@ -236,8 +236,41 @@ def submit_request_direct(request_obj):
     # Create isolated subdirectory for this job first
     # parserequest must run in the job directory to create files with correct names
     job_dir = working_dir / f"{backend_id:06d}"
+    uuid_marker = job_dir / '.uuid'
+
+    # Check for UUID collision - if directory exists with different UUID, retry with incremented ID
+    max_collision_retries = 100
+    for retry in range(max_collision_retries):
+        if job_dir.exists() and uuid_marker.exists():
+            # Check if this is our UUID or a collision
+            try:
+                existing_uuid = uuid_marker.read_text().strip()
+                if existing_uuid == str(request_obj.uuid):
+                    # This is our directory (maybe from a retry), reuse it
+                    break
+                else:
+                    # Collision! Try next ID
+                    backend_id = (backend_id + 1) % 1000000
+                    job_dir = working_dir / f"{backend_id:06d}"
+                    uuid_marker = job_dir / '.uuid'
+                    continue
+            except Exception:
+                # Can't read marker file, assume collision and retry
+                backend_id = (backend_id + 1) % 1000000
+                job_dir = working_dir / f"{backend_id:06d}"
+                uuid_marker = job_dir / '.uuid'
+                continue
+        else:
+            # Directory doesn't exist or no marker - we can use this ID
+            break
+    else:
+        # Exhausted all retries
+        return (False, f"Could not find available backend ID after {max_collision_retries} attempts")
+
+    # Create directory and UUID marker file
     try:
         job_dir.mkdir(exist_ok=True)
+        uuid_marker.write_text(str(request_obj.uuid))
     except Exception as e:
         return (False, f"Failed to create job directory: {e}")
 
@@ -519,6 +552,7 @@ def submit_request_direct(request_obj):
                     job_bib.rename(bib_file)
 
     # Verify main output file exists (bib file is optional for extract requests)
+    # Job directory cleanup handled by cronjob with --age=2D for debugging purposes
     if output_file.exists():
         return (True, str(output_file))
     else:

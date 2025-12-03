@@ -769,7 +769,13 @@ def handle_extract_request(request):
 
             # Update status to processing
             req_obj.status = 'processing'
-            req_obj.save()
+            try:
+                req_obj.save()
+            except Exception as save_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.exception(f"Failed to save processing status for request {req_obj.uuid}: {save_error}")
+                raise  # Re-raise to be caught by outer exception handler
 
             # Submit directly to backend
             success, result = submit_request_direct(req_obj)
@@ -778,7 +784,13 @@ def handle_extract_request(request):
                 # Update request with output file
                 req_obj.status = 'complete'
                 req_obj.output_file = result
-                req_obj.save()
+                try:
+                    req_obj.save()
+                except Exception as save_error:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.exception(f"Failed to save complete status for request {req_obj.uuid}: {save_error}")
+                    raise  # Re-raise to be caught by outer exception handler
 
                 # Send email if user selected email delivery
                 viaftp = req_obj.parameters.get('viaftp', 'email')
@@ -847,19 +859,35 @@ Vienna Atomic Line Database (VALD)
                         bib_file = req_obj.get_bib_output_file()
                         email.attach_file(str(bib_file))
 
-                    email.send(fail_silently=True)
+                    # Send email with logging on failure
+                    try:
+                        email.send(fail_silently=False)
+                    except Exception as email_error:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to send completion email for request {req_obj.uuid}: {email_error}")
 
             else:
                 # Processing failed
                 req_obj.status = 'failed'
                 req_obj.error_message = result
-                req_obj.save()
+                try:
+                    req_obj.save()
+                except Exception as save_error:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.exception(f"Failed to save failed status for request {req_obj.uuid}: {save_error}")
 
         except Exception as e:
             # Mark request as failed
             req_obj.status = 'failed'
             req_obj.error_message = str(e)
-            req_obj.save()
+            try:
+                req_obj.save()
+            except Exception as save_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.exception(f"Failed to save exception status for request {req_obj.uuid}: {save_error}")
 
     # Start background thread
     thread = threading.Thread(target=process_request_background, daemon=True)
