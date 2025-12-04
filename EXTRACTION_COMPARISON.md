@@ -77,6 +77,23 @@ Exhaustively analyzed `preselect5.f90`:
 - Output logic (lines 1430-1590)
 - No explicit isotope-specific filtering found
 
+### Additional Finding (2025-12-04)
+
+Re-reading `preselect5.f90` alongside the Python port shows that **both implementations enforce the same forbid-flag compatibility check**, but the inputs they see are different:
+
+- Python reads the raw byte 191 from each record (e.g., `'4'` vs `'6'` for the Ca II isotopes) via `VALD3Reader` and immediately rejects the merge, so both isotopic sets remain in the output.
+- The native toolchain only ever compares the sanitized one-character field that arrives in the merge stack. Inspecting `unkompress3.c` (`ADDLINE` macro, lines 107-151) shows that the decompressor copies bytes 60-269 verbatim into the `info` array; the merge code (`preselect5.f90`, lines 1161-1195) therefore acts on whatever preprocessing happened upstream when the `.CVALD3` file was produced.
+
+**Implication**: There is no hidden logic inside `preselect5` or `unkompress3` that massages the flags—the normalization happens earlier in the VALD build pipeline, so the shipped binary never sees the conflicting values that our Python reader surfaces. Our pipeline faithfully exposes the raw flags and therefore keeps non-mergeable duplicates.
+
+### Where the Fortran preprocessing lives
+
+1. `readpi` (preselect5.f90, lines 254-394) parses the third line of `pres_in` and translates the textual element/isotope filter into numeric species codes (`scodes`). The helper looks up each "Ca 2"/"48Ca 2" token, stores up to 60 IDs, and sets `lcode` when a filter is present.
+2. `initbf` (lines 824-906) receives `scodes` and skips entire linelist buffers whose species range (`ielran`) does not intersect the requested codes, so forbidden lists never enter the merge stack.
+3. The main merge loop (lines 1884-1900) double-checks every dequeued line by calling `locate(scodes, ...)`; if the species is outside the filtered set, it decrements the stack pointer and restarts the outer loop, effectively discarding the line before any merge logic executes.
+
+This three-step preprocessing path is the only place the legacy code filters by element/isotope before merges. Our Python port mirrors it in `_parse_element_filter()` and the early `LineData` concatenation, so both pipelines ingest the same species subsets before the forbid comparison.
+
 ### Possible Explanations
 
 The isotope filtering logic may be:
