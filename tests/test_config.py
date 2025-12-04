@@ -104,3 +104,38 @@ def test_config_can_be_written_to_file(imported_default_config, tmp_path):
     # Read it back
     read_content = config_path.read_text()
     assert read_content == content
+
+
+@pytest.mark.django_db
+def test_import_persconf_creates_user_config(imported_default_config, tmp_path):
+    """Test that import_persconf creates a user-specific config with differences."""
+    from django.core.management import call_command
+    from vald.models import User, Config, ConfigLinelist
+    
+    # Create a test user
+    user = User.objects.create(name='Test User', password='dummy')
+    
+    # Create a test personal config file with modified ranks
+    test_cfg = tmp_path / 'TestUser.cfg'
+    
+    # Copy content from default config but modify first linelist's ranks
+    content = imported_default_config.generate_cfg_content()
+    lines = content.split('\n')
+    
+    # Find first non-commented linelist and change a rank
+    for i, line in enumerate(lines):
+        if line.startswith("'") and not line.startswith(";"):
+            # Change rank from 3 to 9 in the middle of the line
+            lines[i] = line.replace(',3,3,3,', ',9,9,9,', 1)
+            break
+    
+    test_cfg.write_text('\n'.join(lines))
+    
+    # Import the personal config
+    call_command('import_persconf', str(test_cfg), verbosity=0)
+    
+    # Verify user config was created
+    user_config = Config.objects.filter(user=user).first()
+    assert user_config is not None
+    assert user_config.is_default is True
+    assert user_config.configlinelist_set.count() == 377
