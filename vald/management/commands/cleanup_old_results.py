@@ -1,4 +1,6 @@
-from django.core.management.base import BaseCommand
+import os
+
+from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
 from django.utils import timezone
 from pathlib import Path
@@ -66,6 +68,14 @@ class Command(BaseCommand):
 
         cutoff_time = timezone.now() - age_threshold
 
+        # Which settings module is in play matters: manage.py defaults to
+        # vald_web.settings (development), whose VALD_FTP_DIR is a different
+        # directory from the deployed one. Running this on the server without
+        # DJANGO_SETTINGS_MODULE set would previously sweep the wrong directory
+        # and report success while the real one filled up.
+        self.stdout.write(f"Settings module: {os.environ.get('DJANGO_SETTINGS_MODULE', '(default)')}")
+        self.stdout.write(f"FTP directory:   {settings.VALD_FTP_DIR}")
+        self.stdout.write(f"Working dir:     {settings.VALD_WORKING_DIR}")
         self.stdout.write(f"Cleaning up files older than {age_str} ({age_threshold})")
         self.stdout.write(f"Cutoff time: {cutoff_time}")
 
@@ -76,13 +86,18 @@ class Command(BaseCommand):
         self.stdout.write("\n=== Checking FTP directory ===")
         ftp_dir = Path(settings.VALD_FTP_DIR)
         if not ftp_dir.exists():
-            self.stdout.write(self.style.WARNING(f"FTP directory does not exist: {ftp_dir}"))
+            raise CommandError(
+                f"FTP directory does not exist: {ftp_dir}\n"
+                "Refusing to report success without having swept it. If this path "
+                "looks wrong, set DJANGO_SETTINGS_MODULE=vald_web.settings_deploy."
+            )
         else:
             deleted_count = 0
             deleted_size = 0
 
-            # Find all .gz and .bib.gz files
-            for pattern in ['*.gz', '*.bib.gz']:
+            # Result files. '*.gz' already covers '*.bib.gz'; '*.txt' is the
+            # showline output, which was previously never swept at all.
+            for pattern in ['*.gz', '*.txt']:
                 for file_path in ftp_dir.glob(pattern):
                     if file_path.is_file():
                         # Check modification time
