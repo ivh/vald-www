@@ -166,6 +166,25 @@ VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request process
 VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'  # Output directory for results
 VALD_MAX_WORKERS = 2  # Maximum parallel job executions (FIFO queue)
 VALD_MAX_QUEUE_SIZE = 10  # Maximum pending jobs in queue before rejecting new requests
+# Maximum output lines per request, written as pres_in line 2 (R29).
+# Was previously only a getattr() fallback in job_runner, defined nowhere.
+# For reference, legacy parserequest.c used two values chosen by delivery
+# method: MAX_LINES_PER_FTP (100000) and MAX_LINES_PER_REQUEST (1000, email).
+# We deliberately keep a single 500000 for both - see finds.md R29/R33.
+VALD_MAX_LINES_PER_REQUEST = 500000
+
+# Wall-clock budget for one job pipeline, in seconds
+VALD_JOB_TIMEOUT = 3600
+
+# Most extraction requests one user may have in flight at once. The global
+# admission limit is VALD_MAX_QUEUE_SIZE; without a per-user cap one user
+# could occupy all of it and everyone else got "Server is busy" (R5).
+VALD_MAX_REQUESTS_PER_USER = 5
+
+# Submission rate per user (django-ratelimit syntax). The in-flight cap above
+# is the real protection; this just stops a scripted loop.
+VALD_SUBMIT_RATE = '120/h'
+
 
 # Logging - console only in development (see settings_deploy for production)
 LOGGING = {
