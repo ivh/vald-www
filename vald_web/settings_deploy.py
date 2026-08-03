@@ -205,3 +205,49 @@ VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request process
 VALD_FTP_DIR = VALD_HOME / 'WWW' / 'public_html' / 'FTP'  # Output directory for results
 VALD_MAX_WORKERS = 5  # Maximum parallel job executions (FIFO queue)
 VALD_MAX_QUEUE_SIZE = 10  # Maximum pending jobs in queue before rejecting new requests
+
+# Logging. Without this, unhandled 500s and every logger.exception() call in the
+# job pipeline went nowhere - Django only configures a console handler while
+# DEBUG is on. gunicorn is started with --error-logfile - so stderr reaches
+# journald; use `journalctl -u vald` to read it.
+ADMINS = [('VALD webmaster', VALD_WEBMASTER_EMAIL)]
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {name}: {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'mail_admins': {
+            'class': 'django.utils.log.AdminEmailHandler',
+            'level': 'ERROR',
+            'include_html': False,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        # Unhandled exceptions in views
+        'django.request': {
+            'handlers': ['console', 'mail_admins'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        # Our own modules: job pipeline, request processing
+        'vald': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

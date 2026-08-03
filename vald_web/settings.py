@@ -166,3 +166,32 @@ VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request process
 VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'  # Output directory for results
 VALD_MAX_WORKERS = 2  # Maximum parallel job executions (FIFO queue)
 VALD_MAX_QUEUE_SIZE = 10  # Maximum pending jobs in queue before rejecting new requests
+
+# Logging - console only in development (see settings_deploy for production)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {name}: {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'vald': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}
