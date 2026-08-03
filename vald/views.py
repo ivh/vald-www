@@ -12,6 +12,7 @@ from datetime import timedelta
 from django_ratelimit.decorators import ratelimit
 from pathlib import Path
 import glob
+import logging
 
 from .models import Request, User, UserEmail
 from .forms import (
@@ -31,6 +32,8 @@ from .utils import (
     read_config_file,
     render_request_template,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_current_user(request):
@@ -469,6 +472,24 @@ def reset_password(request, token):
     return render(request, 'vald/reset_password.html', context)
 
 
+def serve_path_or_none(path):
+    """Return path if it exists inside VALD_FTP_DIR, else None.
+
+    Guards the download views against serving anything outside the results
+    directory, however output_file came to hold what it holds.
+    """
+    if not path:
+        return None
+    ftp_dir = Path(settings.VALD_FTP_DIR).resolve()
+    try:
+        resolved = Path(path).resolve()
+        resolved.relative_to(ftp_dir)
+    except (ValueError, OSError):
+        logger.warning("Refusing to serve %s: outside %s", path, ftp_dir)
+        return None
+    return resolved if resolved.exists() else None
+
+
 def require_login(view_func):
     """Decorator to require login"""
     def wrapper(request, *args, **kwargs):
@@ -897,8 +918,6 @@ def handle_extract_request(request):
             try:
                 req_obj.save()
             except Exception as save_error:
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.exception(f"Failed to save processing status for request {req_obj.uuid}: {save_error}")
                 raise  # Re-raise to be caught by outer exception handler
 
@@ -908,13 +927,13 @@ def handle_extract_request(request):
             if success:
                 # Update request with output file
                 req_obj.status = 'complete'
-                req_obj.output_file = result
+                # Store the filename only; Request.output_path resolves it
+                # against the current VALD_FTP_DIR (R18).
+                req_obj.output_file = Path(result).name
                 req_obj.completed_at = timezone.now()
                 try:
                     req_obj.save()
                 except Exception as save_error:
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.exception(f"Failed to save complete status for request {req_obj.uuid}: {save_error}")
                     raise  # Re-raise to be caught by outer exception handler
 
@@ -980,8 +999,8 @@ Vienna Atomic Line Database (VALD)
                     )
 
                     # Attach main results file
-                    output_path = Path(req_obj.output_file)
-                    if output_path.exists():
+                    output_path = req_obj.output_path
+                    if output_path and output_path.exists():
                         email.attach_file(str(output_path))
 
                     # Attach bibliography file if exists (only for extract requests)
@@ -993,8 +1012,6 @@ Vienna Atomic Line Database (VALD)
                     try:
                         email.send(fail_silently=False)
                     except Exception as email_error:
-                        import logging
-                        logger = logging.getLogger(__name__)
                         logger.error(f"Failed to send completion email for request {req_obj.uuid}: {email_error}")
 
             else:
@@ -1005,8 +1022,6 @@ Vienna Atomic Line Database (VALD)
                 try:
                     req_obj.save()
                 except Exception as save_error:
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.exception(f"Failed to save failed status for request {req_obj.uuid}: {save_error}")
 
         except Exception as e:
@@ -1017,8 +1032,6 @@ Vienna Atomic Line Database (VALD)
             try:
                 req_obj.save()
             except Exception as save_error:
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.exception(f"Failed to save exception status for request {req_obj.uuid}: {save_error}")
 
     # Start background thread
@@ -1313,7 +1326,7 @@ def request_detail(request, uuid):
         output_content = None
         if req_obj.request_type == 'showline' and output_ready:
             try:
-                with open(req_obj.output_file, 'r') as f:
+                with open(req_obj.output_path, 'r') as f:
                     output_content = f.read()
             except Exception:
                 pass
@@ -1368,8 +1381,13 @@ def download_request(request, uuid):
             messages.error(request, 'Output file not found.')
             return redirect('vald:request_detail', uuid=uuid)
 
-        # Serve the file
-        file_path = Path(req_obj.output_file)
+        # Serve the file, confirming it really is inside the results
+        # directory before opening it (defence in depth - the value is
+        # server-generated, but nothing else checks it).
+        file_path = serve_path_or_none(req_obj.output_path)
+        if file_path is None:
+            messages.error(request, 'Output file not found.')
+            return redirect('vald:request_detail', uuid=uuid)
 
         # Determine content type
         content_type, _ = mimetypes.guess_type(file_path.name)
@@ -1415,8 +1433,13 @@ def download_bib_request(request, uuid):
             messages.error(request, 'Bibliography file not found.')
             return redirect('vald:request_detail', uuid=uuid)
 
-        # Serve the file
-        file_path = Path(req_obj.get_bib_output_file())
+        # Serve the file, confirming it really is inside the results
+        # directory before opening it (defence in depth - the value is
+        # server-generated, but nothing else checks it).
+        file_path = serve_path_or_none(req_obj.bib_output_path)
+        if file_path is None:
+            messages.error(request, 'Bibliography file not found.')
+            return redirect('vald:request_detail', uuid=uuid)
 
         # Determine content type
         content_type, _ = mimetypes.guess_type(file_path.name)

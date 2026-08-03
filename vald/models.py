@@ -72,60 +72,72 @@ class Request(models.Model):
         """Check if request is still pending"""
         return self.status in ['pending', 'processing']
 
+    @property
+    def output_path(self):
+        """Absolute path to the result file, or None if none was recorded.
+
+        output_file historically held an absolute path, which silently broke
+        every past request whenever VALD_FTP_DIR moved - and moving it is part of
+        the cutover. New rows store the bare filename and resolve against the
+        current VALD_FTP_DIR; absolute values are still honoured so existing rows
+        keep working.
+        """
+        if not self.output_file:
+            return None
+        path = Path(self.output_file)
+        if path.is_absolute():
+            return path
+        return Path(settings.VALD_FTP_DIR) / path
+
+    @property
+    def bib_output_path(self):
+        """Absolute path to the .bib.gz companion file, or None."""
+        main = self.output_path
+        if main is None or main.suffix != '.gz':
+            return None
+        return main.with_suffix('.bib.gz')
+
+    @staticmethod
+    def _format_size(size_bytes):
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+
     def output_exists(self):
         """Check if output file exists on filesystem"""
-        if not self.output_file:
-            return False
-        return Path(self.output_file).exists()
+        path = self.output_path
+        return bool(path and path.exists())
 
     def output_is_empty(self):
         """Check if output file exists but contains no data (just gzip header)"""
         if not self.output_exists():
             return False
-        size = Path(self.output_file).stat().st_size
         # Empty gzip is ~20-42 bytes (header only)
-        return size < 50
+        return self.output_path.stat().st_size < 50
 
     def get_output_size(self):
         """Get size of output file in human-readable format"""
         if not self.output_exists():
             return None
-        size_bytes = Path(self.output_file).stat().st_size
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if size_bytes < 1024.0:
-                return f"{size_bytes:.1f} {unit}"
-            size_bytes /= 1024.0
-        return f"{size_bytes:.1f} TB"
+        return self._format_size(self.output_path.stat().st_size)
 
     def get_bib_output_file(self):
-        """Get path to .bib.gz file if it exists"""
-        if not self.output_file:
-            return None
-        # Replace .gz with .bib.gz
-        output_path = Path(self.output_file)
-        if output_path.suffix == '.gz':
-            bib_path = output_path.with_suffix('.bib.gz')
-            return str(bib_path)
-        return None
+        """Get path to .bib.gz file, as a string, if one could exist"""
+        path = self.bib_output_path
+        return str(path) if path else None
 
     def bib_output_exists(self):
         """Check if .bib.gz output file exists on filesystem"""
-        bib_file = self.get_bib_output_file()
-        if not bib_file:
-            return False
-        return Path(bib_file).exists()
+        path = self.bib_output_path
+        return bool(path and path.exists())
 
     def get_bib_output_size(self):
         """Get size of .bib.gz output file in human-readable format"""
         if not self.bib_output_exists():
             return None
-        bib_file = self.get_bib_output_file()
-        size_bytes = Path(bib_file).stat().st_size
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if size_bytes < 1024.0:
-                return f"{size_bytes:.1f} {unit}"
-            size_bytes /= 1024.0
-        return f"{size_bytes:.1f} TB"
+        return self._format_size(self.bib_output_path.stat().st_size)
 
 
 class User(models.Model):
