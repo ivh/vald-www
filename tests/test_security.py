@@ -1,0 +1,207 @@
+"""Regression tests for the security fixes.
+
+Each test here corresponds to a defect that was exploitable in production, so a
+failure means a real regression rather than a style change.
+"""
+import datetime
+
+import pytest
+from django.test import Client
+from django.utils import timezone
+
+from vald.models import User, UserEmail, Linelist, Config, ConfigLinelist
+
+
+def register(email='mallory@example.com'):
+    """Submit the public registration form."""
+    Client().post('/submit/', {
+        'reqtype': 'registration', 'email': email, 'name': 'Mallory',
+        'affiliation': 'Nowhere', 'privacy_accepted': 'on',
+    })
+    return User.objects.get(emails__email=email)
+
+
+def use_token_to_set_password(email, token, password='correct-horse-batt-9'):
+    """Follow an activation link and try to set a password. Returns True if logged in."""
+    client = Client()
+    client.get(f'/activate/{token}/')
+    client.post('/set-password/', {'password': password, 'password_confirm': password})
+    check = Client()
+    check.post('/login/', {'user': email, 'password': password})
+    return 'user_id' in check.session
+
+
+# --- R1: admin approval must not be bypassable -----------------------------
+
+@pytest.mark.django_db
+def test_self_registration_is_inactive():
+    assert register().is_active is False
+
+
+@pytest.mark.django_db
+def test_login_with_empty_password_does_not_issue_a_token(mailoutbox):
+    """The route that let a self-registered user mail themselves an activation link."""
+    user = register()
+    Client().post('/login/', {'user': 'mallory@example.com', 'password': ''})
+    user.refresh_from_db()
+    assert user.activation_token is None
+    assert len(mailoutbox) == 0
+
+
+@pytest.mark.django_db
+def test_password_reset_does_not_issue_a_token_for_unapproved_account(mailoutbox):
+    """Second, independent bypass: skip login and use "forgot password"."""
+    user = register()
+    Client().post('/reset-password/', {'email': 'mallory@example.com'})
+    user.refresh_from_db()
+    assert user.activation_token is None
+    assert len(mailoutbox) == 0
+
+
+@pytest.mark.django_db
+def test_unapproved_user_cannot_activate_even_with_a_token():
+    """Belt and braces: a token that exists must still not activate an inactive user."""
+    user = register()
+    token = user.generate_activation_token()
+    user.save()
+    assert use_token_to_set_password('mallory@example.com', token) is False
+
+
+@pytest.mark.django_db
+def test_approved_user_can_activate_and_log_in():
+    """The legitimate flow must still work - the fix is worthless if it blocks this."""
+    user = register()
+    user.is_active = True                      # what the admin action does
+    token = user.generate_activation_token()
+    user.save()
+    assert use_token_to_set_password('mallory@example.com', token) is True
+
+
+# --- R2: personal config edits must be scoped to their owner ---------------
+
+@pytest.fixture
+def system_config(db):
+    """A system default config plus one linelist, mimicking the imported default."""
+    linelist = Linelist.objects.create(path='/CVALD3/ATOMS/x1', name='List one',
+                                       element_min=1, element_max=99)
+    config = Config.objects.create(name='Default', user=None, is_default=True)
+    entry = ConfigLinelist.objects.create(config=config, linelist=linelist, priority=10)
+    return config, entry
+
+
+@pytest.mark.django_db
+def test_user_cannot_disable_a_linelist_in_the_system_default(logged_in_client, system_config):
+    """The system default owns the lowest ConfigLinelist pks, so they are guessable."""
+    _, entry = system_config
+    logged_in_client.get('/persconf/')          # creates this user's own config
+    logged_in_client.post('/persconf/', {'action': 'save', 'editid': str(entry.pk)})
+    entry.refresh_from_db()
+    assert entry.is_enabled is True, 'system default config was modified by a user'
+
+
+@pytest.mark.django_db
+def test_user_cannot_edit_another_users_config(logged_in_client, system_config, db):
+    from vald.persconfig import get_user_config
+    other = User.objects.create(name='Other', is_active=True)
+    other_entry = get_user_config(other).configlinelist_set.first()
+
+    logged_in_client.get('/persconf/')
+    logged_in_client.post('/persconf/', {'action': 'save', 'editid': str(other_entry.pk)})
+    other_entry.refresh_from_db()
+    assert other_entry.is_enabled is True, "another user's config was modified"
+
+
+@pytest.mark.django_db
+def test_user_can_still_edit_their_own_config(logged_in_client, system_config):
+    logged_in_client.get('/persconf/')
+    mine = Config.objects.get(user__isnull=False).configlinelist_set.first()
+    logged_in_client.post('/persconf/', {'action': 'save', 'editid': str(mine.pk)})
+    mine.refresh_from_db()
+    assert mine.is_enabled is False, 'owner can no longer edit their own config'
+
+
+# --- R6: token expiry and password validators ------------------------------
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('age_days,should_work', [(0, True), (6, True), (8, False), (30, False)])
+def test_activation_token_expires(age_days, should_work, settings):
+    user = User.objects.create(name='T', is_active=True)
+    UserEmail.objects.create(user=user, email='t@example.com', is_primary=True)
+    token = user.generate_activation_token()
+    user.save()
+    User.objects.filter(pk=user.pk).update(
+        token_created_at=timezone.now() - datetime.timedelta(days=age_days))
+
+    assert use_token_to_set_password('t@example.com', token) is should_work
+
+
+@pytest.mark.django_db
+def test_token_without_issue_time_is_treated_as_expired():
+    user = User.objects.create(name='T', is_active=True)
+    UserEmail.objects.create(user=user, email='t@example.com', is_primary=True)
+    token = user.generate_activation_token()
+    user.save()
+    User.objects.filter(pk=user.pk).update(token_created_at=None)
+    assert use_token_to_set_password('t@example.com', token) is False
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('password,accepted', [
+    ('abc123z', False),            # too short
+    ('9382749382', False),         # entirely numeric
+    ('password123', False),        # too common
+    ('correct-horse-batt-9', True),
+])
+def test_password_validators_are_applied_at_activation(password, accepted):
+    """AUTH_PASSWORD_VALIDATORS was configured but validate_password never called."""
+    user = User.objects.create(name='T', is_active=True)
+    UserEmail.objects.create(user=user, email='t@example.com', is_primary=True)
+    token = user.generate_activation_token()
+    user.save()
+    assert use_token_to_set_password('t@example.com', token, password) is accepted
+
+
+@pytest.mark.parametrize('password,accepted', [('abc12x', False), ('correct-horse-batt-9', True)])
+def test_password_validators_are_applied_on_reset_form(password, accepted):
+    from vald.forms import PasswordResetForm
+    form = PasswordResetForm({'password': password, 'password_confirm': password})
+    assert form.is_valid() is accepted
+
+
+# --- R4: rate-limit key must not be client-controllable --------------------
+
+@pytest.mark.parametrize('forwarded', [
+    None,
+    '203.0.113.9',
+    '1.2.3.4, 203.0.113.9',
+    '9.9.9.9, 203.0.113.9',
+    '1.1.1.1, 2.2.2.2, 203.0.113.9',
+    'not-an-ip',
+    '::ffff:203.0.113.9',
+])
+def test_client_ip_cannot_be_varied_by_the_client(forwarded, settings):
+    """A proxy appends to X-Forwarded-For, so only the rightmost entry is trustworthy."""
+    from django.test import RequestFactory
+    from vald.ratelimit import client_ip
+
+    settings.RATELIMIT_CLIENT_IP_HEADER = 'HTTP_X_FORWARDED_FOR'
+    request = RequestFactory().post('/submit/')
+    request.META['REMOTE_ADDR'] = '203.0.113.9'
+    if forwarded is not None:
+        request.META['HTTP_X_FORWARDED_FOR'] = forwarded
+
+    assert client_ip('group', request) == '203.0.113.9'
+
+
+@pytest.mark.django_db
+def test_session_user_key_separates_users(approved_user):
+    from django.test import RequestFactory
+    from vald.ratelimit import session_user
+
+    request = RequestFactory().post('/submit/')
+    request.META['REMOTE_ADDR'] = '203.0.113.9'
+    request.session = {'user_id': approved_user.pk}
+    assert session_user('g', request) == f'user:{approved_user.pk}'
+
+    request.session = {}
+    assert session_user('g', request) == 'ip:203.0.113.9'

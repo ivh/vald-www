@@ -7,6 +7,7 @@ eliminating the need for C compilation and shell script intermediaries.
 
 import os
 import gzip
+import re
 import logging
 import shutil
 import signal
@@ -24,8 +25,37 @@ logger = logging.getLogger(__name__)
 # Wall-clock budget for a whole pipeline, not per process.
 DEFAULT_PIPELINE_TIMEOUT = 3600
 
-# How much of a stage's stderr to quote back in an error message
+# How much of a stage's stderr to read when building an error message
 STDERR_EXCERPT_BYTES = 2000
+
+# How much of it to show the user
+USER_ERROR_MAX_CHARS = 200
+
+
+def summarise_stage_error(stderr_text: str) -> str:
+    """Condense Fortran stderr into something safe to show a user.
+
+    gfortran runtime errors come with a hex backtrace and absolute source paths,
+    which are noise to the user and disclose the server layout. Keep the first
+    couple of meaningful lines and reduce paths to their basename.
+    """
+    if not stderr_text:
+        return ''
+
+    interesting = [
+        line.strip() for line in stderr_text.splitlines()
+        if line.strip()
+        and not line.strip().startswith('#')          # backtrace frames
+        and not line.strip().startswith('Error termination')
+    ]
+    summary = ' '.join(interesting[:2])
+
+    # /Users/tom/VALD3/SOURCE/SELECT/post_hfs_format5.f -> post_hfs_format5.f
+    summary = re.sub(r'(?:/[^\s\'"/]+)+/', '', summary)
+
+    if len(summary) > USER_ERROR_MAX_CHARS:
+        summary = summary[:USER_ERROR_MAX_CHARS].rstrip() + '...'
+    return summary
 
 
 @dataclass
@@ -188,7 +218,12 @@ class JobRunner:
                 raise
 
     def _stage_error(self, cwd: Path, stage: str, proc) -> str:
-        """Build an error message for a failed stage from its stderr file."""
+        """Build an error message for a failed stage from its stderr file.
+
+        The full text is logged; what is returned goes into Request.error_message
+        and is shown to the user, so it is condensed and stripped of server paths
+        rather than being a raw Fortran backtrace (R25).
+        """
         detail = ''
         try:
             raw = self._stderr_path(cwd, stage).read_bytes()
@@ -197,8 +232,10 @@ class JobRunner:
             pass
         logger.error("VALD stage %s failed (rc=%s) in %s: %s",
                      stage, proc.returncode, cwd, detail)
-        if detail:
-            return f"{stage} failed: {detail}"
+
+        summary = summarise_stage_error(detail)
+        if summary:
+            return f"{stage} failed: {summary}"
         return f"{stage} failed with code {proc.returncode}"
 
     def _check_stages(self, cwd: Path, stages) -> Optional[Tuple[bool, str]]:
@@ -215,12 +252,17 @@ class JobRunner:
         surfaced as "preselect5 failed with code -13" on a run that had in fact
         produced correctly truncated output.
         """
+        # A process killed by a signal reports -N; a shell wrapper whose child
+        # was killed reports 128+N. Accept both so the check does not depend on
+        # whether a stage happens to be invoked through a shell.
+        sigpipe_codes = (-signal.SIGPIPE, 128 + signal.SIGPIPE)
+
         last_index = len(stages) - 1
         for index in range(last_index, -1, -1):
             stage, proc = stages[index]
             if proc.returncode == 0:
                 continue
-            if index < last_index and proc.returncode == -signal.SIGPIPE:
+            if index < last_index and proc.returncode in sigpipe_codes:
                 logger.info("Stage %s took SIGPIPE in %s - downstream stopped "
                             "early, treating as normal", stage, cwd)
                 continue

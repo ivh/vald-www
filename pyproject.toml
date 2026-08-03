@@ -19,3 +19,6 @@ dev = [
 DJANGO_SETTINGS_MODULE = "vald_web.settings"
 python_files = ["test_*.py"]
 testpaths = ["tests"]
+markers = [
+    "vald_binaries: needs a populated VALD_HOME (Fortran binaries and data); deselect with -m 'not vald_binaries'",
+]
