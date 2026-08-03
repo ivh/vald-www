@@ -539,15 +539,20 @@ class JobRunner:
         # Generate show_in files for each query
         queries = self._parse_showline_queries(config)
         
+        # A query that fails must not be reported as a completed request: the
+        # error text used to be written into the result file while run() still
+        # returned success, so the user saw "Complete" with an error inside.
+        failures = []
+
         with open(output_file, 'w') as out:
             for i, (wl_center, wl_window, element) in enumerate(queries):
                 show_in_path = config.job_dir / f"show_in.{config.job_id:06d}_{i:03d}"
                 self._write_show_in(config, show_in_path, wl_center, wl_window, element)
-                
+
                 # Separator between queries
                 if i > 0:
                     out.write("\n" + "=" * 79 + "\n\n")
-                
+
                 try:
                     # Build showline command
                     cmd = [str(self.showline)]
@@ -566,6 +571,19 @@ class JobRunner:
                             timeout=600
                         )
                     
+                    if result.returncode != 0:
+                        # returncode was previously ignored entirely, so a
+                        # failing binary produced an empty "Complete" result
+                        detail = result.stderr.decode('utf-8', 'replace').strip()
+                        logger.error("showline query %d (%s %s) failed rc=%s: %s",
+                                     i, element, wl_center, result.returncode, detail)
+                        failures.append(
+                            f"query {i + 1} ({element} at {wl_center}): "
+                            f"{detail or f'exited with code {result.returncode}'}"
+                        )
+                        out.write(f"Query failed: {detail}\n")
+                        continue
+
                     # Write output, skipping the interactive prompts
                     # Prompts end after "Which data base information file..."
                     output_text = result.stdout.decode()
@@ -582,15 +600,26 @@ class JobRunner:
                     for line in lines[data_start:]:
                         out.write(line + '\n')
                     
+                except subprocess.TimeoutExpired:
+                    logger.error("showline query %d (%s %s) timed out",
+                                 i, element, wl_center)
+                    failures.append(f"query {i + 1} ({element} at {wl_center}): timed out")
+                    out.write("Query timed out\n")
                 except Exception as e:
+                    logger.exception("showline query %d (%s %s) errored",
+                                     i, element, wl_center)
+                    failures.append(f"query {i + 1} ({element} at {wl_center}): {e}")
                     out.write(f"Error processing query: {e}\n")
-        
+
         # Move to FTP directory as .txt file
         final_output = self.ftp_dir / f"{config.client_name}.{config.job_id:06d}.txt"
         self.ftp_dir.mkdir(parents=True, exist_ok=True)
         shutil.move(str(output_file), str(final_output))
         os.chmod(final_output, 0o644)
-        
+
+        if failures:
+            return (False, "Showline failed for " + "; ".join(failures))
+
         return (True, str(final_output))
     
     def _write_pres_in(self, config: JobConfig, path: Path):
