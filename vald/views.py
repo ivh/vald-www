@@ -983,7 +983,7 @@ Request details: {request_url}
 You can modify and resubmit this request with different parameters from:
 {my_requests_url}
 
-Files are available for download for 48 hours.
+Files are available for download for {req_obj.retention_description()}.
 
 ---
 Vienna Atomic Line Database (VALD)

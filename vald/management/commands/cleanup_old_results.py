@@ -15,7 +15,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--age',
             type=str,
-            default='2D',
+            default=f"{getattr(settings, 'VALD_RESULT_RETENTION_DAYS', 2)}D",
             help='Age threshold for deletion (e.g., "2D" for 2 days, "3H" for 3 hours, "30M" for 30 minutes). Default: 2D',
         )
         parser.add_argument(

@@ -257,6 +257,11 @@ VALD_SUBMIT_RATE = '120/h'
 # How long activation and password-reset links stay usable. The reset email
 # claims 7 days; before this existed the tokens never expired at all (R6).
 VALD_TOKEN_MAX_AGE_DAYS = 7
+# How long result files are kept before cleanup_old_results deletes them. Used
+# for the cleanup command's default --age, the "available for N hours" wording in
+# completion emails, and to tell expired results apart from missing ones (R21).
+VALD_RESULT_RETENTION_DAYS = 2
+
 
 
 

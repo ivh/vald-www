@@ -110,6 +110,38 @@ class Request(models.Model):
         path = self.output_path
         return bool(path and path.exists())
 
+    def results_expired(self):
+        """True if this completed but its files have since been swept.
+
+        cleanup_old_results deletes files without touching the database, so a
+        complete request older than the retention window whose output is gone was
+        almost certainly cleaned up rather than broken. Without this the page said
+        "Complete" next to an empty download cell, which reads as a bug.
+        """
+        if self.status != 'complete' or self.output_exists():
+            return False
+        reference = self.completed_at or self.created_at
+        if not reference:
+            return False
+        retention_days = getattr(settings, 'VALD_RESULT_RETENTION_DAYS', 2)
+        return timezone.now() - reference > timedelta(days=retention_days)
+
+    def results_missing(self):
+        """Complete, output gone, but too recent for the sweep to explain it."""
+        return (self.status == 'complete'
+                and not self.output_exists()
+                and not self.results_expired())
+
+    @staticmethod
+    def retention_description():
+        """Human-readable retention period, for templates and email bodies."""
+        days = getattr(settings, 'VALD_RESULT_RETENTION_DAYS', 2)
+        if days == 1:
+            return "24 hours"
+        if days < 1:
+            return f"{int(days * 24)} hours"
+        return f"{days * 24} hours"
+
     def output_is_empty(self):
         """Check if output file exists but contains no data (just gzip header)"""
         if not self.output_exists():

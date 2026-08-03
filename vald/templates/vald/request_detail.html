@@ -19,6 +19,7 @@
 <tr><td><b>Status:</b></td><td>
     {% if req.status == 'complete' %}
     <span style="color: green; font-weight: bold;">✓ Complete</span>
+    {% if req.results_expired %}<span style="color: gray;"> — results expired</span>{% endif %}
     {% elif req.status == 'failed' %}
     <span style="color: red; font-weight: bold;">✗ Failed</span>
     {% elif req.status == 'processing' %}
@@ -29,6 +30,16 @@
 </td></tr>
 {% if queue_position %}
 <tr><td><b>Queue Position:</b></td><td>#{{ queue_position }}</td></tr>
+{% endif %}
+{% if req.is_complete and not output_ready %}
+<tr><td><b>Download:</b></td><td>
+    {% if req.results_expired %}
+    <i>Results have expired. Files are kept for {{ req.retention_description }} after
+    processing; please resubmit the request below.</i>
+    {% else %}
+    <i>Output file not found. Please contact support.</i>
+    {% endif %}
+</td></tr>
 {% endif %}
 {% if req.is_complete and output_ready %}
 <tr><td><b>Download:</b></td><td>
@@ -56,9 +67,7 @@
 <pre style="padding: 10px; overflow-x: auto; font-size: 0.75em;">{{ output_content }}</pre>
 {% endif %}
 
-{% if req.is_complete and not output_ready %}
-    <p><i>Request completed but output file not found. Please contact support.</i></p>
-{% elif req.is_failed %}
+{% if req.is_failed %}
     <h3>Request Failed</h3>
     {% if req.error_message %}
     <p>Error: {{ req.error_message }}</p>

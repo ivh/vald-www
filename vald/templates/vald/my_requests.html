@@ -45,6 +45,10 @@
             | <a href="{% url 'vald:download_bib_request' req.uuid %}">Bib</a>
             {% endif %}
             {% endif %}
+        {% elif req.results_expired %}
+        <span style="color: gray;" title="Results are kept for {{ req.retention_description }}">Expired</span>
+        {% elif req.results_missing %}
+        <span style="color: red;">Not found</span>
         {% else %}
         —
         {% endif %}
