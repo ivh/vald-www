@@ -5,6 +5,7 @@ from django.core.mail import send_mail
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
+from django.utils import timezone
 from django_ratelimit.decorators import ratelimit
 from pathlib import Path
 import glob
@@ -847,6 +848,7 @@ def handle_extract_request(request):
                 # Update request with output file
                 req_obj.status = 'complete'
                 req_obj.output_file = result
+                req_obj.completed_at = timezone.now()
                 try:
                     req_obj.save()
                 except Exception as save_error:
@@ -938,6 +940,7 @@ Vienna Atomic Line Database (VALD)
                 # Processing failed
                 req_obj.status = 'failed'
                 req_obj.error_message = result
+                req_obj.completed_at = timezone.now()
                 try:
                     req_obj.save()
                 except Exception as save_error:
@@ -949,6 +952,7 @@ Vienna Atomic Line Database (VALD)
             # Mark request as failed
             req_obj.status = 'failed'
             req_obj.error_message = str(e)
+            req_obj.completed_at = timezone.now()
             try:
                 req_obj.save()
             except Exception as save_error:
