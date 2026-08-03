@@ -17,7 +17,14 @@
 # cron.
 set -eu
 
-APP_DIR=/home/vald/vald-www.git
+# Derived from this script's own location rather than hardcoded, so mirror
+# sites can deploy to any path without editing the wrapper. VALD_HOME comes
+# from secrets.txt (or the environment); there is no default, because guessing
+# it wrong is how the original cron job ended up sweeping the wrong directory.
+# Note: $0's directory, so invoke via the real path or put bin/ on PATH. A
+# symlink from elsewhere would resolve to the symlink's directory - set
+# VALD_APP_DIR explicitly in that case.
+APP_DIR="${VALD_APP_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
 
 # Same file systemd reads via EnvironmentFile= in vald.service. It is
 # KEY=value lines, which sh can source directly - but note that systemd
@@ -30,7 +37,12 @@ set -a
 . "$APP_DIR/secrets.txt"
 set +a
 
-export VALD_HOME="${VALD_HOME:-/home/vald/VALD3}"
+if [ -z "${VALD_HOME:-}" ]; then
+    echo "vald-manage: VALD_HOME is not set (expected in $APP_DIR/secrets.txt" \
+         "or the environment)" >&2
+    exit 1
+fi
+export VALD_HOME
 export DJANGO_SETTINGS_MODULE=vald_web.settings_deploy
 
 cd "$APP_DIR"
