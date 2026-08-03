@@ -85,11 +85,11 @@ DATABASES = {
     }
 }
 
-# Cache configuration for rate limiting
+# Cache configuration for rate limiting (see settings_deploy for why not LocMem)
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'ratelimit-cache',
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': str(BASE_DIR / 'cache' / 'ratelimit'),
     }
 }
 

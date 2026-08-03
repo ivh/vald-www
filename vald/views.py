@@ -91,7 +91,7 @@ def index(request):
     return render(request, 'vald/index.html', context)
 
 
-@ratelimit(key='ip', rate='5/m', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='5/m', method='POST')
 def login(request):
     """Handle user login with password authentication"""
     if request.method == 'POST':
@@ -238,7 +238,7 @@ def activate_account(request, token):
         return redirect('vald:index')
 
 
-@ratelimit(key='ip', rate='5/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST')
 def set_password(request):
     """Handle password setting for first-time activation"""
     if request.method != 'POST':
@@ -316,7 +316,7 @@ def set_password(request):
         return redirect('vald:index')
 
 
-@ratelimit(key='ip', rate='3/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='3/h', method='POST')
 def request_password_reset(request):
     """Handle password reset request form"""
     context = get_user_context(request)
@@ -400,7 +400,7 @@ VALD Team
     return render(request, 'vald/request_password_reset.html', context)
 
 
-@ratelimit(key='ip', rate='5/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST')
 def reset_password(request, token):
     """Handle password reset with token"""
     context = get_user_context(request)
@@ -595,7 +595,7 @@ def submit_request(request):
     return render(request, 'vald/error.html', context)
 
 
-@ratelimit(key='ip', rate='5/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST')
 def handle_contact_request(request):
     """Handle contact form submission"""
     context = get_user_context(request)
@@ -662,7 +662,7 @@ def handle_contact_request(request):
         return render(request, 'vald/contact.html', context)
 
 
-@ratelimit(key='ip', rate='3/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='3/h', method='POST')
 def handle_registration_request(request):
     """Handle registration form submission"""
     context = get_user_context(request)

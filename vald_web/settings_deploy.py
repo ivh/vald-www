@@ -88,11 +88,13 @@ DATABASES = {
     }
 }
 
-# Cache configuration for rate limiting
+# Cache configuration for rate limiting.
+# Must be shared across gunicorn workers - LocMemCache is per-process, so every
+# rate limit was silently multiplied by the worker count.
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'ratelimit-cache',
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': str(BASE_DIR / 'cache' / 'ratelimit'),
     }
 }
 
@@ -140,7 +142,10 @@ X_FRAME_OPTIONS = 'DENY'
 SECURE_REFERRER_POLICY = 'same-origin'
 SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
-RATELIMIT_IP_META_KEY = 'HTTP_X_FORWARDED_FOR'
+# Header consulted by vald.ratelimit.client_ip (rightmost entry is used).
+# Do NOT use RATELIMIT_IP_META_KEY here - it reads the header verbatim and is
+# spoofable, since the proxy appends rather than overwrites.
+RATELIMIT_CLIENT_IP_HEADER = 'HTTP_X_FORWARDED_FOR'
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
