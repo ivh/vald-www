@@ -146,14 +146,19 @@ def render_request_template(reqtype, context):
     with open(template_path, 'r') as f:
         content = f.read()
 
-    # Replace template variables
+    # Replace template variables.
+    # The replacement is passed as a callable because re.sub interprets escapes
+    # in a string replacement: a user message containing "\2" (a Fortran format
+    # spec, a LaTeX macro, a Windows path) otherwise raised
+    # "invalid group reference" and crashed the contact form.
     for key, value in context.items():
+        pattern_key = re.escape(str(key))
         if value:
             # Replace $key with value
-            content = re.sub(rf'\${key}\b', str(value), content)
+            content = re.sub(rf'\${pattern_key}\b', lambda m, v=value: str(v), content)
         else:
             # If no value, remove the key (and optional trailing comma)
-            content = re.sub(rf'\${key},?', '', content)
+            content = re.sub(rf'\${pattern_key},?', '', content)
 
     # Remove any remaining unmatched $-strings
     content = re.sub(r'\$\w+', '', content)
