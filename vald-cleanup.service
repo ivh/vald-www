@@ -1,6 +1,5 @@
 [Unit]
 Description=VALD: delete expired result files
-Documentation=file:/home/vald/vald-www.git/finds.md
 After=network.target
 
 [Service]

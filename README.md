@@ -51,6 +51,89 @@ python manage.py runserver
 
 Server runs at http://127.0.0.1:8000/
 
+## Production deployment
+
+The app runs under gunicorn via `vald.service`. Two further pieces handle
+scheduled maintenance:
+
+| file | purpose |
+|------|---------|
+| `vald-cleanup.timer` / `.service` | delete expired result files daily at 02:23 |
+| `bin/vald-manage` | run any management command with the production environment |
+
+### Why not cron
+
+A plain crontab line does **not** work:
+
+```cron
+# BROKEN - do not use
+23 02 * * * /home/vald/vald-www.git/.venv/bin/python manage.py cleanup_old_results
+```
+
+`manage.py` defaults to `DJANGO_SETTINGS_MODULE=vald_web.settings` (development),
+and cron supplies almost no environment, so the command resolves
+`VALD_FTP_DIR` to `BASE_DIR/public_html/FTP` instead of
+`$VALD_HOME/WWW/public_html/FTP` and sweeps a directory the app never writes to.
+Note that `VALD_WORKING_DIR` is the same in both settings modules, so such a job
+appears to work — the job subdirectories really are cleaned — while result files
+accumulate forever. Setting only `DJANGO_SETTINGS_MODULE` is not enough either:
+`settings_deploy` reads `SECRET_KEY` from the environment and will raise
+`KeyError`. As of the current version the command refuses to run when
+`VALD_FTP_DIR` is missing, so this misconfiguration now fails loudly.
+
+### Per-site paths
+
+`bin/vald-manage` needs no editing — it derives the application directory from
+its own location and reads `VALD_HOME` from `secrets.txt`. Override with
+`VALD_APP_DIR=/path/to/app` if you invoke it through a symlink.
+
+The systemd units cannot derive paths, so each site must adjust them. For a
+mirror installed somewhere other than `/home/vald`:
+
+```bash
+sed -i -e 's#/home/vald/vald-www\.git#/srv/vald/app#g' \
+       -e 's#/home/vald/VALD3#/srv/vald/VALD3#g' \
+       vald.service vald-cleanup.service
+```
+
+Also check `User=`/`Group=` and, in `vald_web/settings_deploy.py`,
+`ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SITE_URL` and `FORCE_SCRIPT_NAME`.
+
+### Installing the timer
+
+```bash
+# 1. See what the first run would remove - it may be a lot on an existing
+#    site, since result files were previously never swept
+bin/vald-manage cleanup_old_results --dry-run | tail -20
+
+# 2. Install and enable
+sudo cp vald-cleanup.service vald-cleanup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now vald-cleanup.timer
+
+# 3. Verify
+systemctl list-timers vald-cleanup.timer
+sudo systemctl start vald-cleanup.service   # run once now
+journalctl -u vald-cleanup.service -n 30
+```
+
+Output goes to journald, so no logfile needs rotating. The retention period
+(`--age`, default `2D`) should match the "available for 48 hours" wording in the
+completion emails.
+
+### Manual maintenance commands
+
+```bash
+bin/vald-manage cleanup_old_results --dry-run --age 7D
+bin/vald-manage reconcile_stuck_requests --dry-run
+bin/vald-manage migrate
+```
+
+`reconcile_stuck_requests` fails requests left in `pending`/`processing` by a
+worker that was restarted mid-job, and marks one complete instead if its output
+file turns out to exist. It has no timer — run it by hand if requests appear
+stuck.
+
 ## Configuration
 
 ### Direct Submission Mode (Recommended)
