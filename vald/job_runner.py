@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, List
 from django.conf import settings
 
+from . import abundances
+
 logger = logging.getLogger(__name__)
 
 # Wall-clock budget for a whole pipeline, not per process.
@@ -39,6 +41,11 @@ class JobConfig:
     
     # Max lines (0 = unlimited for stellar preselect)
     max_lines: int = 500000
+
+    # Line cap passed to select5 via select.input. Distinct from max_lines
+    # because stellar jobs give preselect 0 (take everything) and let select
+    # apply the real limit - which is what parserequest.c did.
+    select_max_lines: int = 500000
     
     # Element filter (empty for all)
     element: str = ""
@@ -652,17 +659,28 @@ class JobRunner:
             model_path = config.model_path or self._find_model(config.teff, config.logg)
             f.write(f"'{model_path}'\n")
             
-            # Line 3+: abundances
+            # Line 3+: abundances, as quoted comma-terminated tokens.
+            # select5 reads these as Fortran character literals, so the raw form
+            # the user typed ("Fe: -4.50") is not equivalent to "'Fe:-4.50',".
+            # Format follows CheckAbund() in backend/parserequest.c.
             if config.abundances:
-                f.write(f"{config.abundances}\n")
+                try:
+                    pairs = abundances.parse(config.abundances)
+                except ValueError as e:
+                    # Should be unreachable: the form validates the same grammar
+                    logger.error("Discarding unparsable abundances %r (token %r)",
+                                 config.abundances, e.args[0])
+                    pairs = []
+                if pairs:
+                    f.write(abundances.to_select_input(pairs) + "\n")
             f.write("'END'\n")
-            
+
             # Output format
             f.write("'Synth'\n")
             f.write("'select.out'\n")
-            
-            # Max lines
-            f.write(f"{config.max_lines}\n")
+
+            # Line cap applied by select, not the 0 that preselect gets
+            f.write(f"{config.select_max_lines}\n")
     
     def _write_show_in(self, config: JobConfig, path: Path, 
                        wl_center: float, wl_window: float, element: str):
@@ -844,7 +862,10 @@ def create_job_config(request_obj, backend_id: int, job_dir: Path,
     
     # Stellar-specific params
     if reqtype == 'extractstellar':
-        config.max_lines = 0  # Preselect gets all, select limits
+        # preselect takes everything; select applies the cap (parserequest.c did
+        # exactly this - 0 in pres_in, MAX_LINES_PER_* in select.input)
+        config.select_max_lines = config.max_lines
+        config.max_lines = 0
         config.depth_limit = float(params.get('dlimit', 0.01))
         config.microturbulence = float(params.get('micturb', 2.0))
         config.teff = float(params.get('teff', 5800))

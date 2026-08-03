@@ -3,6 +3,8 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 import re
 
+from . import abundances
+
 
 # These two values are written verbatim into the control files the Fortran
 # binaries read (pres_in/show_in line 3, select.input before the 'END'
@@ -14,11 +16,6 @@ import re
 # <element> [spectral number], allowing an isotope prefix (48Ca 2) and
 # molecules (TiO, H2O). Deliberately permissive about the species itself.
 ELEMENT_ION_RE = re.compile(r'^\d{0,3}[A-Za-z][A-Za-z0-9]{0,5}(?: \d{1,2})?$')
-
-# One abundance pair: "Fe: -4.50", "H :  0.91" (documentation/reqextstar.html)
-ABUNDANCE_PAIR_RE = re.compile(r'^([A-Za-z]{1,2})\s*:\s*([+-]?\d+(?:\.\d+)?)$')
-
-MAX_ABUNDANCE_PAIRS = 200
 
 
 def clean_element_ionization(value, field_label='Element'):
@@ -41,28 +38,28 @@ def clean_element_ionization(value, field_label='Element'):
 
 
 def clean_chemical_composition(value):
-    """Validate 'element: log abundance' pairs, preserving the user's layout."""
+    """Validate 'element: log abundance' pairs, preserving the user's layout.
+
+    Grammar lives in vald.abundances, shared with the code that renders
+    select.input, so validation and generation cannot drift apart.
+    """
     lines = [line.strip() for line in value.splitlines()]
     lines = [line for line in lines if line]
 
-    pairs = 0
-    for line in lines:
-        for token in line.split(','):
-            token = token.strip()
-            if not token:
-                continue
-            if not ABUNDANCE_PAIR_RE.match(token):
-                raise ValidationError(
-                    f'Could not read "{token}" as a chemical composition entry. '
-                    'Give each element as <element>: <log abundance> - for example '
-                    '"Fe: -4.50" - separating several entries with commas.'
-                )
-            pairs += 1
-
-    if pairs > MAX_ABUNDANCE_PAIRS:
+    try:
+        pairs = abundances.parse('\n'.join(lines))
+    except ValueError as e:
         raise ValidationError(
-            f'At most {MAX_ABUNDANCE_PAIRS} abundance entries can be given '
-            f'({pairs} found).'
+            f'Could not read "{e.args[0]}" as a chemical composition entry. '
+            'Give each element as <element>: <log abundance> - for example '
+            '"Fe: -4.50" - separating several entries with commas. '
+            '"M/H: -0.5" sets an overall metallicity.'
+        )
+
+    if len(pairs) > abundances.MAX_PAIRS:
+        raise ValidationError(
+            f'At most {abundances.MAX_PAIRS} abundance entries can be given '
+            f'({len(pairs)} found).'
         )
 
     return '\n'.join(lines)
