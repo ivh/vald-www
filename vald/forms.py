@@ -3,6 +3,70 @@ from django.core.exceptions import ValidationError
 import re
 
 
+# These two values are written verbatim into the control files the Fortran
+# binaries read (pres_in/show_in line 3, select.input before the 'END'
+# sentinel), where a stray newline shifts every following line - which would
+# let a request choose its own config path or select's output filename.
+# Validating the shape here also turns a typo into a form error instead of an
+# opaque failure inside preselect5/select5.
+
+# <element> [spectral number], allowing an isotope prefix (48Ca 2) and
+# molecules (TiO, H2O). Deliberately permissive about the species itself.
+ELEMENT_ION_RE = re.compile(r'^\d{0,3}[A-Za-z][A-Za-z0-9]{0,5}(?: \d{1,2})?$')
+
+# One abundance pair: "Fe: -4.50", "H :  0.91" (documentation/reqextstar.html)
+ABUNDANCE_PAIR_RE = re.compile(r'^([A-Za-z]{1,2})\s*:\s*([+-]?\d+(?:\.\d+)?)$')
+
+MAX_ABUNDANCE_PAIRS = 200
+
+
+def clean_element_ionization(value, field_label='Element'):
+    """Normalise and validate an "element [ionization]" value."""
+    collapsed = ' '.join(value.split())
+    if not collapsed:
+        return collapsed
+
+    parts = collapsed.split(' ')
+    if len(parts) > 1 and not parts[1].isdigit():
+        raise ValidationError("Please express the ionization stage as an arabic number")
+
+    if not ELEMENT_ION_RE.match(collapsed):
+        raise ValidationError(
+            f'{field_label} must be an element, optionally followed by an '
+            'ionization stage - for example "Fe" or "Fe 3".'
+        )
+
+    return collapsed
+
+
+def clean_chemical_composition(value):
+    """Validate 'element: log abundance' pairs, preserving the user's layout."""
+    lines = [line.strip() for line in value.splitlines()]
+    lines = [line for line in lines if line]
+
+    pairs = 0
+    for line in lines:
+        for token in line.split(','):
+            token = token.strip()
+            if not token:
+                continue
+            if not ABUNDANCE_PAIR_RE.match(token):
+                raise ValidationError(
+                    f'Could not read "{token}" as a chemical composition entry. '
+                    'Give each element as <element>: <log abundance> - for example '
+                    '"Fe: -4.50" - separating several entries with commas.'
+                )
+            pairs += 1
+
+    if pairs > MAX_ABUNDANCE_PAIRS:
+        raise ValidationError(
+            f'At most {MAX_ABUNDANCE_PAIRS} abundance entries can be given '
+            f'({pairs} found).'
+        )
+
+    return '\n'.join(lines)
+
+
 class PasswordResetRequestForm(forms.Form):
     """Password reset request form"""
     email = forms.EmailField(
@@ -249,18 +313,9 @@ class ExtractElementForm(forms.Form):
     )
 
     def clean_elmion(self):
-        elmion = self.cleaned_data['elmion'].strip()
-        parts = elmion.split()
-
-        if len(parts) > 1:
-            # Check if ionization stage is a number
-            ionization = parts[1]
-            if ionization and not ionization.isdigit():
-                raise ValidationError(
-                    "Please express the ionization stage as an arabic number"
-                )
-
-        return elmion
+        return clean_element_ionization(
+            self.cleaned_data['elmion'], self.fields['elmion'].label
+        )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -327,7 +382,9 @@ class ExtractStellarForm(forms.Form):
     chemcomp = forms.CharField(
         label='Chemical composition',
         required=False,
-        widget=forms.Textarea(attrs={'rows': '2', 'cols': '50'})
+        max_length=4000,
+        widget=forms.Textarea(attrs={'rows': '2', 'cols': '50'}),
+        help_text='optional, e.g. Sr: -4.67, Cr: -3.37 - solar values are used for anything omitted'
     )
     format = forms.ChoiceField(
         label='Extraction format',
@@ -377,6 +434,9 @@ class ExtractStellarForm(forms.Form):
         max_length=200,
         widget=forms.TextInput(attrs={'size': '40'})
     )
+
+    def clean_chemcomp(self):
+        return clean_chemical_composition(self.cleaned_data['chemcomp'])
 
     def clean(self):
         cleaned_data = super().clean()
@@ -455,18 +515,6 @@ class ShowLineForm(forms.Form):
         widget=forms.TextInput(attrs={'size': '40'})
     )
 
-    def _validate_element_ionization(self, element_str):
-        """Validate element + ionization format"""
-        if not element_str:
-            return True
-
-        parts = element_str.split()
-        if len(parts) > 1:
-            ionization = parts[1]
-            if ionization and not ionization.isdigit():
-                return False
-        return True
-
     def clean(self):
         cleaned_data = super().clean()
 
@@ -489,8 +537,12 @@ class ShowLineForm(forms.Form):
                     raise ValidationError(f"Set {i}: Please enter a value in the 'Element + ionization' field")
 
                 # Validate element + ionization format
-                if not self._validate_element_ionization(el):
-                    raise ValidationError(f"Set {i}: Please express the ionization stage as an arabic number")
+                try:
+                    cleaned_data[f'el{i}'] = clean_element_ionization(
+                        el, self.fields[f'el{i}'].label
+                    )
+                except ValidationError as e:
+                    raise ValidationError(f"Set {i}: {e.messages[0]}")
 
         if not has_data:
             raise ValidationError("Please fill in at least one complete set of wavelength/window/element")
@@ -582,15 +634,6 @@ class ShowLineOnlineForm(forms.Form):
     )
 
     def clean_el0(self):
-        el = self.cleaned_data['el0'].strip()
-        parts = el.split()
-
-        if len(parts) > 1:
-            # Check if ionization stage is a number
-            ionization = parts[1]
-            if ionization and not ionization.isdigit():
-                raise ValidationError(
-                    "Please express the ionization stage as an arabic number"
-                )
-
-        return el
+        return clean_element_ionization(
+            self.cleaned_data['el0'], self.fields['el0'].label
+        )
