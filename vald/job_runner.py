@@ -7,12 +7,22 @@ eliminating the need for C compilation and shell script intermediaries.
 
 import os
 import gzip
+import logging
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+# Wall-clock budget for a whole pipeline, not per process.
+DEFAULT_PIPELINE_TIMEOUT = 3600
+
+# How much of a stage's stderr to quote back in an error message
+STDERR_EXCERPT_BYTES = 2000
 
 
 @dataclass
@@ -115,7 +125,85 @@ class JobRunner:
         
         # Model atmosphere directory
         self.models_dir = self.vald_home / 'MODELS'
-    
+
+        self.pipeline_timeout = getattr(
+            settings, 'VALD_JOB_TIMEOUT', DEFAULT_PIPELINE_TIMEOUT
+        )
+
+    # ------------------------------------------------------------------
+    # Process pipeline plumbing
+    #
+    # Two things matter here and both used to be wrong:
+    #
+    #  * Only the last process had a timeout. The upstream .wait() calls could
+    #    block forever, permanently consuming one of VALD_MAX_WORKERS threads,
+    #    and on TimeoutExpired nothing killed the children - they were left
+    #    running as orphans.
+    #  * Every stage was created with stderr=PIPE and nothing ever read those
+    #    pipes, so a stage emitting more than the pipe buffer (~64 KB) of
+    #    warnings would deadlock. Stage stderr now goes to a file in the job
+    #    directory instead, which also leaves it on disk for debugging.
+    # ------------------------------------------------------------------
+
+    def _stderr_path(self, cwd: Path, stage: str) -> Path:
+        return cwd / f'{stage}.err'
+
+    def _kill_all(self, procs):
+        """Kill any still-running process in the pipeline and reap them all."""
+        for proc in procs:
+            if proc.poll() is None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+        for proc in procs:
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                pass
+
+    def _wait_all(self, procs, timeout: float):
+        """Wait for every process under one shared deadline.
+
+        Raises subprocess.TimeoutExpired after killing the whole pipeline.
+        """
+        deadline = time.monotonic() + timeout
+        for proc in procs:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self._kill_all(procs)
+                raise subprocess.TimeoutExpired(proc.args, timeout)
+            try:
+                proc.wait(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                self._kill_all(procs)
+                raise
+
+    def _stage_error(self, cwd: Path, stage: str, proc) -> str:
+        """Build an error message for a failed stage from its stderr file."""
+        detail = ''
+        try:
+            raw = self._stderr_path(cwd, stage).read_bytes()
+            detail = raw[-STDERR_EXCERPT_BYTES:].decode('utf-8', 'replace').strip()
+        except OSError:
+            pass
+        logger.error("VALD stage %s failed (rc=%s) in %s: %s",
+                     stage, proc.returncode, cwd, detail)
+        if detail:
+            return f"{stage} failed: {detail}"
+        return f"{stage} failed with code {proc.returncode}"
+
+    def _check_stages(self, cwd: Path, stages) -> Optional[Tuple[bool, str]]:
+        """Return an error tuple for the first failed stage, checking downstream first.
+
+        Downstream is checked first because its failure causes SIGPIPE upstream,
+        which would otherwise be reported as the more confusing error.
+        """
+        for stage, proc in reversed(stages):
+            if proc.returncode != 0:
+                return (False, self._stage_error(cwd, stage, proc))
+        return None
+
     def run(self, config: JobConfig) -> Tuple[bool, str]:
         """
         Execute a VALD extraction job.
@@ -175,110 +263,129 @@ class JobRunner:
             return self._finalize_output(config, output_file, bib_file)
             
         except subprocess.TimeoutExpired:
+            logger.error("Extract pipeline timed out after %ss in %s",
+                         self.pipeline_timeout, config.job_dir)
             return (False, "Job execution timed out")
         except Exception as e:
+            logger.exception("Extract pipeline error in %s", config.job_dir)
             return (False, f"Pipeline error: {e}")
     
-    def _run_pipeline_simple(self, pres_in, output_file: Path, bib_file: Path, 
+    def _run_pipeline_simple(self, pres_in, output_file: Path, bib_file: Path,
                              cwd: Path) -> Tuple[bool, str]:
         """Run preselect | presformat pipeline."""
-        
-        # Start preselect
-        preselect_proc = subprocess.Popen(
-            [str(self.preselect)],
-            stdin=pres_in,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=cwd
-        )
-        
-        # Pipe to presformat, writing to output file
-        out = open(output_file, 'w')
-        presformat_proc = subprocess.Popen(
-            [str(self.presformat)],
-            stdin=preselect_proc.stdout,
-            stdout=out,
-            stderr=subprocess.PIPE,
-            cwd=cwd
-        )
-        
-        # Close preselect's stdout in parent to allow SIGPIPE
-        preselect_proc.stdout.close()
-        
-        # Wait for presformat to complete
-        _, presformat_stderr = presformat_proc.communicate(timeout=3600)
-        out.close()
-        
-        # Wait for preselect
-        preselect_proc.wait()
-        
-        # Check presformat first (it's downstream, so its failure causes SIGPIPE upstream)
-        if presformat_proc.returncode != 0:
-            return (False, f"presformat failed: {presformat_stderr.decode()}")
-        if preselect_proc.returncode != 0:
-            return (False, f"preselect failed with code {preselect_proc.returncode}")
-        
+
+        procs = []
+        try:
+            with open(self._stderr_path(cwd, 'preselect5'), 'wb') as pre_err, \
+                 open(self._stderr_path(cwd, 'presformat5'), 'wb') as fmt_err, \
+                 open(output_file, 'w') as out:
+
+                preselect_proc = subprocess.Popen(
+                    [str(self.preselect)],
+                    stdin=pres_in,
+                    stdout=subprocess.PIPE,
+                    stderr=pre_err,
+                    cwd=cwd
+                )
+                procs.append(preselect_proc)
+
+                presformat_proc = subprocess.Popen(
+                    [str(self.presformat)],
+                    stdin=preselect_proc.stdout,
+                    stdout=out,
+                    stderr=fmt_err,
+                    cwd=cwd
+                )
+                procs.append(presformat_proc)
+
+                # Close preselect's stdout in parent to allow SIGPIPE
+                preselect_proc.stdout.close()
+
+                self._wait_all([presformat_proc, preselect_proc], self.pipeline_timeout)
+
+            failure = self._check_stages(cwd, [
+                ('preselect5', preselect_proc),
+                ('presformat5', presformat_proc),
+            ])
+            if failure:
+                return failure
+        finally:
+            self._kill_all(procs)
+
         # presformat creates 'selected.bib' in cwd
         selected_bib = cwd / 'selected.bib'
         if selected_bib.exists():
             shutil.move(str(selected_bib), str(bib_file))
-        
+
         return (True, str(output_file))
     
     def _run_pipeline_hfs(self, pres_in, output_file: Path, bib_file: Path,
                           cwd: Path) -> Tuple[bool, str]:
         """Run preselect | presformat | hfs_split | post_hfs_format pipeline."""
         
-        # Start preselect
-        preselect_proc = subprocess.Popen(
-            [str(self.preselect)],
-            stdin=pres_in,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=cwd
-        )
-        
-        # Pipe to presformat
-        presformat_proc = subprocess.Popen(
-            [str(self.presformat)],
-            stdin=preselect_proc.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=cwd
-        )
-        preselect_proc.stdout.close()
-        
-        # Pipe to hfs_split
-        hfs_proc = subprocess.Popen(
-            [str(self.hfs_split)],
-            stdin=presformat_proc.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=cwd
-        )
-        presformat_proc.stdout.close()
-        
-        # Pipe to post_hfs_format
-        out = open(output_file, 'w')
-        post_hfs_proc = subprocess.Popen(
-            [str(self.post_hfs_format)],
-            stdin=hfs_proc.stdout,
-            stdout=out,
-            stderr=subprocess.PIPE,
-            cwd=cwd
-        )
-        hfs_proc.stdout.close()
-        
-        # Wait for completion
-        _, post_hfs_stderr = post_hfs_proc.communicate(timeout=3600)
-        out.close()
-        hfs_proc.wait()
-        presformat_proc.wait()
-        preselect_proc.wait()
-        
-        if post_hfs_proc.returncode != 0:
-            return (False, f"post_hfs_format failed: {post_hfs_stderr.decode()}")
-        
+        procs = []
+        try:
+            with open(self._stderr_path(cwd, 'preselect5'), 'wb') as pre_err, \
+                 open(self._stderr_path(cwd, 'presformat5'), 'wb') as fmt_err, \
+                 open(self._stderr_path(cwd, 'hfs_pres'), 'wb') as hfs_err, \
+                 open(self._stderr_path(cwd, 'post_hfs_format5'), 'wb') as post_err, \
+                 open(output_file, 'w') as out:
+
+                preselect_proc = subprocess.Popen(
+                    [str(self.preselect)],
+                    stdin=pres_in,
+                    stdout=subprocess.PIPE,
+                    stderr=pre_err,
+                    cwd=cwd
+                )
+                procs.append(preselect_proc)
+
+                presformat_proc = subprocess.Popen(
+                    [str(self.presformat)],
+                    stdin=preselect_proc.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=fmt_err,
+                    cwd=cwd
+                )
+                procs.append(presformat_proc)
+                preselect_proc.stdout.close()
+
+                hfs_proc = subprocess.Popen(
+                    [str(self.hfs_split)],
+                    stdin=presformat_proc.stdout,
+                    stdout=subprocess.PIPE,
+                    stderr=hfs_err,
+                    cwd=cwd
+                )
+                procs.append(hfs_proc)
+                presformat_proc.stdout.close()
+
+                post_hfs_proc = subprocess.Popen(
+                    [str(self.post_hfs_format)],
+                    stdin=hfs_proc.stdout,
+                    stdout=out,
+                    stderr=post_err,
+                    cwd=cwd
+                )
+                procs.append(post_hfs_proc)
+                hfs_proc.stdout.close()
+
+                self._wait_all(
+                    [post_hfs_proc, hfs_proc, presformat_proc, preselect_proc],
+                    self.pipeline_timeout
+                )
+
+            failure = self._check_stages(cwd, [
+                ('preselect5', preselect_proc),
+                ('presformat5', presformat_proc),
+                ('hfs_pres', hfs_proc),
+                ('post_hfs_format5', post_hfs_proc),
+            ])
+            if failure:
+                return failure
+        finally:
+            self._kill_all(procs)
+
         # post_hfs creates 'post_selected.bib' in cwd
         post_bib = cwd / 'post_selected.bib'
         selected_bib = cwd / 'selected.bib'
@@ -305,94 +412,124 @@ class JobRunner:
         
         use_hfs = config.format_flags[12] == 1
         
+        cwd = config.job_dir
+        procs = []
         try:
-            with open(pres_in_path, 'r') as pres_in:
-                # Start preselect
+            with open(pres_in_path, 'r') as pres_in, \
+                 open(self._stderr_path(cwd, 'preselect5'), 'wb') as pre_err, \
+                 open(self._stderr_path(cwd, 'select5'), 'wb') as sel_err:
+
                 preselect_proc = subprocess.Popen(
                     [str(self.preselect)],
                     stdin=pres_in,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    cwd=config.job_dir
+                    stderr=pre_err,
+                    cwd=cwd
                 )
-                
+                procs.append(preselect_proc)
+
                 if use_hfs:
                     # preselect | select | hfs_split | post_hfs_format
-                    select_proc = subprocess.Popen(
-                        [str(self.select)],
-                        stdin=preselect_proc.stdout,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        cwd=config.job_dir
-                    )
-                    preselect_proc.stdout.close()
-                    
-                    hfs_proc = subprocess.Popen(
-                        [str(self.hfs_split)],
-                        stdin=select_proc.stdout,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        cwd=config.job_dir
-                    )
-                    select_proc.stdout.close()
-                    
-                    out = open(output_file, 'w')
-                    post_hfs_proc = subprocess.Popen(
-                        [str(self.post_hfs_format)],
-                        stdin=hfs_proc.stdout,
-                        stdout=out,
-                        stderr=subprocess.PIPE,
-                        cwd=config.job_dir
-                    )
-                    hfs_proc.stdout.close()
-                    
-                    _, stderr = post_hfs_proc.communicate(timeout=3600)
-                    out.close()
-                    hfs_proc.wait()
-                    select_proc.wait()
-                    preselect_proc.wait()
-                    
+                    with open(self._stderr_path(cwd, 'hfs_pres'), 'wb') as hfs_err, \
+                         open(self._stderr_path(cwd, 'post_hfs_format5'), 'wb') as post_err, \
+                         open(output_file, 'w') as out:
+
+                        select_proc = subprocess.Popen(
+                            [str(self.select)],
+                            stdin=preselect_proc.stdout,
+                            stdout=subprocess.PIPE,
+                            stderr=sel_err,
+                            cwd=cwd
+                        )
+                        procs.append(select_proc)
+                        preselect_proc.stdout.close()
+
+                        hfs_proc = subprocess.Popen(
+                            [str(self.hfs_split)],
+                            stdin=select_proc.stdout,
+                            stdout=subprocess.PIPE,
+                            stderr=hfs_err,
+                            cwd=cwd
+                        )
+                        procs.append(hfs_proc)
+                        select_proc.stdout.close()
+
+                        post_hfs_proc = subprocess.Popen(
+                            [str(self.post_hfs_format)],
+                            stdin=hfs_proc.stdout,
+                            stdout=out,
+                            stderr=post_err,
+                            cwd=cwd
+                        )
+                        procs.append(post_hfs_proc)
+                        hfs_proc.stdout.close()
+
+                        self._wait_all(
+                            [post_hfs_proc, hfs_proc, select_proc, preselect_proc],
+                            self.pipeline_timeout
+                        )
+
+                    failure = self._check_stages(cwd, [
+                        ('preselect5', preselect_proc),
+                        ('select5', select_proc),
+                        ('hfs_pres', hfs_proc),
+                        ('post_hfs_format5', post_hfs_proc),
+                    ])
+                    if failure:
+                        return failure
+
                     # Bib file
-                    post_bib = config.job_dir / 'post_selected.bib'
-                    select_bib = config.job_dir / 'selected.bib'
+                    post_bib = cwd / 'post_selected.bib'
+                    select_bib = cwd / 'selected.bib'
                     if post_bib.exists():
                         shutil.move(str(post_bib), str(bib_file))
                     elif select_bib.exists():
                         shutil.move(str(select_bib), str(bib_file))
                 else:
                     # preselect | select
-                    # Note: select writes to 'select.out' file, not stdout
+                    # Note: select writes to 'select.out' file, not stdout.
+                    # Its stdout (header info) is discarded rather than piped,
+                    # so there is no pipe left unread.
                     select_proc = subprocess.Popen(
                         [str(self.select)],
                         stdin=preselect_proc.stdout,
-                        stdout=subprocess.PIPE,  # Capture stdout (header info)
-                        stderr=subprocess.PIPE,
-                        cwd=config.job_dir
+                        stdout=subprocess.DEVNULL,
+                        stderr=sel_err,
+                        cwd=cwd
                     )
+                    procs.append(select_proc)
                     preselect_proc.stdout.close()
-                    
-                    _, stderr = select_proc.communicate(timeout=3600)
-                    preselect_proc.wait()
-                    
-                    if select_proc.returncode != 0:
-                        return (False, f"select failed: {stderr.decode()}")
-                    
+
+                    self._wait_all([select_proc, preselect_proc], self.pipeline_timeout)
+
+                    failure = self._check_stages(cwd, [
+                        ('preselect5', preselect_proc),
+                        ('select5', select_proc),
+                    ])
+                    if failure:
+                        return failure
+
                     # select creates 'select.bib' in cwd
-                    select_bib = config.job_dir / 'select.bib'
+                    select_bib = cwd / 'select.bib'
                     if select_bib.exists():
                         shutil.move(str(select_bib), str(bib_file))
-            
+
             # select writes output to 'select.out' file
-            select_out = config.job_dir / 'select.out'
+            select_out = cwd / 'select.out'
             if select_out.exists():
                 shutil.move(str(select_out), str(output_file))
-            
+
             return self._finalize_output(config, output_file, bib_file)
-            
+
         except subprocess.TimeoutExpired:
+            logger.error("Stellar pipeline timed out after %ss in %s",
+                         self.pipeline_timeout, cwd)
             return (False, "Job execution timed out")
         except Exception as e:
+            logger.exception("Stellar pipeline error in %s", cwd)
             return (False, f"Stellar pipeline error: {e}")
+        finally:
+            self._kill_all(procs)
     
     def _run_showline(self, config: JobConfig) -> Tuple[bool, str]:
         """Run showline query (no extraction, just line info)."""
