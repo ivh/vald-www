@@ -78,6 +78,13 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        # Job threads across several gunicorn workers all write status updates;
+        # WAL lets readers run during a write and the timeout replaces the 5s
+        # default that otherwise surfaces as "database is locked".
+        "OPTIONS": {
+            "timeout": 20,
+            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+        },
     }
 }
 
