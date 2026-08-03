@@ -9,6 +9,7 @@ import os
 import gzip
 import logging
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -203,12 +204,27 @@ class JobRunner:
     def _check_stages(self, cwd: Path, stages) -> Optional[Tuple[bool, str]]:
         """Return an error tuple for the first failed stage, checking downstream first.
 
-        Downstream is checked first because its failure causes SIGPIPE upstream,
-        which would otherwise be reported as the more confusing error.
+        `stages` is ordered upstream -> downstream. Downstream is checked first
+        because its failure causes SIGPIPE upstream, which would otherwise be
+        reported as the more confusing error.
+
+        SIGPIPE on an upstream stage is not a failure: a downstream stage that
+        stops early - select5 does exactly this when it reaches the MAXLIN cap in
+        select.input - closes the pipe and the upstream stage dies with signal 13
+        having done its job. Observed with a real stellar extraction, where this
+        surfaced as "preselect5 failed with code -13" on a run that had in fact
+        produced correctly truncated output.
         """
-        for stage, proc in reversed(stages):
-            if proc.returncode != 0:
-                return (False, self._stage_error(cwd, stage, proc))
+        last_index = len(stages) - 1
+        for index in range(last_index, -1, -1):
+            stage, proc = stages[index]
+            if proc.returncode == 0:
+                continue
+            if index < last_index and proc.returncode == -signal.SIGPIPE:
+                logger.info("Stage %s took SIGPIPE in %s - downstream stopped "
+                            "early, treating as normal", stage, cwd)
+                continue
+            return (False, self._stage_error(cwd, stage, proc))
         return None
 
     def run(self, config: JobConfig) -> Tuple[bool, str]:
