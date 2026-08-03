@@ -705,7 +705,12 @@ class JobRunner:
             with gzip.open(gz_path, 'wb') as f_out:
                 shutil.copyfileobj(f_in, f_out)
         os.chmod(gz_path, 0o644)
-        
+
+        # Drop the uncompressed copy now the gzip exists - otherwise every job
+        # costs roughly twice its output size until the job directory is swept,
+        # and a large extraction can be hundreds of MB.
+        self._discard(output_file)
+
         # Compress bib file if exists
         if bib_file.exists():
             bib_gz_name = f"{config.client_name}.{config.job_id:06d}.bib.gz"
@@ -714,8 +719,16 @@ class JobRunner:
                 with gzip.open(bib_gz_path, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
             os.chmod(bib_gz_path, 0o644)
-        
+            self._discard(bib_file)
+
         return (True, str(gz_path))
+
+    def _discard(self, path: Path):
+        """Remove an intermediate file, logging rather than failing on error."""
+        try:
+            path.unlink()
+        except OSError as e:
+            logger.warning("Could not remove intermediate file %s: %s", path, e)
 
 
 def create_job_config(request_obj, backend_id: int, job_dir: Path, 
