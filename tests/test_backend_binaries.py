@@ -241,10 +241,23 @@ def test_hfs_works_for_an_element_filtered_request(run_job):
     assert data_rows(text)
 
 
-@pytest.mark.xfail(reason='R36: the HFS chain fails on some species, so Extract All '
-                          'always hits one. Bug is in presformat5/post_hfs_format5, '
-                          'not in this app.', strict=False)
 def test_hfs_works_for_extract_all(run_job):
+    """Unfiltered HFS extraction. Region-dependent on some installations - see
+    finds.md R36 - so this uses a range known to work rather than asserting that
+    every range does."""
+    ok, result, text = run_job(request_type='extractall', max_lines=500000,
+                               wl_start=15000.0, wl_end=15000.5,
+                               format_flags=flags(hfs=1))
+    assert ok, result
+    assert data_rows(text)
+
+
+@pytest.mark.xfail(reason='finds.md R36: on some installations the HFS chain fails '
+                          'for particular wavelength regions. Reproduces with the '
+                          'legacy shell pipeline too, so it is not an app defect. '
+                          'XPASS here means the installation is healthy.',
+                   strict=False)
+def test_hfs_extract_all_in_the_optical(run_job):
     ok, result, _ = run_job(request_type='extractall', max_lines=500000,
                             wl_start=5000.0, wl_end=5001.0,
                             format_flags=flags(hfs=1))
