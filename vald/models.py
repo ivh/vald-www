@@ -1,5 +1,8 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
+from django.utils import timezone
+from datetime import timedelta
 from pathlib import Path
 import secrets
 import uuid
@@ -131,6 +134,9 @@ class User(models.Model):
     affiliation = models.TextField(blank=True)  # Free text from clients.register
     password = models.CharField(max_length=128, blank=True, null=True)  # Null = needs activation
     activation_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    # Issue time of activation_token. Without it a leaked activation or reset
+    # link stayed usable forever, while the reset email promised 7 days.
+    token_created_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -146,6 +152,7 @@ class User(models.Model):
         """Hash and set password"""
         self.password = make_password(raw_password)
         self.activation_token = None  # Clear activation token once password is set
+        self.token_created_at = None
 
     def check_password(self, raw_password):
         """Check if password matches"""
@@ -156,7 +163,21 @@ class User(models.Model):
     def generate_activation_token(self):
         """Generate a unique activation token"""
         self.activation_token = secrets.token_urlsafe(32)
+        self.token_created_at = timezone.now()
         return self.activation_token
+
+    def token_is_valid(self):
+        """Whether activation_token is present and still within its lifetime.
+
+        A token with no issue time counts as expired - the safe reading for rows
+        predating token_created_at, though the migration backfills those.
+        """
+        if not self.activation_token:
+            return False
+        if not self.token_created_at:
+            return False
+        max_age_days = getattr(settings, 'VALD_TOKEN_MAX_AGE_DAYS', 7)
+        return timezone.now() - self.token_created_at <= timedelta(days=max_age_days)
 
     def needs_activation(self):
         """Check if user needs to set password"""

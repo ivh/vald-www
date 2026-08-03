@@ -6,6 +6,8 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
 from django.utils import timezone
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from datetime import timedelta
 from django_ratelimit.decorators import ratelimit
 from pathlib import Path
@@ -217,6 +219,13 @@ def activate_account(request, token):
             messages.error(request, 'Your account is awaiting approval by the VALD administrator.')
             return redirect('vald:index')
 
+        if not user.token_is_valid():
+            messages.error(
+                request,
+                'This activation link has expired. Please log in again to receive a new one.'
+            )
+            return redirect('vald:index')
+
         # Verify user needs activation
         if not user.needs_activation():
             messages.info(request, 'Your account is already activated. Please login with your password.')
@@ -266,8 +275,11 @@ def set_password(request):
         messages.error(request, 'Password cannot be empty.')
         return redirect('vald:activate_account', token=activation_token)
 
-    if len(password) < 8:
-        messages.error(request, 'Password must be at least 8 characters long.')
+    try:
+        validate_password(password)
+    except DjangoValidationError as e:
+        for message in e.messages:
+            messages.error(request, message)
         return redirect('vald:activate_account', token=activation_token)
 
     if password != password_confirm:
@@ -280,6 +292,13 @@ def set_password(request):
 
         if not user.is_active:
             messages.error(request, 'Your account is awaiting approval by the VALD administrator.')
+            return redirect('vald:index')
+
+        if not user.token_is_valid():
+            messages.error(
+                request,
+                'This activation link has expired. Please log in again to receive a new one.'
+            )
             return redirect('vald:index')
 
         # Verify email matches
@@ -417,6 +436,13 @@ def reset_password(request, token):
     except User.DoesNotExist:
         messages.error(request, 'Invalid or expired password reset link.')
         return redirect('vald:index')
+
+    if not user.token_is_valid():
+        messages.error(
+            request,
+            'This password reset link has expired. Please request a new one.'
+        )
+        return redirect('vald:request_password_reset')
 
     if request.method == 'POST':
         form = PasswordResetForm(request.POST)

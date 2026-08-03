@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 import re
 
@@ -104,8 +105,11 @@ class PasswordResetForm(forms.Form):
         if password and password_confirm and password != password_confirm:
             raise ValidationError("Passwords do not match.")
 
-        if password and len(password) < 6:
-            raise ValidationError("Password must be at least 6 characters long.")
+        # Apply AUTH_PASSWORD_VALIDATORS rather than an ad-hoc length check.
+        # They were configured in settings but never invoked anywhere, and the
+        # minimum here (6) disagreed with the activation form's (8).
+        if password:
+            validate_password(password)
 
         return cleaned_data
 

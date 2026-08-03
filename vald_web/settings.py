@@ -184,6 +184,10 @@ VALD_MAX_REQUESTS_PER_USER = 5
 # Submission rate per user (django-ratelimit syntax). The in-flight cap above
 # is the real protection; this just stops a scripted loop.
 VALD_SUBMIT_RATE = '120/h'
+# How long activation and password-reset links stay usable. The reset email
+# claims 7 days; before this existed the tokens never expired at all (R6).
+VALD_TOKEN_MAX_AGE_DAYS = 7
+
 
 
 # Logging - console only in development (see settings_deploy for production)
