@@ -866,8 +866,12 @@ def handle_extract_request(request):
 
                     # Use SITE_URL as base for email links (no request object in background)
                     base_url = getattr(settings, 'SITE_URL', settings.SITENAME)
-                    # Add FORCE_SCRIPT_NAME prefix if configured (e.g., /new)
-                    script_name = getattr(settings, 'FORCE_SCRIPT_NAME', '')
+                    # Add FORCE_SCRIPT_NAME prefix if configured (e.g., /new).
+                    # Django's global_settings defines it as None, so the getattr
+                    # default never fires - coerce it or the URLs grow a "None".
+                    # reverse() omits the prefix here because script_prefix is a
+                    # thread-local that this background thread never had set.
+                    script_name = getattr(settings, 'FORCE_SCRIPT_NAME', '') or ''
                     request_url = f"{base_url}{script_name}{request_path}"
                     download_url = f"{base_url}{script_name}{download_path}"
                     bib_download_url = f"{base_url}{script_name}{bib_download_path}"
