@@ -117,6 +117,16 @@ def login(request):
             context = get_user_context(request)
             return render(request, 'vald/notregistered.html', context)
 
+        # Self-registrations are created inactive and must be approved by an
+        # admin before they can log in or trigger an activation email.
+        if not user.is_active:
+            messages.error(
+                request,
+                'Your account is awaiting approval by the VALD administrator. '
+                'You will receive an email once it has been activated.'
+            )
+            return redirect('vald:index')
+
         # Check if user needs to activate (set password)
         if user.needs_activation():
             if password:
@@ -201,6 +211,10 @@ def activate_account(request, token):
         # Find user with this activation token
         user = User.objects.get(activation_token=token)
 
+        if not user.is_active:
+            messages.error(request, 'Your account is awaiting approval by the VALD administrator.')
+            return redirect('vald:index')
+
         # Verify user needs activation
         if not user.needs_activation():
             messages.info(request, 'Your account is already activated. Please login with your password.')
@@ -261,6 +275,10 @@ def set_password(request):
     # Get user and verify token
     try:
         user = User.objects.get(activation_token=activation_token)
+
+        if not user.is_active:
+            messages.error(request, 'Your account is awaiting approval by the VALD administrator.')
+            return redirect('vald:index')
 
         # Verify email matches
         user_emails = user.emails.values_list('email', flat=True)
@@ -326,6 +344,12 @@ def request_password_reset(request):
         try:
             user_email = UserEmail.objects.select_related('user').get(email=email)
             user = user_email.user
+
+            # An unapproved account must not be able to set a password via reset,
+            # which would otherwise bypass admin approval. Fall through to the
+            # same generic response used for unknown addresses.
+            if not user.is_active:
+                raise UserEmail.DoesNotExist
 
             # Generate reset token
             token = user.generate_activation_token()
