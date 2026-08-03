@@ -1,0 +1,27 @@
+[Unit]
+Description=VALD: delete expired result files
+Documentation=file:/home/vald/vald-www.git/finds.md
+After=network.target
+
+[Service]
+Type=oneshot
+User=vald
+Group=vald
+
+WorkingDirectory=/home/vald/vald-www.git
+
+# Same environment as vald.service. DJANGO_SETTINGS_MODULE must be set
+# explicitly: manage.py defaults to the development settings module, whose
+# VALD_FTP_DIR is a different directory.
+EnvironmentFile=/home/vald/vald-www.git/secrets.txt
+Environment="VALD_HOME=/home/vald/VALD3"
+Environment="DJANGO_SETTINGS_MODULE=vald_web.settings_deploy"
+
+# Default --age is 2D, matching the "available for 48 hours" line in the
+# completion emails. The command refuses to run if VALD_FTP_DIR is missing,
+# so a misconfigured environment fails loudly instead of silently no-opping.
+ExecStart=/home/vald/vald-www.git/.venv/bin/python manage.py cleanup_old_results
+
+# Security hardening (mirrors vald.service)
+PrivateTmp=true
+NoNewPrivileges=true

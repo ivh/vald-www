@@ -1,0 +1,37 @@
+#!/bin/sh
+# Run a Django management command with the production environment.
+#
+# manage.py defaults to DJANGO_SETTINGS_MODULE=vald_web.settings, the
+# development module, whose VALD_FTP_DIR and VALD_HOME point somewhere else
+# entirely. A management command run on the server without this wrapper - from
+# cron, which has a near-empty environment, or from an interactive shell -
+# therefore operates on the wrong directories. cleanup_old_results used to
+# report "No old files found" while the real FTP directory filled up.
+#
+# Usage:  vald-manage cleanup_old_results [--dry-run] [--age 2D]
+#         vald-manage migrate
+#         vald-manage import_default_config /path/to/default.cfg
+#
+# vald-cleanup.timer sets the same environment via EnvironmentFile= and does
+# not need this wrapper; it exists for manual runs and for anyone who prefers
+# cron.
+set -eu
+
+APP_DIR=/home/vald/vald-www.git
+
+# Same file systemd reads via EnvironmentFile= in vald.service. It is
+# KEY=value lines, which sh can source directly - but note that systemd
+# tolerates some quoting that sh does not, so keep values simple.
+if [ ! -r "$APP_DIR/secrets.txt" ]; then
+    echo "vald-manage: cannot read $APP_DIR/secrets.txt" >&2
+    exit 1
+fi
+set -a
+. "$APP_DIR/secrets.txt"
+set +a
+
+export VALD_HOME="${VALD_HOME:-/home/vald/VALD3}"
+export DJANGO_SETTINGS_MODULE=vald_web.settings_deploy
+
+cd "$APP_DIR"
+exec "$APP_DIR/.venv/bin/python" manage.py "$@"

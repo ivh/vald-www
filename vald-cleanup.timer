@@ -1,0 +1,15 @@
+[Unit]
+Description=VALD: delete expired result files daily
+
+[Timer]
+OnCalendar=*-*-* 02:23:00
+
+# Run on next boot if the machine was down at the scheduled time, so results
+# do not accumulate indefinitely after an outage.
+Persistent=true
+
+# Avoid starting at exactly the same instant as other timers
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
