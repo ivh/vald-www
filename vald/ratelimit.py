@@ -36,3 +36,21 @@ def client_ip(group, request):
     # Normalise so that "::ffff:1.2.3.4" and "1.2.3.4" share a bucket
     mapped = getattr(parsed, 'ipv4_mapped', None)
     return str(mapped or parsed)
+
+
+def session_user(group, request):
+    """Bucket by logged-in user, falling back to client IP.
+
+    This app authenticates via session['user_id'] rather than django.contrib.auth,
+    so django-ratelimit's built-in 'user' key (which reads request.user) would
+    lump every visitor into the same anonymous bucket.
+    """
+    user_id = request.session.get('user_id')
+    if user_id:
+        return f'user:{user_id}'
+    return f'ip:{client_ip(group, request)}'
+
+
+def submit_rate(group, request):
+    """Submission rate, read from settings so it can be tuned without a deploy."""
+    return getattr(settings, 'VALD_SUBMIT_RATE', '120/h')

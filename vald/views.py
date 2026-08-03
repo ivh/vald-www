@@ -6,6 +6,7 @@ from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
 from django.utils import timezone
+from datetime import timedelta
 from django_ratelimit.decorators import ratelimit
 from pathlib import Path
 import glob
@@ -92,7 +93,7 @@ def index(request):
     return render(request, 'vald/index.html', context)
 
 
-@ratelimit(key='vald.ratelimit.client_ip', rate='5/m', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='5/m', method='POST', block=False)
 def login(request):
     """Handle user login with password authentication"""
     if request.method == 'POST':
@@ -239,7 +240,7 @@ def activate_account(request, token):
         return redirect('vald:index')
 
 
-@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST', block=False)
 def set_password(request):
     """Handle password setting for first-time activation"""
     if request.method != 'POST':
@@ -317,7 +318,7 @@ def set_password(request):
         return redirect('vald:index')
 
 
-@ratelimit(key='vald.ratelimit.client_ip', rate='3/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='3/h', method='POST', block=False)
 def request_password_reset(request):
     """Handle password reset request form"""
     context = get_user_context(request)
@@ -401,10 +402,14 @@ VALD Team
     return render(request, 'vald/request_password_reset.html', context)
 
 
-@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST', block=False)
 def reset_password(request, token):
     """Handle password reset with token"""
     context = get_user_context(request)
+
+    if getattr(request, 'limited', False):
+        messages.error(request, 'Too many password reset attempts. Please try again later.')
+        return redirect('vald:index')
 
     # Verify token
     try:
@@ -596,7 +601,7 @@ def submit_request(request):
     return render(request, 'vald/error.html', context)
 
 
-@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='5/h', method='POST', block=False)
 def handle_contact_request(request):
     """Handle contact form submission"""
     context = get_user_context(request)
@@ -663,7 +668,7 @@ def handle_contact_request(request):
         return render(request, 'vald/contact.html', context)
 
 
-@ratelimit(key='vald.ratelimit.client_ip', rate='3/h', method='POST')
+@ratelimit(key='vald.ratelimit.client_ip', rate='3/h', method='POST', block=False)
 def handle_registration_request(request):
     """Handle registration form submission"""
     context = get_user_context(request)
@@ -714,6 +719,8 @@ def handle_registration_request(request):
     return render(request, 'vald/contact.html', context)
 
 
+@ratelimit(key='vald.ratelimit.session_user',
+           rate='vald.ratelimit.submit_rate', method='POST', block=False)
 def handle_extract_request(request):
     """Handle extract/showline form submissions"""
     context = get_user_context(request)
@@ -789,24 +796,52 @@ def handle_extract_request(request):
     request_params = form.cleaned_data.copy()
     request_params.update(prefs.as_dict())
 
+    template_map = {
+        'extractall': 'vald/extractall.html',
+        'extractelement': 'vald/extractelement.html',
+        'extractstellar': 'vald/extractstellar.html',
+        'showline': 'vald/showline.html',
+    }
+
+    def reject(message):
+        messages.error(request, message)
+        context['form'] = form
+        return render(request, template_map[reqtype], context)
+
+    if getattr(request, 'limited', False):
+        return reject(
+            'You have submitted a lot of requests in a short time. '
+            'Please wait a little before submitting another.'
+        )
+
+    # Per-user in-flight cap: without this one user could occupy the whole
+    # global admission queue and everyone else got "Server is busy". Requests
+    # older than the reconciliation window are ignored so a job lost to a worker
+    # restart cannot block the user permanently.
+    max_per_user = getattr(settings, 'VALD_MAX_REQUESTS_PER_USER', 5)
+    job_timeout = getattr(settings, 'VALD_JOB_TIMEOUT', 3600)
+    stale_cutoff = timezone.now() - timedelta(seconds=2 * job_timeout)
+    in_flight = Request.objects.filter(
+        user=user,
+        status__in=['pending', 'processing'],
+        created_at__gte=stale_cutoff,
+    ).count()
+    if in_flight >= max_per_user:
+        return reject(
+            f'You already have {in_flight} requests being processed '
+            f'(the limit is {max_per_user}). Please wait for one to finish '
+            'before submitting another.'
+        )
+
     # Check queue capacity before creating request
     from .backend import check_queue_capacity, notify_queue_full
     has_capacity, current_count, max_size = check_queue_capacity()
     if not has_capacity:
         notify_queue_full()
-        messages.error(
-            request,
+        return reject(
             f'Server is busy processing requests ({current_count}/{max_size} in queue). '
             'Please try again in a few minutes.'
         )
-        context['form'] = form
-        template_map = {
-            'extractall': 'vald/extractall.html',
-            'extractelement': 'vald/extractelement.html',
-            'extractstellar': 'vald/extractstellar.html',
-            'showline': 'vald/showline.html',
-        }
-        return render(request, template_map[reqtype], context)
 
     # Create Request record for tracking
     req_obj = Request.objects.create(
