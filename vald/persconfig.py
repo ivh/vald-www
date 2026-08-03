@@ -109,18 +109,19 @@ def get_linelists_for_display(config):
     return linelists
 
 
-def update_config_linelist(config_linelist_id, is_enabled=None, ranks=None):
+def update_config_linelist(config_linelist_id, user, is_enabled=None, ranks=None):
     """
-    Update a ConfigLinelist entry.
-    
+    Update a ConfigLinelist entry belonging to this user's own config.
+
     Args:
         config_linelist_id: pk of ConfigLinelist
+        user: User who must own the parent config
         is_enabled: new enabled state (or None to keep)
         ranks: list of 9 rank values (or None to keep)
     """
     try:
-        cl = ConfigLinelist.objects.get(pk=config_linelist_id)
-        
+        cl = ConfigLinelist.objects.get(pk=config_linelist_id, config__user=user)
+
         if is_enabled is not None:
             cl.is_enabled = is_enabled
         
@@ -141,13 +142,17 @@ def update_config_linelist(config_linelist_id, is_enabled=None, ranks=None):
         return False
 
 
-def restore_linelist_to_default(config_linelist_id):
+def restore_linelist_to_default(config_linelist_id, user):
     """
     Restore a single linelist entry to system default values.
+
+    Only entries in this user's own config may be restored.
     """
     try:
-        cl = ConfigLinelist.objects.select_related('config', 'linelist').get(pk=config_linelist_id)
-        
+        cl = ConfigLinelist.objects.select_related('config', 'linelist').get(
+            pk=config_linelist_id, config__user=user
+        )
+
         # Find default config's entry for this linelist
         default_config = get_default_config()
         if not default_config:

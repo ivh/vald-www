@@ -1135,7 +1135,7 @@ def persconf(request):
                 except ValueError:
                     ranks.append(3)
             
-            if update_config_linelist(config_linelist_id, is_enabled=is_enabled, ranks=ranks):
+            if update_config_linelist(config_linelist_id, user, is_enabled=is_enabled, ranks=ranks):
                 messages.success(request, 'Linelist settings saved successfully.')
             else:
                 messages.error(request, 'Failed to save linelist settings.')
@@ -1148,7 +1148,7 @@ def persconf(request):
     elif action == 'restore' and editid:
         try:
             config_linelist_id = int(editid)
-            if restore_linelist_to_default(config_linelist_id):
+            if restore_linelist_to_default(config_linelist_id, user):
                 messages.success(request, 'Linelist restored to default settings.')
             else:
                 messages.error(request, 'Failed to restore linelist.')
