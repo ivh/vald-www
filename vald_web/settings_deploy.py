@@ -20,13 +20,34 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
+# ---------------------------------------------------------------------------
+# Per-site configuration.
+#
+# Everything a VALD mirror needs to change lives in secrets.txt (read by
+# systemd via EnvironmentFile= and by bin/vald-manage), so this file is
+# identical on every site and does not conflict on pull. See
+# secrets.txt.example for the full list; the defaults below are the Uppsala
+# values, so an existing deployment behaves the same with no secrets.txt
+# change. This mirrors what config/site_config_local.php.template did for the
+# PHP interface.
+# ---------------------------------------------------------------------------
+
+def _env_list(name, default):
+    """Comma-separated environment variable -> list of non-empty strings."""
+    return [item.strip() for item in os.environ.get(name, default).split(',') if item.strip()]
+
+
+def _env_bool(name, default='False'):
+    return os.environ.get(name, default).strip().lower() in ('true', '1', 'yes')
+
+
 # see secrets.txt
 SECRET_KEY = os.environ["SECRET_KEY"]
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1')
+DEBUG = _env_bool('DEBUG')
 
-ALLOWED_HOSTS = ['vald.astro.uu.se','localhost','127.0.0.1']
+ALLOWED_HOSTS = _env_list('VALD_ALLOWED_HOSTS', 'vald.astro.uu.se,localhost,127.0.0.1')
 
 
 # Application definition
@@ -126,12 +147,20 @@ TIME_ZONE = "Europe/Stockholm"
 USE_TZ = True
 
 ## DEPLOY via reverse proxy
-FORCE_SCRIPT_NAME = '/new'
+# Sub-path the app is served under, without a trailing slash. Set it empty to
+# serve from the site root - Django checks `is not None`, so '' is honoured and
+# means "no prefix". The cookie paths and STATIC_URL below derive from it, so
+# this is the only place the prefix appears.
+#
+# NB changing it invalidates every existing session and CSRF token, because the
+# cookie paths change with it. Expect logged-in users to be signed out.
+FORCE_SCRIPT_NAME = os.environ.get('VALD_URL_PREFIX', '/new')
+
 USE_X_FORWARDED_HOST = True
 APPEND_SLASH = False  # Avoid redirect issues with reverse proxy
-CSRF_COOKIE_PATH = '/new'
-SESSION_COOKIE_PATH = '/new'
-CSRF_TRUSTED_ORIGINS = ['https://vald.astro.uu.se']
+CSRF_COOKIE_PATH = FORCE_SCRIPT_NAME or '/'
+SESSION_COOKIE_PATH = FORCE_SCRIPT_NAME or '/'
+CSRF_TRUSTED_ORIGINS = _env_list('VALD_CSRF_TRUSTED_ORIGINS', 'https://vald.astro.uu.se')
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -150,7 +179,7 @@ RATELIMIT_CLIENT_IP_HEADER = 'HTTP_X_FORWARDED_FOR'
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "/new/static/"
+STATIC_URL = f"{FORCE_SCRIPT_NAME}/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"  # Where collectstatic puts files
 STATICFILES_DIRS = [BASE_DIR / "style", BASE_DIR / "public_html"]
 
@@ -164,9 +193,9 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'localhost'
 EMAIL_PORT = 25
 EMAIL_USE_TLS = False
-DEFAULT_FROM_EMAIL = 'vald@physics.uu.se'
-VALD_ADMIN_EMAIL = 'thomas.marquart@physics.uu.se'
-VALD_WEBMASTER_EMAIL = 'thomas.marquart@physics.uu.se'
+DEFAULT_FROM_EMAIL = os.environ.get('VALD_FROM_EMAIL', 'vald@physics.uu.se')
+VALD_ADMIN_EMAIL = os.environ.get('VALD_ADMIN_EMAIL', 'thomas.marquart@physics.uu.se')
+VALD_WEBMASTER_EMAIL = os.environ.get('VALD_WEBMASTER_EMAIL', 'thomas.marquart@physics.uu.se')
 # Use os.environ["VALD_WEBMASTER_PASSWORD"] and set it in secrets.txt, if needed
 # It gets read by systemd service file.
 
@@ -195,9 +224,11 @@ PERSCONFIG_DEFAULT = BASE_DIR / 'config' / 'default.cfg'
 HTMLCONFIG_DEFAULT = BASE_DIR / 'config' / 'htmldefault.cfg'
 DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
-SITENAME = 'VALD Uppsala'
-SITE_URL = 'https://vald.astro.uu.se'  # Base URL (reverse() adds the /new prefix)
-MAINTENANCE = False
+SITENAME = os.environ.get('VALD_SITENAME', 'VALD Uppsala')
+# Base URL without the sub-path prefix; completion emails append
+# FORCE_SCRIPT_NAME themselves (reverse() omits it in a background thread).
+SITE_URL = os.environ.get('VALD_SITE_URL', 'https://vald.astro.uu.se')
+MAINTENANCE = _env_bool('VALD_MAINTENANCE')
 
 # Backend processing configuration
 VALD_BIN = VALD_HOME / 'bin'

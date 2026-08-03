@@ -81,14 +81,39 @@ accumulate forever. Setting only `DJANGO_SETTINGS_MODULE` is not enough either:
 `KeyError`. As of the current version the command refuses to run when
 `VALD_FTP_DIR` is missing, so this misconfiguration now fails loudly.
 
-### Per-site paths
+### Per-site configuration
 
-`bin/vald-manage` needs no editing — it derives the application directory from
-its own location and reads `VALD_HOME` from `secrets.txt`. Override with
-`VALD_APP_DIR=/path/to/app` if you invoke it through a symlink.
+Everything that differs between mirrors lives in `secrets.txt`, so no tracked
+file needs editing and nothing conflicts on pull. It is the successor to the PHP
+interface's `config/site_config_local.php`.
 
-The systemd units cannot derive paths, so each site must adjust them. For a
-mirror installed somewhere other than `/home/vald`:
+```bash
+cp secrets.txt.example secrets.txt
+chmod 600 secrets.txt
+$EDITOR secrets.txt      # at minimum: SECRET_KEY, VALD_HOME, VALD_ALLOWED_HOSTS
+```
+
+Every value has an Uppsala default in `vald_web/settings_deploy.py`, so an
+existing deployment keeps working unchanged. See the comments in
+`secrets.txt.example` for the full list — site name, hostnames, trusted origins,
+base URL, URL prefix, and the three contact addresses.
+
+`VALD_URL_PREFIX` is the sub-path the app is served under (`/new` today, empty
+for the site root). The session and CSRF cookie paths and `STATIC_URL` all derive
+from it, so it is the only place the prefix is configured — but changing it signs
+out every logged-in user, because the cookie paths change with it.
+
+Values are read both by systemd (`EnvironmentFile=`) and by `bin/vald-manage`
+(which sources the file with `sh`), so **any value containing a space must be
+double-quoted** — an unquoted space makes `sh` try to execute the rest of the
+line and abort.
+
+`bin/vald-manage` needs no editing: it derives the application directory from its
+own location and reads `VALD_HOME` from `secrets.txt`. Set `VALD_APP_DIR` if you
+invoke it through a symlink.
+
+The systemd units cannot derive paths, so they are the one thing each site must
+still adjust. For a mirror installed somewhere other than `/home/vald`:
 
 ```bash
 sed -i -e 's#/home/vald/vald-www\.git#/srv/vald/app#g' \
@@ -96,8 +121,7 @@ sed -i -e 's#/home/vald/vald-www\.git#/srv/vald/app#g' \
        vald.service vald-cleanup.service
 ```
 
-Also check `User=`/`Group=` and, in `vald_web/settings_deploy.py`,
-`ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `SITE_URL` and `FORCE_SCRIPT_NAME`.
+Also check `User=`/`Group=` in both units.
 
 ### Installing the timer
 
