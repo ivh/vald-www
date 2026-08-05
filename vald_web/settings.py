@@ -163,7 +163,9 @@ MAINTENANCE = False
 # Backend processing configuration
 VALD_BIN = VALD_HOME / 'bin'
 VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request processing
-VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'  # Output directory for results
+# Results must live OUTSIDE any STATICFILES_DIRS tree, or collectstatic would
+# publish them (R19). Kept out of public_html for that reason.
+VALD_FTP_DIR = BASE_DIR / 'ftp_results'  # Output directory for results
 VALD_MAX_WORKERS = 2  # Maximum parallel job executions (FIFO queue)
 VALD_MAX_QUEUE_SIZE = 10  # Maximum pending jobs in queue before rejecting new requests
 # Maximum output lines per request, written as pres_in line 2 (R29).
@@ -184,6 +186,13 @@ VALD_MAX_REQUESTS_PER_USER = 5
 # Submission rate per user (django-ratelimit syntax). The in-flight cap above
 # is the real protection; this just stops a scripted loop.
 VALD_SUBMIT_RATE = '120/h'
+
+# Completion emails attach the result file. Above this size, skip the
+# attachment and rely on the download links in the body - some mail servers
+# bounce large attachments, which would leave the user with no notification at
+# all despite the files being ready (R33).
+VALD_MAX_EMAIL_ATTACH_BYTES = 5 * 1024 * 1024  # 5 MB
+
 # How long activation and password-reset links stay usable. The reset email
 # claims 7 days; before this existed the tokens never expired at all (R6).
 VALD_TOKEN_MAX_AGE_DAYS = 7

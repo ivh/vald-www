@@ -181,6 +181,9 @@ RATELIMIT_CLIENT_IP_HEADER = 'HTTP_X_FORWARDED_FOR'
 
 STATIC_URL = f"{FORCE_SCRIPT_NAME}/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"  # Where collectstatic puts files
+# NB: VALD_FTP_DIR (results) must never sit inside any of these trees, or
+# collectstatic would publish user results as static files (R19). It lives under
+# $VALD_HOME/WWW, well outside BASE_DIR - keep it that way.
 STATICFILES_DIRS = [BASE_DIR / "style", BASE_DIR / "public_html"]
 
 # Default primary key field type
@@ -254,6 +257,13 @@ VALD_MAX_REQUESTS_PER_USER = 5
 # Submission rate per user (django-ratelimit syntax). The in-flight cap above
 # is the real protection; this just stops a scripted loop.
 VALD_SUBMIT_RATE = '120/h'
+
+# Completion emails attach the result file. Above this size, skip the
+# attachment and rely on the download links in the body - some mail servers
+# bounce large attachments, which would leave the user with no notification at
+# all despite the files being ready (R33).
+VALD_MAX_EMAIL_ATTACH_BYTES = 5 * 1024 * 1024  # 5 MB
+
 # How long activation and password-reset links stay usable. The reset email
 # claims 7 days; before this existed the tokens never expired at all (R6).
 VALD_TOKEN_MAX_AGE_DAYS = 7
