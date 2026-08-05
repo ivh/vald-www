@@ -5,12 +5,12 @@ please note that</p>
 
 <p>
 <ul>
-<li>You do not need to register anew, but to set a password. Simply leave it empty the first time
- you try logging in, and you will get an activation link to your email. This allows you to
- set the password that you then use for future logins.</li>
+<li>You do not need to register anew, but you do need to set a password. Enter your registered
+ email address in the login form and we will send you a one-time activation link, which lets you
+ set the password you then use for future logins.</li>
 <li>Under "My Requests" you can now see the status and download links of your queries.</li>
-<li>The "Modify"-link allows to re-fill the fiedls with the values from an earlier query, then edit and re-submit.</li>
-<li>Requests are now handled immediately and and in parallel, so results should appear quicker. Some queries can
+<li>The "Modify"-link allows to re-fill the fields with the values from an earlier query, then edit and re-submit.</li>
+<li>Requests are now handled immediately and in parallel, so results should appear quicker. Some queries can
  however still take minutes to finish.</li>
 </ul>
 </p>

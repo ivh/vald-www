@@ -1,6 +1,19 @@
 {% extends "vald/base.html" %}
 
 {% block content %}
+{% if not user_name %}
+{# Shown to logged-out visitors only: returning users arriving from the old
+   interface need to know why they are being asked to activate. #}
+<p style="border: 1px solid #888; background: #f6f6f0; padding: 10px; margin-bottom: 1em;">
+    <b>Welcome to the new VALD interface.</b>
+    If you used VALD before, your account is already here &mdash; just enter 
+    your registered email address and follow the one-time activation link we send
+    you, to set a password; then log in. 
+    It only takes a minute to activate your account which will give you saved unit
+    preferences, your own linelist configuration, and a history of your requests.
+    See <a href="{% url 'vald:news_all' %}">News</a> for details.
+</p>
+{% endif %}
 {% if content_html %}
 {{ content_html|safe }}
 {% else %}
