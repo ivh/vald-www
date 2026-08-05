@@ -205,3 +205,29 @@ def test_session_user_key_separates_users(approved_user):
 
     request.session = {}
     assert session_user('g', request) == 'ip:203.0.113.9'
+
+
+# --- activation is reachable however the user fills the login form ---------
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('password_field', ['', 'a-guessed-password'])
+def test_activation_email_is_sent_whether_or_not_a_password_was_typed(
+        password_field, mailoutbox, db):
+    """Requiring an empty password field was a dead end.
+
+    A returning user who typed something was told to check their email for a
+    link that had never been sent, with no hint that blanking the field was the
+    trigger. Both paths must now send the activation link.
+    """
+    user = User.objects.create(name='Returning User', is_active=True)
+    UserEmail.objects.create(user=user, email='returning@example.com', is_primary=True)
+    assert user.needs_activation()
+
+    Client().post('/login/', {'user': 'returning@example.com',
+                              'password': password_field})
+
+    user.refresh_from_db()
+    assert user.activation_token is not None, 'no activation token was issued'
+    assert len(mailoutbox) == 1, 'no activation email was sent'
+    assert 'returning@example.com' in mailoutbox[0].to
+

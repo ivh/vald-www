@@ -137,11 +137,11 @@ def login(request):
 
         # Check if user needs to activate (set password)
         if user.needs_activation():
-            if password:
-                messages.error(request, 'Your account needs activation. Check your email for the activation link.')
-                return redirect('vald:index')
-
-            # Generate activation token and send email
+            # Send the activation email whether or not they typed something in
+            # the password field. Requiring an empty field was a dead end: a
+            # returning user who typed a guessed password was told to check
+            # their email for a link that had never been sent, and had to work
+            # out that leaving the field blank was the trigger.
             token = user.generate_activation_token()
             user.save()
 
@@ -158,8 +158,6 @@ Welcome to VALD! This is your first time logging in.
 To activate your account and set your password, please click the link below:
 
 {activation_url}
-
-This link will expire after you use it to set your password.
 
 If you did not request this, please ignore this email.
 
