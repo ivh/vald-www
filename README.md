@@ -158,6 +158,61 @@ worker that was restarted mid-job, and marks one complete instead if its output
 file turns out to exist. It has no timer — run it by hand if requests appear
 stuck.
 
+## Adding a new linelist
+
+The application reads its linelist catalogue and configuration from the
+**database**, not from `default.cfg` directly — the `.cfg` is only the import
+source, and is regenerated on the fly per job (see *Architecture* below). So
+editing `default.cfg` alone changes nothing; the database must be re-imported.
+
+1. **Put the data file in place.** Linelist data lives on disk as a compressed
+   binary pair, not raw text:
+
+   ```
+   $VALD_HOME/CVALD3/ATOMS/<name>.CVALD3     data
+   $VALD_HOME/CVALD3/ATOMS/<name>.DSC3       descriptor
+   ```
+
+   Convert the linelist into that form with the VALD data tools (`kompress3` /
+   `ukconvert2-3` in `$VALD_HOME/bin/`) and place both files under `CVALD3/ATOMS/`
+   (or `CVALD3/MOLECULES/`). Molecular lists are detected by `/MOLECULES/` in the
+   path.
+
+2. **Add a line to `$VALD_HOME/CONFIG/default.cfg`.** The path is extensionless —
+   the binaries append `.CVALD3`/`.DSC3`:
+
+   ```
+   '/CVALD3/ATOMS/<name>', <priority>, <elem_min>, <elem_max>, <mergeable>, r1,r2,r3,r4,r5,r6,r7,r8,r9, '<description>'
+   ```
+
+   where the nine `r` values are the quality ranks (wl, gf, rad, stark, waals,
+   lande, term, ext_vdw, zeeman). A leading `;` disables the list while still
+   registering it. **Each line needs all 13 numbers** — the importer silently
+   skips any line with fewer and only warns, so check the imported count matches.
+
+3. **Re-import into the database:**
+
+   ```bash
+   bin/vald-manage import_default_config $VALD_HOME/CONFIG/default.cfg
+   ```
+
+   This adds the new `Linelist` to the catalogue and rebuilds the **system
+   default** configuration. Verify the count:
+
+   ```bash
+   bin/vald-manage import_default_config $VALD_HOME/CONFIG/default.cfg --dry-run
+   ```
+
+Repeat all three steps on each mirror — every site has its own database and its
+own copy of the data files.
+
+**Effect on users.** The new list is picked up automatically by everyone using
+the default configuration, and by any user who customises their configuration
+*after* the re-import. Users who have **already** customised their configuration
+keep their existing selection and do **not** get the new list — their choices are
+a snapshot and are deliberately left untouched. (Changing an existing linelist's
+*element range* is the exception: that field is shared, so it does reach everyone.)
+
 ## Configuration
 
 ### Direct Submission Mode (Recommended)
