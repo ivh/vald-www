@@ -26,16 +26,34 @@ set -eu
 # VALD_APP_DIR explicitly in that case.
 APP_DIR="${VALD_APP_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
 
-# Same file systemd reads via EnvironmentFile= in vald.service. It is
-# KEY=value lines, which sh can source directly - but note that systemd
-# tolerates some quoting that sh does not, so keep values simple.
+# Same file systemd reads via EnvironmentFile=. Parse it as data, not shell:
+# sourcing it with `. file` executes each line, so a value containing shell
+# metacharacters - a Django SECRET_KEY has '(', '$', '!' etc. - is a syntax
+# error. Read KEY=value with parameter expansion instead, so the value is never
+# evaluated, and strip one layer of surrounding quotes to match systemd.
 if [ ! -r "$APP_DIR/secrets.txt" ]; then
     echo "vald-manage: cannot read $APP_DIR/secrets.txt" >&2
     exit 1
 fi
-set -a
-. "$APP_DIR/secrets.txt"
-set +a
+while IFS= read -r _line || [ -n "$_line" ]; do
+    case "$_line" in
+        ''|'#'*) continue ;;      # blank or comment
+        *=*) ;;                   # KEY=value
+        *) continue ;;            # anything else
+    esac
+    _key=${_line%%=*}
+    _val=${_line#*=}
+    # Skip lines whose key is not a valid environment variable name
+    case "$_key" in
+        [!A-Za-z_]*|*[!A-Za-z0-9_]*) continue ;;
+    esac
+    # Strip one layer of matching surrounding quotes, as systemd does
+    case "$_val" in
+        \"*\") _val=${_val#\"}; _val=${_val%\"} ;;
+        \'*\') _val=${_val#\'}; _val=${_val%\'} ;;
+    esac
+    export "$_key=$_val"
+done < "$APP_DIR/secrets.txt"
 
 if [ -z "${VALD_HOME:-}" ]; then
     echo "vald-manage: VALD_HOME is not set (expected in $APP_DIR/secrets.txt" \
