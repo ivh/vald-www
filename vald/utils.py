@@ -59,25 +59,26 @@ def spam_check(message):
     """
     Check if message appears to be spam.
     Returns True if message is OK, False if it's spam.
+
+    A plain URL is NOT spam - astronomers legitimately link papers, DOIs and
+    screenshots, and the old filter rejected any message containing http(s):// ,
+    silently blocking real bug reports. Reject instead on markup that is almost
+    always spam (HTML/BBCode links) or an implausible number of links.
     """
-    if not message or len(message) < 10:
+    if not message or len(message.strip()) < 10:
         return False
 
-    # Remove spaces for checking
-    message_no_spaces = message.replace(" ", "")
+    lowered = message.lower()
+    compact = lowered.replace(" ", "")
 
-    # Check for suspicious content
-    suspicious_patterns = [
-        "ahref=",
-        "[url",
-        "[/url",
-        "http://",
-        "https://",
-    ]
+    # Link markup - genuine spam/injection signal, not something a scientist types
+    markup_patterns = ["ahref=", "[url", "[/url", "</a>"]
+    if any(p in compact for p in markup_patterns):
+        return False
 
-    for pattern in suspicious_patterns:
-        if pattern in message_no_spaces.lower():
-            return False
+    # A handful of links is fine; a wall of them is not
+    if lowered.count("http://") + lowered.count("https://") > 5:
+        return False
 
     return True
 
