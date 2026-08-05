@@ -997,15 +997,26 @@ Vienna Atomic Line Database (VALD)
                         to=[req_obj.user_email]
                     )
 
-                    # Attach main results file
+                    # Attach the results, but only if small enough that mail
+                    # servers won't bounce them; otherwise the links above are
+                    # the fallback (R33).
+                    max_attach = getattr(settings, 'VALD_MAX_EMAIL_ATTACH_BYTES', 5 * 1024 * 1024)
                     output_path = req_obj.output_path
+                    total = 0
                     if output_path and output_path.exists():
-                        email.attach_file(str(output_path))
-
-                    # Attach bibliography file if exists (only for extract requests)
+                        total += output_path.stat().st_size
                     if req_obj.bib_output_exists():
-                        bib_file = req_obj.get_bib_output_file()
-                        email.attach_file(str(bib_file))
+                        total += req_obj.bib_output_path.stat().st_size
+
+                    if total <= max_attach:
+                        if output_path and output_path.exists():
+                            email.attach_file(str(output_path))
+                        if req_obj.bib_output_exists():
+                            email.attach_file(str(req_obj.bib_output_path))
+                    else:
+                        body += ("\n\nNote: the results were too large to attach "
+                                 "to this email - please use the download links above.")
+                        email.body = body
 
                     # Send email with logging on failure
                     try:
@@ -1060,14 +1071,15 @@ def save_units(request):
         messages.error(request, 'Could not save preferences: user not found.')
         return redirect('vald:unitselection')
 
-    # Get or create preferences and update from POST data
+    # Validate against the model's choices rather than trusting raw POST -
+    # these values feed pres_in flag generation, so junk must not persist.
+    from .forms import UserPreferencesForm
     prefs = user.get_preferences()
-    prefs.energyunit = request.POST.get('energyunit', 'eV')
-    prefs.medium = request.POST.get('medium', 'air')
-    prefs.waveunit = request.POST.get('waveunit', 'angstrom')
-    prefs.vdwformat = request.POST.get('vdwformat', 'default')
-    prefs.isotopic_scaling = request.POST.get('isotopic_scaling', 'on')
-    prefs.save()
+    form = UserPreferencesForm(request.POST, instance=prefs)
+    if not form.is_valid():
+        messages.error(request, 'Could not save preferences: invalid unit selection.')
+        return redirect('vald:unitselection')
+    form.save()
 
     messages.success(request, 'Your unit preferences have been saved successfully.')
     context = get_user_context(request)

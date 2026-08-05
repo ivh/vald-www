@@ -4,6 +4,19 @@ from django.core.exceptions import ValidationError
 import re
 
 from . import abundances
+from .models import UserPreferences
+
+
+class UserPreferencesForm(forms.ModelForm):
+    """Validates unit preferences against the model's choices.
+
+    save_units previously wrote request.POST values straight onto the model;
+    Django does not enforce choices on save() and SQLite ignores max_length, so
+    arbitrary strings could persist and then feed pres_in flag generation.
+    """
+    class Meta:
+        model = UserPreferences
+        fields = ['energyunit', 'medium', 'waveunit', 'vdwformat', 'isotopic_scaling']
 
 
 # These two values are written verbatim into the control files the Fortran
