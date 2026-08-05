@@ -173,8 +173,6 @@ def uuid_to_6digit(uuid_obj):
     Returns:
         int: 6-digit number (0-999999)
     """
-    import hashlib
-
     uuid_str = str(uuid_obj)
     # Use SHA256 for deterministic hashing (unlike Python's hash())
     hash_bytes = hashlib.sha256(uuid_str.encode()).digest()
