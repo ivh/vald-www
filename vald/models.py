@@ -72,6 +72,60 @@ class Request(models.Model):
         """Check if request is still pending"""
         return self.status in ['pending', 'processing']
 
+    # Wavelength unit symbol keyed by the value stored in parameters['waveunit'].
+    _WAVEUNIT_SYMBOLS = {'angstrom': 'Å', 'nm': 'nm', '1/cm': 'cm⁻¹'}
+
+    def describe(self):
+        """One-line summary of what was requested, for list views.
+
+        Reads the JSON parameters defensively - old or malformed rows must never
+        make the list page raise - and falls back to '' rather than guessing.
+        """
+        params = self.parameters or {}
+
+        def num(key):
+            value = params.get(key)
+            try:
+                # Drop a trailing .0 so 5000.0 shows as 5000
+                f = float(value)
+                return f'{f:g}'
+            except (TypeError, ValueError):
+                return None
+
+        unit = self._WAVEUNIT_SYMBOLS.get(params.get('waveunit'), 'Å')
+
+        def wl_range():
+            start, end = num('stwvl'), num('endwvl')
+            if start and end:
+                return f'{start}–{end} {unit}'
+            return None
+
+        parts = []
+        if self.request_type == 'showline':
+            queries = []
+            for i in range(5):
+                centre = num(f'wvl{i}')
+                element = (params.get(f'el{i}') or '').strip()
+                if centre:
+                    queries.append(f'{element} {centre}'.strip())
+            if queries:
+                parts.append('; '.join(queries[:3]))
+                if len(queries) > 3:
+                    parts.append(f'(+{len(queries) - 3} more)')
+        else:
+            element = (params.get('elmion') or '').strip()
+            if element:
+                parts.append(element)
+            rng = wl_range()
+            if rng:
+                parts.append(rng)
+            if self.request_type == 'extractstellar':
+                teff, logg = num('teff'), num('logg')
+                if teff and logg:
+                    parts.append(f'Teff {teff} / log g {logg}')
+
+        return ', '.join(parts)
+
     @property
     def output_path(self):
         """Absolute path to the result file, or None if none was recorded.

@@ -15,6 +15,7 @@
 <table border="1" cellpadding="5" cellspacing="0" width="100%">
 <tr>
     <th>Request Type</th>
+    <th>Details</th>
     <th>Status</th>
     <th>Submitted</th>
     <th>Download</th>
@@ -23,6 +24,7 @@
 {% for req in requests %}
 <tr>
     <td>{{ req.request_type }}</td>
+    <td>{{ req.describe|default:"—" }}</td>
     <td>
         {% if req.status == 'complete' %}
         <span style="color: green; font-weight: bold;">✓ Complete</span>
@@ -61,6 +63,21 @@
 </tr>
 {% endfor %}
 </table>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<p>
+    {% if page_obj.has_previous %}
+    <a href="?page={{ page_obj.previous_page_number }}">← Newer</a>
+    {% endif %}
+    <span style="margin: 0 1em;">
+        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        ({{ page_obj.paginator.count }} requests)
+    </span>
+    {% if page_obj.has_next %}
+    <a href="?page={{ page_obj.next_page_number }}">Older →</a>
+    {% endif %}
+</p>
+{% endif %}
 {% else %}
 <p><i>You have no requests yet.</i></p>
 {% endif %}

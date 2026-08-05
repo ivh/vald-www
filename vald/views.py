@@ -5,6 +5,7 @@ from django.core.mail import send_mail
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
+from django.core.paginator import Paginator
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -1274,15 +1275,20 @@ def my_requests(request):
     user = get_current_user(request)
 
     # Get all requests for this user (regardless of which email they used)
-    requests = Request.objects.filter(user=user).order_by('-created_at')
+    all_requests = Request.objects.filter(user=user).order_by('-created_at')
 
-    # Count by status
-    pending_count = requests.filter(status__in=['pending', 'processing']).count()
-    complete_count = requests.filter(status='complete').count()
-    failed_count = requests.filter(status='failed').count()
+    # Count by status across the whole set, before paginating
+    pending_count = all_requests.filter(status__in=['pending', 'processing']).count()
+    complete_count = all_requests.filter(status='complete').count()
+    failed_count = all_requests.filter(status='failed').count()
+
+    # Paginate so the page - and its per-row filesystem checks - stays bounded
+    paginator = Paginator(all_requests, 25)
+    page = paginator.get_page(request.GET.get('page'))
 
     context.update({
-        'requests': requests,
+        'requests': page,
+        'page_obj': page,
         'pending_count': pending_count,
         'complete_count': complete_count,
         'failed_count': failed_count,
