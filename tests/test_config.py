@@ -8,20 +8,30 @@ from pathlib import Path
 
 @pytest.fixture
 def default_cfg_path():
-    """Path to the original default.cfg file."""
-    return Path('/home/tom/VALD3/CONFIG/default.cfg')
+    """Path to the original default.cfg, resolved from VALD_HOME.
+
+    Was hardcoded to /home/tom/VALD3, which only exists on one developer's
+    machine - so these tests failed everywhere else (e.g. the server at
+    /home/vald/VALD3). Derive it from settings and skip if the data isn't there.
+    """
+    from django.conf import settings
+    path = Path(settings.VALD_HOME) / 'CONFIG' / 'default.cfg'
+    if not path.exists():
+        pytest.skip(f'default.cfg not found at {path}')
+    return path
 
 
 @pytest.fixture
-def imported_default_config(db):
+def imported_default_config(db, default_cfg_path):
     """Import default.cfg and return the Config object."""
     from django.core.management import call_command
     from vald.models import Config
-    
-    # Import the default config
-    call_command('import_default_config', '/home/tom/VALD3/CONFIG/default.cfg', verbosity=0)
-    
-    return Config.get_default_config()
+
+    call_command('import_default_config', str(default_cfg_path), verbosity=0)
+
+    config = Config.get_default_config()
+    assert config is not None, f'import produced no default config from {default_cfg_path}'
+    return config
 
 
 def normalize_cfg_line(line):
@@ -134,8 +144,11 @@ def test_import_persconf_creates_user_config(imported_default_config, tmp_path):
     # Import the personal config
     call_command('import_persconf', str(test_cfg), verbosity=0)
     
-    # Verify user config was created
+    # Verify user config was created, with the same linelist count as the
+    # default it was copied from (not a hardcoded number - the count depends on
+    # which default.cfg this site ships).
     user_config = Config.objects.filter(user=user).first()
     assert user_config is not None
     assert user_config.is_default is True
-    assert user_config.configlinelist_set.count() == 377
+    assert user_config.configlinelist_set.count() == \
+        imported_default_config.configlinelist_set.count()
