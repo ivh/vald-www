@@ -8,6 +8,7 @@ from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.conf import settings
 from django.urls import reverse
+from django.utils import timezone
 from django import forms
 from .models import Request, User, UserEmail, UserPreferences, Linelist, Config, ConfigLinelist
 
@@ -128,7 +129,7 @@ def admin_help(request):
 
     context = {
         **admin.site.each_context(request),
-        'title': 'Help',
+        'title': 'Admin help',
         'account_states': account_states,
         'user_total': users.count(),
         'limits': limits,
@@ -358,6 +359,7 @@ class UserAdmin(admin.ModelAdmin):
                 user.is_active = True
                 token = user.generate_activation_token()
                 user.save()
+                self.log_change(request, user, 'Approved and activation email requested.')
 
                 if user.primary_email:
                     activation_path = reverse('vald:activate_account', kwargs={'token': token})
@@ -383,17 +385,30 @@ class UserAdmin(admin.ModelAdmin):
     approve_and_send_activation.short_description = 'Approve and send activation email'
 
     def approve_without_email(self, request, queryset):
-        """Approve selected users without sending email"""
-        updated = queryset.update(is_active=True)
-        self.message_user(request, f'{updated} user(s) approved (no email sent).')
+        """Approve selected users without sending email
+
+        Equivalent to ticking Active and saving, which is why it also bumps
+        updated_at and writes a history entry: a bare queryset.update() does
+        neither, and an approval that leaves no trace of who granted it is worse
+        than the extra query.
+        """
+        approved = [user for user in queryset if not user.is_active]
+        queryset.update(is_active=True, updated_at=timezone.now())
+        for user in approved:
+            self.log_change(request, user, 'Approved without sending email.')
+        self.message_user(request, f'{len(approved)} user(s) approved (no email sent).')
     approve_without_email.short_description = 'Approve without sending email'
 
     def clear_password(self, request, queryset):
         """Drop the password so the next login attempt re-triggers activation"""
-        count = queryset.update(password=None, activation_token=None, token_created_at=None)
+        cleared = [user for user in queryset if user.password]
+        queryset.update(password=None, activation_token=None, token_created_at=None,
+                        updated_at=timezone.now())
+        for user in cleared:
+            self.log_change(request, user, 'Password cleared; re-activation required.')
         self.message_user(
             request,
-            f'{count} user(s) had their password removed; they will be sent an '
+            f'{len(cleared)} user(s) had their password removed; they will be sent an '
             f'activation link on their next login attempt.'
         )
     clear_password.short_description = 'Clear password (force re-activation)'
@@ -402,6 +417,7 @@ class UserAdmin(admin.ModelAdmin):
         """Delete/reject selected pending users"""
         pending = queryset.filter(PENDING_APPROVAL)
         count = pending.count()
+        self.log_deletions(request, pending)   # needs the rows, so before delete()
         pending.delete()
         self.message_user(request, f'{count} pending registration(s) rejected and deleted.')
     reject_registration.short_description = 'Reject pending registrations'

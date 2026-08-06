@@ -29,14 +29,13 @@
 
 {% block breadcrumbs %}
 <div class="breadcrumbs">
-  <a href="{% url 'admin:index' %}">Home</a> &rsaquo; Help
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo; {{ title }}
 </div>
 {% endblock %}
 
 {% block content %}
+{# No <h1> here: base.html already renders one from the title in the context. #}
 <div class="help-page">
-
-<h1>VALD admin help</h1>
 
 <h2>Account states</h2>
 
@@ -102,9 +101,10 @@ have an effect, as buttons at the bottom of an individual user page.</p>
       what you want.</dd>
 
   <dt>Approve without sending email</dt>
-  <dd>Sets <code>is_active</code> only. The account then sits in <em>Approved, not
-      activated</em> until the holder tries to log in, which mails them a link.
-      Use when you will tell them by other means.</dd>
+  <dd>Sets <code>is_active</code> only &mdash; the same edit as ticking <em>Active</em>
+      on the user page and saving, history entry included. The account then sits in
+      <em>Approved, not activated</em> until the holder tries to log in, which mails
+      them a link. Use when you will tell them by other means.</dd>
 
   <dt>Clear password (force re-activation)</dt>
   <dd>Drops the password and any pending token. Does not deactivate. The next login
