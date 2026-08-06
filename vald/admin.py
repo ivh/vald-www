@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.core.mail import send_mail
+from django.http import HttpResponseRedirect
 from django.template.loader import render_to_string
 from django.conf import settings
 from django.urls import reverse
@@ -150,6 +151,25 @@ class UserAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
+
+    change_form_template = 'admin/vald/user/change_form.html'
+
+    # Buttons added to the change form by that template. Each dispatches to the
+    # changelist action of the same name with a one-row queryset, so the two
+    # entry points cannot drift apart.
+    CHANGE_FORM_ACTIONS = {
+        '_approve_send': 'approve_and_send_activation',
+        '_approve_quiet': 'approve_without_email',
+        '_clear_password': 'clear_password',
+    }
+
+    def response_change(self, request, obj):
+        for field, action_name in self.CHANGE_FORM_ACTIONS.items():
+            if field in request.POST:
+                action = getattr(self, action_name)
+                action(request, self.model.objects.filter(pk=obj.pk))
+                return HttpResponseRedirect(request.get_full_path())
+        return super().response_change(request, obj)
 
     def get_urls(self):
         from django.urls import path
