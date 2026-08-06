@@ -241,3 +241,61 @@ def test_activation_email_is_sent_whether_or_not_a_password_was_typed(
     assert len(mailoutbox) == 1, 'no activation email was sent'
     assert 'returning@example.com' in mailoutbox[0].to
 
+
+# --- inactive means two different things, and must be worded that way ------
+
+def login_message(email, password='whatever-123'):
+    """The message shown after a failed login attempt."""
+    response = Client().post('/login/', {'user': email, 'password': password},
+                             follow=True)
+    return ' '.join(str(m) for m in response.context['messages'])
+
+
+@pytest.mark.django_db
+def test_pending_registration_is_told_it_awaits_approval():
+    register()
+    assert 'awaiting approval' in login_message('mallory@example.com')
+
+
+@pytest.mark.django_db
+def test_suspended_account_is_not_told_it_awaits_approval():
+    """is_active=False on an activated account means suspended, not unapproved.
+
+    The approval wording sent these users to wait for an email that never comes.
+    """
+    user = User.objects.create(name='Ex User', is_active=False)
+    user.set_password('pw-for-testing-123')
+    user.save()
+    UserEmail.objects.create(user=user, email='ex@example.com', is_primary=True)
+
+    message = login_message('ex@example.com', 'pw-for-testing-123')
+    assert 'deactivated' in message
+    assert 'awaiting approval' not in message
+    assert user.is_suspended() and not user.is_pending_approval()
+
+
+@pytest.mark.django_db
+def test_reject_registration_spares_suspended_accounts():
+    """Both states are is_active=False; only one of them is a registration."""
+    from vald.admin import PENDING_APPROVAL
+
+    pending = register()
+    suspended = User.objects.create(name='Ex User', is_active=False)
+    suspended.set_password('pw-for-testing-123')
+    suspended.save()
+
+    User.objects.filter(PENDING_APPROVAL).delete()
+
+    assert not User.objects.filter(pk=pending.pk).exists()
+    assert User.objects.filter(pk=suspended.pk).exists()
+
+
+@pytest.mark.django_db
+def test_blank_password_counts_as_no_password_in_the_pending_filter():
+    """password='' and password=NULL are the same state to needs_activation()."""
+    from vald.admin import PENDING_APPROVAL
+
+    blank = User.objects.create(name='Blank', is_active=False, password='')
+    assert blank.is_pending_approval()
+    assert User.objects.filter(PENDING_APPROVAL).filter(pk=blank.pk).exists()
+

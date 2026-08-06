@@ -1,0 +1,181 @@
+{% extends "admin/base_site.html" %}
+
+{# Operator reference. Colours come from the admin's own CSS variables so the
+   page follows the light/dark theme instead of hard-coding a background. #}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .help-page { max-width: 60em; }
+  .help-page h2 { margin-top: 1.6em; border-bottom: 1px solid var(--hairline-color); padding-bottom: .2em; }
+  .help-page table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+  .help-page th, .help-page td { text-align: left; vertical-align: top; padding: .5em .7em;
+      border-bottom: 1px solid var(--hairline-color); }
+  .help-page th { background: var(--darkened-bg); font-weight: 600; }
+  .help-page td.flag { text-align: center; white-space: nowrap; font-family: monospace; }
+  .help-page code { background: var(--darkened-bg); padding: .1em .35em; border-radius: 3px; }
+  .help-page .count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .help-page .note { border-left: 3px solid var(--border-color); padding: .4em 0 .4em 1em;
+      margin: 1em 0; color: var(--body-quiet-color); }
+  .help-page dt { font-weight: 600; margin-top: .8em; }
+  .help-page dd { margin: .2em 0 0 1.5em; }
+  .help-page .state { border-left: 3px solid var(--border-color); padding: .1em 0 .4em 1em; margin: 1.2em 0; }
+  .help-page .state h3 { margin: .2em 0 .4em; }
+  .help-page .state p { margin: .25em 0; }
+  .help-page .state .flags { font-weight: normal; font-size: .85em; font-family: monospace;
+      color: var(--body-quiet-color); margin-left: .6em; }
+  .help-page .lbl { display: inline-block; min-width: 9.5em; color: var(--body-quiet-color); }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo; Help
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="help-page">
+
+<h1>VALD admin help</h1>
+
+<h2>Account states</h2>
+
+<p>There is no single "state" field on a user. Two independent flags produce four
+states: <code>is_active</code> (an admin has approved this account) and whether a
+<code>password</code> has ever been set. Counts are live; click one to filter the
+user list.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>State</th>
+      <th class="flag">is_active</th>
+      <th class="flag">password set</th>
+      <th class="count">Users</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in account_states %}
+    <tr>
+      <td><strong>{{ row.state }}</strong></td>
+      <td class="flag">{% if row.is_active %}✓{% else %}✗{% endif %}</td>
+      <td class="flag">{% if row.has_password %}✓{% else %}✗{% endif %}</td>
+      <td class="count"><a href="{{ row.url }}">{{ row.count }}</a></td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td colspan="3">Total</td>
+      <td class="count"><a href="{{ user_changelist }}">{{ user_total }}</a></td>
+    </tr>
+  </tbody>
+</table>
+
+{% for row in account_states %}
+<div class="state">
+  <h3>{{ row.state }}
+    <span class="flags">is_active {% if row.is_active %}on{% else %}off{% endif %},
+      password {% if row.has_password %}set{% else %}unset{% endif %}</span>
+  </h3>
+  <p><span class="lbl">Arises when</span> {{ row.how }}</p>
+  <p><span class="lbl">The holder sees</span> {{ row.sees }}</p>
+  <p><span class="lbl">You can</span> {{ row.do }}</p>
+</div>
+{% endfor %}
+
+<div class="note">
+  Approval always comes before activation, never the other way round. Both routes
+  that can set a password &mdash; the activation link and the reset link &mdash;
+  refuse an account with <code>is_active</code> off, so an unapproved registrant
+  cannot let themselves in by asking for a password reset.
+</div>
+
+<h2>Actions on the user list</h2>
+
+<p>The same four actions appear in the changelist dropdown and, where they would
+have an effect, as buttons at the bottom of an individual user page.</p>
+
+<dl>
+  <dt>Approve and send activation email</dt>
+  <dd>Sets <code>is_active</code>, issues a fresh activation token, mails the link to
+      the primary address. Skips users who are already active, so it will not
+      re-mail an active account &mdash; use <em>Clear password</em> first if that is
+      what you want.</dd>
+
+  <dt>Approve without sending email</dt>
+  <dd>Sets <code>is_active</code> only. The account then sits in <em>Approved, not
+      activated</em> until the holder tries to log in, which mails them a link.
+      Use when you will tell them by other means.</dd>
+
+  <dt>Clear password (force re-activation)</dt>
+  <dd>Drops the password and any pending token. Does not deactivate. The next login
+      attempt on that address mails a fresh activation link. This is the way to
+      recover an account whose holder has lost access to it.</dd>
+
+  <dt>Reject pending registrations</dt>
+  <dd><strong>Deletes</strong> the selected users, but only those in <em>Pending
+      approval</em>. Active or suspended accounts in the selection are left alone,
+      so this cannot destroy a working account by accident.</dd>
+</dl>
+
+<p>To suspend a working account, untick <code>is_active</code> on the user page. The
+password survives, so re-ticking it restores access with no email round trip.</p>
+
+<h2>Links and tokens</h2>
+
+<p>Activation and password-reset links share one <code>activation_token</code> field
+per user, valid for {{ token_max_age_days }} day{{ token_max_age_days|pluralize }} from issue.
+Issuing a new one invalidates the previous link, and setting a password clears the
+token so a link cannot be replayed. A user who reports a dead link should simply
+try to log in again, which issues another.</p>
+
+<h2>Requests</h2>
+
+<p>Queue right now:
+  <strong>{{ queue_stats.queue_size }} / {{ queue_stats.max_queue_size }}</strong>
+  pending, {{ queue_stats.max_workers }} worker{{ queue_stats.max_workers|pluralize }}.</p>
+
+<p>A request goes <code>pending</code> &rarr; <code>processing</code> &rarr;
+  <code>complete</code>, or to <code>failed</code> if the job errored or hit the
+  timeout. <code>pending</code> means queued, <code>processing</code> means a
+  Fortran binary is running. Result files are deleted after
+  {{ retention_days }} day{{ retention_days|pluralize }}; the request row stays and reports
+  its results as expired, which is why an old completed request can show no
+  download.</p>
+
+<h2>Limits and settings</h2>
+
+<p>Live values from <code>vald_web/settings.py</code>. Changing any of these needs a
+service restart.</p>
+
+<table>
+  <thead><tr><th>Setting</th><th>Value</th><th>Effect</th></tr></thead>
+  <tbody>
+    {% for name, value, meaning in limits %}
+    <tr>
+      <td><code>{{ name }}</code></td>
+      <td class="count">{{ value }}</td>
+      <td>{{ meaning }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Where the data lives</h2>
+
+<dl>
+  <dt>This database</dt>
+  <dd>Users, preferences, requests, and the <em>live</em> linelist configuration.
+      Snapshotted nightly, tagged with the git revision &mdash; a dump only restores
+      against a codebase at a compatible migration state.</dd>
+
+  <dt>VALD3 SVN checkout (<code>$VALD_HOME</code>)</dt>
+  <dd>Linelists and the Fortran binaries in <code>bin/</code>. Maintained by the group.</dd>
+
+  <dt>The <code>.cfg</code> files in SVN</dt>
+  <dd>Seeded the initial import and are <strong>not</strong> authoritative any more.
+      Editing them has no effect on the running site; edit the configuration here
+      instead.</dd>
+</dl>
+
+</div>
+{% endblock %}

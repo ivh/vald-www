@@ -49,6 +49,19 @@ def get_current_user(request):
         return None
 
 
+def inactive_account_message(user):
+    """Explain an is_active=False account in terms the account holder can act on.
+
+    The flag covers two unrelated situations - never approved, and approved then
+    switched off - and the approval wording is actively misleading for the second.
+    """
+    if user.is_suspended():
+        return ('Your account has been deactivated. Please contact the VALD '
+                'administrator if you need it reinstated.')
+    return ('Your account is awaiting approval by the VALD administrator. '
+            'You will receive an email once it has been activated.')
+
+
 def get_user_context(request):
     """Get common context data for templates"""
     context = {
@@ -129,11 +142,7 @@ def login(request):
         # Self-registrations are created inactive and must be approved by an
         # admin before they can log in or trigger an activation email.
         if not user.is_active:
-            messages.error(
-                request,
-                'Your account is awaiting approval by the VALD administrator. '
-                'You will receive an email once it has been activated.'
-            )
+            messages.error(request, inactive_account_message(user))
             return redirect('vald:index')
 
         # Check if user needs to activate (set password)
@@ -212,7 +221,7 @@ def activate_account(request, token):
         user = User.objects.get(activation_token=token)
 
         if not user.is_active:
-            messages.error(request, 'Your account is awaiting approval by the VALD administrator.')
+            messages.error(request, inactive_account_message(user))
             return redirect('vald:index')
 
         if not user.token_is_valid():
@@ -287,7 +296,7 @@ def set_password(request):
         user = User.objects.get(activation_token=activation_token)
 
         if not user.is_active:
-            messages.error(request, 'Your account is awaiting approval by the VALD administrator.')
+            messages.error(request, inactive_account_message(user))
             return redirect('vald:index')
 
         if not user.token_is_valid():

@@ -18,12 +18,17 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+from vald.admin import admin_help
+
 # Customize admin site
 admin.site.site_header = "VALD admin"
 admin.site.site_title = "VALD admin"
 admin.site.index_title = "VALD administration"
 
 urlpatterns = [
+    # Ahead of admin.site.urls so it resolves; it spans models, so it belongs to
+    # no single ModelAdmin.
+    path("admin/help/", admin_help, name="admin_help"),
     path("admin/", admin.site.urls),
     path("", include("vald.urls")),
 ]

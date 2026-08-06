@@ -1,0 +1,12 @@
+{% extends "admin/index.html" %}
+
+{# Self-extends: the loader skips the template doing the extending, so this picks
+   up the stock admin index and only adds the help link above the app list. #}
+
+{% block content %}
+<p style="margin-bottom: 1em;">
+  New here, or unsure what a user state or a queue limit means?
+  <a href="{% url 'admin_help' %}"><strong>Read the admin help page</strong></a>.
+</p>
+{{ block.super }}
+{% endblock %}

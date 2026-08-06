@@ -281,6 +281,19 @@ class User(models.Model):
         """Check if user needs to set password"""
         return not self.password
 
+    def is_pending_approval(self):
+        """Registered but never approved: no admin has acted on this account."""
+        return not self.is_active and not self.password
+
+    def is_suspended(self):
+        """Approved and activated once, then switched off by an admin.
+
+        Distinct from is_pending_approval() even though both are is_active=False:
+        telling a suspended user their account 'awaits approval' is wrong, and it
+        also means reject_registration() must not treat them as a registration.
+        """
+        return not self.is_active and bool(self.password)
+
     @property
     def client_name(self):
         """Get alphanumeric-only version of name for file paths"""

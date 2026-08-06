@@ -15,5 +15,17 @@
     <input type="submit" name="_clear_password" value="Clear password (force re-activation)">
     {% endif %}
 </div>
+<p style="margin: 1em 0;">
+    {% if original.is_suspended %}
+    This account is <strong>suspended</strong>: it was activated once, then switched
+    off. Re-tick <em>Active</em> to reinstate it &mdash; the existing password still works.
+    {% elif original.is_pending_approval %}
+    This account is <strong>pending approval</strong> and has never been activated.
+    {% elif original.needs_activation %}
+    Approved, but the holder has not set a password yet. Their next login attempt
+    mails them an activation link.
+    {% endif %}
+    <a href="{% url 'admin_help' %}">Account states explained</a>.
+</p>
 {% endif %}
 {% endblock %}

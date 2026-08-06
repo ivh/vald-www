@@ -1,7 +1,10 @@
 from django.contrib import admin
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.core.mail import send_mail
+from django.db.models import Q
 from django.http import HttpResponseRedirect
+from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.conf import settings
 from django.urls import reverse
@@ -29,6 +32,114 @@ def get_queue_stats():
     }
 
 
+# A password of '' means the same as NULL here, so every query about
+# activation state has to say so. Kept as one expression rather than repeated
+# lookups, which had let the "pending approval" filter and column disagree.
+NO_PASSWORD = Q(password__isnull=True) | Q(password='')
+PENDING_APPROVAL = Q(is_active=False) & NO_PASSWORD
+
+
+@staff_member_required
+def admin_help(request):
+    """Operator reference for the states these admin screens expose.
+
+    Wired into vald_web/urls.py ahead of admin.site.urls rather than into a
+    ModelAdmin, since it spans models. Every number is read from settings or the
+    live queryset, so the page cannot drift the way a separate wiki page would.
+    """
+    users = User.objects.all()
+    changelist = reverse('admin:vald_user_changelist')
+    account_states = [
+        {
+            'state': 'Pending approval',
+            'is_active': False,
+            'has_password': False,
+            'how': 'Self-registered through the public form; no admin has acted on it yet.',
+            'sees': 'Cannot log in: "awaiting approval by the VALD administrator". '
+                    'A password reset request is answered as if the address were unknown, '
+                    'so approval cannot be routed around.',
+            'do': 'Approve and send activation email, or Reject.',
+            'count': users.filter(PENDING_APPROVAL).count(),
+            'query': '?pending_approval=yes',
+        },
+        {
+            'state': 'Approved, not activated',
+            'is_active': True,
+            'has_password': False,
+            'how': 'Approved by an admin, or had its password cleared, but the holder '
+                   'has not set one yet.',
+            'sees': 'Any login attempt on this address mails a fresh activation link, '
+                    'whether or not a password was typed. Clicking it sets the password.',
+            'do': 'Nothing - waiting on the user. Resend by having them try to log in.',
+            'count': users.filter(Q(is_active=True) & NO_PASSWORD).count(),
+            'query': '?is_active__exact=1&has_password=no',
+        },
+        {
+            'state': 'Active',
+            'is_active': True,
+            'has_password': True,
+            'how': 'Normal working account.',
+            'sees': 'Logs in and submits requests.',
+            'do': 'Nothing. Untick is_active to suspend, or clear the password to '
+                  'force re-activation.',
+            'count': users.filter(is_active=True).exclude(NO_PASSWORD).count(),
+            'query': '?is_active__exact=1&has_password=yes',
+        },
+        {
+            'state': 'Suspended',
+            'is_active': False,
+            'has_password': True,
+            'how': 'Was working, then is_active was unticked.',
+            'sees': 'Cannot log in: "account has been deactivated, contact the administrator".',
+            'do': 'Tick is_active to reinstate; the old password still works. '
+                  'Reject does not touch these - delete deliberately if that is the intent.',
+            'count': users.filter(is_active=False).exclude(NO_PASSWORD).count(),
+            'query': '?is_active__exact=0&has_password=yes',
+        },
+    ]
+    for row in account_states:
+        row['url'] = changelist + row['query']
+
+    limits = [
+        ('VALD_TOKEN_MAX_AGE_DAYS', settings.VALD_TOKEN_MAX_AGE_DAYS,
+         'Lifetime of activation and password-reset links. Expired links send the '
+         'user back to the login form for a new one.'),
+        ('VALD_RESULT_RETENTION_DAYS', settings.VALD_RESULT_RETENTION_DAYS,
+         'How long result files survive before the cleanup timer removes them. '
+         'The Request row stays, and reports the results as expired.'),
+        ('VALD_MAX_WORKERS', settings.VALD_MAX_WORKERS,
+         'Jobs run in parallel. Everything else queues.'),
+        ('VALD_MAX_QUEUE_SIZE', settings.VALD_MAX_QUEUE_SIZE,
+         'Queued jobs before new submissions are refused site-wide.'),
+        ('VALD_MAX_REQUESTS_PER_USER', settings.VALD_MAX_REQUESTS_PER_USER,
+         'Per-user cap on queued jobs, so one user cannot fill the queue alone.'),
+        ('VALD_MAX_LINES_PER_REQUEST', settings.VALD_MAX_LINES_PER_REQUEST,
+         'Upper bound on the line count a single extraction may ask for.'),
+        ('VALD_JOB_TIMEOUT', settings.VALD_JOB_TIMEOUT,
+         'Seconds before a running Fortran job is killed and marked failed.'),
+        ('VALD_SUBMIT_RATE', settings.VALD_SUBMIT_RATE,
+         'Rate limit on request submission, per client IP.'),
+        ('VALD_ADMIN_EMAIL', settings.VALD_ADMIN_EMAIL,
+         'Recipient of new-registration and queue-full notifications.'),
+        ('SITE_URL', settings.SITE_URL,
+         'Base URL used to build activation and reset links in email. Wrong value '
+         'here means links that go nowhere.'),
+    ]
+
+    context = {
+        **admin.site.each_context(request),
+        'title': 'Help',
+        'account_states': account_states,
+        'user_total': users.count(),
+        'limits': limits,
+        'token_max_age_days': settings.VALD_TOKEN_MAX_AGE_DAYS,
+        'retention_days': settings.VALD_RESULT_RETENTION_DAYS,
+        'queue_stats': get_queue_stats(),
+        'user_changelist': changelist,
+    }
+    return render(request, 'admin/vald/help.html', context)
+
+
 class HasPasswordFilter(admin.SimpleListFilter):
     title = 'has password'
     parameter_name = 'has_password'
@@ -41,9 +152,9 @@ class HasPasswordFilter(admin.SimpleListFilter):
 
     def queryset(self, request, queryset):
         if self.value() == 'yes':
-            return queryset.exclude(password__isnull=True).exclude(password='')
+            return queryset.exclude(NO_PASSWORD)
         if self.value() == 'no':
-            return queryset.filter(password__isnull=True) | queryset.filter(password='')
+            return queryset.filter(NO_PASSWORD)
 
 
 class PendingApprovalFilter(admin.SimpleListFilter):
@@ -58,9 +169,9 @@ class PendingApprovalFilter(admin.SimpleListFilter):
 
     def queryset(self, request, queryset):
         if self.value() == 'yes':
-            return queryset.filter(is_active=False, password__isnull=True)
+            return queryset.filter(PENDING_APPROVAL)
         if self.value() == 'no':
-            return queryset.exclude(is_active=False, password__isnull=True)
+            return queryset.exclude(PENDING_APPROVAL)
 
 
 class UserChangeForm(forms.ModelForm):
@@ -134,7 +245,7 @@ class UserPreferencesInline(admin.StackedInline):
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     form = UserChangeForm
-    list_display = ('name', 'get_emails', 'has_password', 'is_active', 'is_pending', 'created_at')
+    list_display = ('name', 'get_emails', 'has_password', 'is_active', 'is_pending', 'is_suspended', 'created_at')
     list_filter = ('is_active', HasPasswordFilter, PendingApprovalFilter, 'created_at')
     search_fields = ('name', 'affiliation', 'emails__email')
     readonly_fields = ('created_at', 'updated_at', 'activation_token')
@@ -229,9 +340,15 @@ class UserAdmin(admin.ModelAdmin):
 
     def is_pending(self, obj):
         """Show if user is pending approval (inactive with no password)"""
-        return not obj.is_active and not obj.password
+        return obj.is_pending_approval()
     is_pending.boolean = True
     is_pending.short_description = 'Pending Approval'
+
+    def is_suspended(self, obj):
+        """Inactive but already activated - switched off, not awaiting approval"""
+        return obj.is_suspended()
+    is_suspended.boolean = True
+    is_suspended.short_description = 'Suspended'
 
     def approve_and_send_activation(self, request, queryset):
         """Approve selected users and send activation email"""
@@ -283,8 +400,9 @@ class UserAdmin(admin.ModelAdmin):
 
     def reject_registration(self, request, queryset):
         """Delete/reject selected pending users"""
-        count = queryset.filter(is_active=False, password__isnull=True).count()
-        queryset.filter(is_active=False, password__isnull=True).delete()
+        pending = queryset.filter(PENDING_APPROVAL)
+        count = pending.count()
+        pending.delete()
         self.message_user(request, f'{count} pending registration(s) rejected and deleted.')
     reject_registration.short_description = 'Reject pending registrations'
 

@@ -1,0 +1,10 @@
+{% extends "admin/change_list.html" %}
+
+{% block content %}
+<p style="margin-bottom: 1em;">
+  The <em>Has password</em>, <em>Pending approval</em> and <em>Suspended</em> columns
+  combine into four account states &mdash;
+  <a href="{% url 'admin_help' %}">what they mean and what to do about each</a>.
+</p>
+{{ block.super }}
+{% endblock %}
