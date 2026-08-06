@@ -199,8 +199,6 @@ EMAIL_USE_TLS = False
 DEFAULT_FROM_EMAIL = os.environ.get('VALD_FROM_EMAIL', 'vald@physics.uu.se')
 VALD_ADMIN_EMAIL = os.environ.get('VALD_ADMIN_EMAIL', 'thomas.marquart@physics.uu.se')
 VALD_WEBMASTER_EMAIL = os.environ.get('VALD_WEBMASTER_EMAIL', 'thomas.marquart@physics.uu.se')
-# Use os.environ["VALD_WEBMASTER_PASSWORD"] and set it in secrets.txt, if needed
-# It gets read by systemd service file.
 
 
 # VALD-specific configuration

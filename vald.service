@@ -8,8 +8,10 @@ User=vald
 Group=vald
 
 WorkingDirectory=/home/vald/vald-www.git
+# VALD_HOME comes from secrets.txt, not an Environment= line here: systemd
+# applies these in file order, so a hardcoded value below would override the
+# file and make the per-mirror setting silently ineffective.
 EnvironmentFile=/home/vald/vald-www.git/secrets.txt
-Environment="VALD_HOME=/home/vald/VALD3"
 Environment="PATH=/home/vald/vald-www.git/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 
 # Gunicorn command.

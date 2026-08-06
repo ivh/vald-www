@@ -9,11 +9,12 @@ Group=vald
 
 WorkingDirectory=/home/vald/vald-www.git
 
-# Same environment as vald.service. DJANGO_SETTINGS_MODULE must be set
-# explicitly: manage.py defaults to the development settings module, whose
-# VALD_FTP_DIR is a different directory.
+# Same environment as vald.service: VALD_HOME comes from secrets.txt, and
+# nothing may override it after the EnvironmentFile= line.
+#
+# DJANGO_SETTINGS_MODULE must be set explicitly: manage.py defaults to the
+# development settings module, whose VALD_FTP_DIR is a different directory.
 EnvironmentFile=/home/vald/vald-www.git/secrets.txt
-Environment="VALD_HOME=/home/vald/VALD3"
 Environment="DJANGO_SETTINGS_MODULE=vald_web.settings_deploy"
 
 # Default --age is 2D, matching the "available for 48 hours" line in the
