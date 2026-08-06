@@ -114,7 +114,7 @@ def test_abundance_pair_limit_is_enforced():
     ('Sr: -4.67, Cr: -3.37,\nEu: -5.53', "'Sr:-4.67','Cr:-3.37','Eu:-5.53',"),
 ])
 def test_select_input_format_matches_legacy_checkabund(text, expected):
-    """Format per CheckAbund() in backend/parserequest.c.
+    """Format per CheckAbund() in old/backend/parserequest.c.
 
     select5's RDABND locates tokens by scanning for "'" and silently skips any
     line without one, so unquoted abundances were discarded and solar values used.

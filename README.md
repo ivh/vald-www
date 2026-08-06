@@ -215,20 +215,23 @@ a snapshot and are deliberately left untouched. (Changing an existing linelist's
 
 ## Configuration
 
-### Direct Submission Mode (Recommended)
+### Job Execution
 
-Set in `vald_web/settings.py`:
+Set in `vald_web/settings.py` (development) or `vald_web/settings_deploy.py` (production):
 ```python
-VALD_DIRECT_SUBMISSION = True  # Call binaries directly
-VALD_MAX_WORKERS = 2           # Parallel job limit
+VALD_MAX_WORKERS = 5      # Parallel job limit
+VALD_MAX_QUEUE_SIZE = 10  # Pending jobs before new requests are rejected
 ```
 
-Requires VALD binaries in `$VALD_HOME/bin/`: `parserequest`, `preselect5`, `select5`, `showline4.1`, etc.
+Requires the VALD Fortran binaries in `$VALD_HOME/bin/`: `preselect5`, `presformat5`,
+`select5`, `showline4.1`, `hfs_pres`, `post_hfs_format5`.
 
-### Email Mode (Legacy)
+### Result Delivery
+
+Results are always produced by running the binaries directly; email is a delivery
+option, not a separate execution path. Completion mail goes out via the local MTA:
 
 ```python
-VALD_DIRECT_SUBMISSION = False  # Use email system
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'localhost'
 EMAIL_PORT = 25
@@ -246,29 +249,24 @@ Run `python manage.py sync_register_files` after changes.
 
 ## Architecture
 
-**Direct Mode (default):**
-1. Creates `request.NNNNNN` in job subdirectory
-2. Runs `parserequest` from subdirectory (critical for correct file naming)
-3. Executes generated `job.NNNNNN` script
-4. Output: `{ClientName}.NNNNNN.gz` (extract) or `.txt` (showline)
-5. Real-time status updates
-
-**Email Mode:**
-- Sends email to local mail spool
-- Backend daemon processes requests asynchronously
-- Uses sequential IDs instead of UUIDs
+1. Each job gets its own subdirectory under `working/`, named with its 6-digit ID
+2. `job_runner.py` writes `pres_in.NNNNNN` and a per-job `.cfg` generated from the database
+3. Binaries are run as a subprocess pipeline, e.g. `preselect5 | presformat5`
+   (extract), plus `hfs_pres | post_hfs_format5` when HFS splitting is on
+4. Output: `{ClientName}.NNNNNN.gz` (extract) or `.txt` (showline), moved to `$VALD_FTP_DIR`
+5. Real-time status updates on the request detail page
 
 ## Key Technical Notes
 
 - **UUID to 6-digit conversion**: Backend expects numeric IDs, converts UUID via SHA256 hash
-- **Parserequest working directory**: Must run FROM job subdirectory for correct `pres_in.NNNNNN` naming
+- **Job working directory**: Binaries run FROM the job subdirectory, for correct `pres_in.NNNNNN` naming and to keep concurrent jobs isolated
 - **Showline requests**: No bib files, output is `result.NNNNNN` → moved to FTP as `.txt`
 - **Extract requests**: Create `.gz` and `.bib.gz` files
 - **Job queue**: Thread pool limits parallel execution (default 2 workers)
 
 ## Troubleshooting
 
-**"Output file not found"** → Check `parserequest` ran from correct directory
+**"Output file not found"** → Job execution failed; check the per-binary `err.*.log` in the job subdirectory
 **"Can't open input data file"** → `pres_in.*` file missing or misnamed
 **"User not registered"** → Run `python manage.py sync_register_files`
 
@@ -276,4 +274,5 @@ Run `python manage.py sync_register_files` after changes.
 
 - VALD website: http://vald.astro.uu.se/
 - Django 5.2 docs
-- Backend C sources in `backend/` (reference only)
+- Legacy PHP interface and C sources in `old/` (reference only; superseded by `job_runner.py`)
+- Linelists, configs and the Fortran backend live in the separate VALD3 SVN repository

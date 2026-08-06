@@ -720,7 +720,7 @@ class JobRunner:
             # Line 3+: abundances, as quoted comma-terminated tokens.
             # select5 reads these as Fortran character literals, so the raw form
             # the user typed ("Fe: -4.50") is not equivalent to "'Fe:-4.50',".
-            # Format follows CheckAbund() in backend/parserequest.c.
+            # Format follows CheckAbund() in old/backend/parserequest.c.
             if config.abundances:
                 try:
                     pairs = abundances.parse(config.abundances)

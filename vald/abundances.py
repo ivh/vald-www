@@ -1,7 +1,7 @@
 """Chemical composition parsing, shared by form validation and select.input.
 
 The authoritative reference for the on-disk format is CheckAbund() in
-backend/parserequest.c, which generated select.input for the legacy email
+old/backend/parserequest.c, which generated select.input for the legacy email
 interface. select5 reads the abundance block as Fortran character literals, so
 the quoting is not cosmetic - a bare "Fe: -4.50" is not equivalent to
 "'Fe:-4.50',".

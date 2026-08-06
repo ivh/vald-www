@@ -10,6 +10,26 @@ Technical context for Claude Code sessions. See README.md for user documentation
 
 **User**: Tom (sysadmin, prefers concise technical explanations, "pls" not "please")
 
+## Where things live
+
+Three stores, deliberately separate:
+
+- **This git repo** - application code only, no data. Includes `old/` (legacy PHP
+  interface and the C glue `job_runner.py` replaced) kept purely as reference for
+  behaviour the Python still reproduces, e.g. `CheckAbund()` in
+  `old/backend/parserequest.c`. Nothing in `old/` is built or executed.
+- **VALD3 SVN repo** (`$VALD_HOME`) - linelists, the Fortran binaries in `bin/`,
+  and the original `.cfg` files. Maintained by the group, backed up and mirrored
+  via SVN. Stays on SVN deliberately: large append-mostly data files are what SVN
+  handles better than git.
+- **The app's sqlite db** - user registry, preferences, and the live linelist
+  configuration. Note the `.cfg` files in SVN seeded the initial import and are
+  *not* authoritative any more; editing them has no effect on the running app.
+
+Snapshotted nightly by `scripts/backup_db.sh` (systemd `vald-backup.timer`), which
+names each snapshot with the git revision - a db dump is only restorable against a
+codebase at compatible migration state.
+
 ## Architecture
 
 **Job Execution**: Python-based via `job_runner.py`
@@ -46,7 +66,8 @@ Technical context for Claude Code sessions. See README.md for user documentation
 
 **vald/views.py**:
 - `get_current_user()` - Gets User from `session['user_id']`
-- `handle_extract_request()` - Routes to direct or email mode
+- `handle_extract_request()` - Validates and dispatches extract/showline submissions
+  (there is no separate email execution path; email is a delivery option only)
 - `request_detail()` - Status page with auto-refresh
 - `download_request()` - Serves output files
 
