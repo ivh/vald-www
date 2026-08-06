@@ -2,8 +2,10 @@
 
 {% block content %}
 {% if not user_name %}
-{# Shown to logged-out visitors only: returning users arriving from the old
-   interface need to know why they are being asked to activate. #}
+{% comment %}
+Shown to logged-out visitors only: returning users arriving from the old
+interface need to know why they are being asked to activate.
+{% endcomment %}
 <p style="border: 1px solid #888; background: #f6f6f0; padding: 10px; margin-bottom: 1em;">
     <b>Welcome to the new VALD interface.</b>
     If you used VALD before, your account is already here &mdash; just enter 
