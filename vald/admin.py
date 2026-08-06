@@ -137,7 +137,7 @@ class UserAdmin(admin.ModelAdmin):
     search_fields = ('name', 'affiliation', 'emails__email')
     readonly_fields = ('created_at', 'updated_at', 'activation_token')
     inlines = [UserEmailInline, UserPreferencesInline]
-    actions = ['approve_and_send_activation', 'approve_without_email', 'reject_registration']
+    actions = ['approve_and_send_activation', 'approve_without_email', 'clear_password', 'reject_registration']
     fieldsets = (
         ('User Information', {
             'fields': ('name', 'affiliation', 'is_active')
@@ -250,6 +250,16 @@ class UserAdmin(admin.ModelAdmin):
         updated = queryset.update(is_active=True)
         self.message_user(request, f'{updated} user(s) approved (no email sent).')
     approve_without_email.short_description = 'Approve without sending email'
+
+    def clear_password(self, request, queryset):
+        """Drop the password so the next login attempt re-triggers activation"""
+        count = queryset.update(password=None, activation_token=None, token_created_at=None)
+        self.message_user(
+            request,
+            f'{count} user(s) had their password removed; they will be sent an '
+            f'activation link on their next login attempt.'
+        )
+    clear_password.short_description = 'Clear password (force re-activation)'
 
     def reject_registration(self, request, queryset):
         """Delete/reject selected pending users"""
