@@ -21,6 +21,16 @@ def register(email='mallory@example.com'):
     return User.objects.get(emails__email=email)
 
 
+def mail_to(mailoutbox, address):
+    """Messages addressed to one recipient.
+
+    Registering now also notifies VALD_ADMIN_EMAIL, so a bare len(mailoutbox)
+    check no longer expresses what these tests guard: that the *registrant*
+    never receives a link they could use to bypass approval.
+    """
+    return [m for m in mailoutbox if address in m.to]
+
+
 def use_token_to_set_password(email, token, password='correct-horse-batt-9'):
     """Follow an activation link and try to set a password. Returns True if logged in."""
     client = Client()
@@ -45,7 +55,7 @@ def test_login_with_empty_password_does_not_issue_a_token(mailoutbox):
     Client().post('/login/', {'user': 'mallory@example.com', 'password': ''})
     user.refresh_from_db()
     assert user.activation_token is None
-    assert len(mailoutbox) == 0
+    assert mail_to(mailoutbox, 'mallory@example.com') == []
 
 
 @pytest.mark.django_db
@@ -55,7 +65,7 @@ def test_password_reset_does_not_issue_a_token_for_unapproved_account(mailoutbox
     Client().post('/reset-password/', {'email': 'mallory@example.com'})
     user.refresh_from_db()
     assert user.activation_token is None
-    assert len(mailoutbox) == 0
+    assert mail_to(mailoutbox, 'mallory@example.com') == []
 
 
 @pytest.mark.django_db

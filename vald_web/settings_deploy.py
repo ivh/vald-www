@@ -256,6 +256,10 @@ VALD_MAX_REQUESTS_PER_USER = 5
 # is the real protection; this just stops a scripted loop.
 VALD_SUBMIT_RATE = '120/h'
 
+# Minimum gap between "job queue full" alerts to the webmaster. The alert fires
+# once per rejected submission, and a full queue produces those in bursts.
+VALD_QUEUE_FULL_COOLDOWN = 1800  # 30 minutes
+
 # Completion emails attach the result file. Above this size, skip the
 # attachment and rely on the download links in the body - some mail servers
 # bounce large attachments, which would leave the user with no notification at

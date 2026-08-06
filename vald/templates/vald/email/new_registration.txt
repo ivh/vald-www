@@ -1,0 +1,17 @@
+{% autoescape off %}A new VALD account registration is awaiting approval.
+
+Name:        {{ user_name }}
+Affiliation: {{ affiliation }}
+Email:       {{ user_email }}
+Submitted:   {{ submitted }}
+
+The account is inactive until approved. To approve it and send the
+activation link, open the user in the admin and run the
+"Approve and send activation email" action:
+
+{{ admin_url }}
+
+---
+Vienna Atomic Line Database (VALD)
+{{ sitename }}
+{% endautoescape %}

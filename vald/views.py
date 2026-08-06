@@ -737,6 +737,31 @@ def handle_registration_request(request):
         is_primary=True
     )
 
+    # Notify the admin. A failure here must not surface to the registrant or
+    # undo the registration: the account is already created and discoverable
+    # through the admin's "Pending approval" filter, so the mail is a prompt,
+    # not the record.
+    try:
+        admin_url = request.build_absolute_uri(
+            reverse('admin:vald_user_change', args=[user.id])
+        )
+        send_mail(
+            'VALD: new account registration awaiting approval',
+            render_to_string('vald/email/new_registration.txt', {
+                'user_name': user.name,
+                'affiliation': user.affiliation,
+                'user_email': form.cleaned_data['email'],
+                'submitted': timezone.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'admin_url': admin_url,
+                'sitename': settings.SITENAME,
+            }),
+            settings.DEFAULT_FROM_EMAIL,
+            [settings.VALD_ADMIN_EMAIL],
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception('Failed to send registration notification for %s', user.id)
+
     messages.success(
         request,
         f"Registration submitted successfully! Your account for {form.cleaned_data['email']} "

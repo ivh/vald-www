@@ -5,12 +5,16 @@ Uses Python job_runner module with direct Fortran execution.
 """
 import os
 import hashlib
+import logging
 import queue
 import threading
 from pathlib import Path
 from django.conf import settings
+from django.core.cache import cache
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
+
+logger = logging.getLogger(__name__)
 
 
 class QueueFullError(Exception):
@@ -117,11 +121,29 @@ def get_job_queue():
     return _job_queue
 
 
+QUEUE_FULL_NOTIFY_KEY = 'vald:queue-full-notified'
+
+
 def notify_queue_full():
-    """Send email notification to webmaster when queue is full."""
+    """Alert the webmaster that the queue is rejecting requests, at most once
+    per VALD_QUEUE_FULL_COOLDOWN seconds.
+
+    Called once per rejected submission, and a full queue is precisely the state
+    that produces a burst of them, so without the cooldown a busy spell mails one
+    alert per rejection. cache.add() is the whole guard: it only succeeds if the
+    key is absent, and the file-based cache is shared across workers, so the
+    check is atomic rather than per-process.
+    """
     webmaster_email = getattr(settings, 'VALD_WEBMASTER_EMAIL', None)
     if not webmaster_email:
         return
+
+    cooldown = getattr(settings, 'VALD_QUEUE_FULL_COOLDOWN', 1800)
+    try:
+        if not cache.add(QUEUE_FULL_NOTIFY_KEY, True, cooldown):
+            return
+    except Exception:
+        logger.exception('Queue-full notification cooldown check failed')
 
     try:
         send_mail(
