@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.conf import settings
 from django.core.mail import send_mail
+from django.template.loader import render_to_string
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
@@ -151,19 +152,12 @@ def login(request):
 
             # Send activation email
             email_subject = 'VALD Account Activation'
-            email_body = f"""Hello {user.name},
-
-Welcome to VALD! This is your first time logging in.
-
-To activate your account and set your password, please click the link below:
-
-{activation_url}
-
-If you did not request this, please ignore this email.
-
-Best regards,
-VALD Team
-"""
+            email_body = render_to_string('vald/email/activation.txt', {
+                'user_name': user.name,
+                'activation_url': activation_url,
+                'token_max_age_days': settings.VALD_TOKEN_MAX_AGE_DAYS,
+                'approved': False,
+            })
 
             try:
                 send_mail(
@@ -384,21 +378,11 @@ def request_password_reset(request):
 
             # Send reset email
             email_subject = 'VALD Password Reset'
-            email_body = f"""Hello {user.name},
-
-You requested to reset your password for your VALD account.
-
-To reset your password, please click the link below:
-
-{reset_url}
-
-This link will expire in 7 days.
-
-If you did not request this password reset, please ignore this email.
-
-Best regards,
-VALD Team
-"""
+            email_body = render_to_string('vald/email/password_reset.txt', {
+                'user_name': user.name,
+                'reset_url': reset_url,
+                'token_max_age_days': settings.VALD_TOKEN_MAX_AGE_DAYS,
+            })
 
             try:
                 send_mail(
@@ -962,30 +946,16 @@ def handle_extract_request(request):
 
                     subject = f"VALD {req_obj.request_type} results ready"
 
-                    # Build download links section
-                    download_links = f"Main results: {download_url}"
-                    if req_obj.bib_output_exists():
-                        download_links += f"\nBibliography: {bib_download_url}"
-
-                    body = f"""Your VALD extraction request has completed successfully.
-
-Request Type: {req_obj.request_type}
-Submitted: {req_obj.created_at.strftime('%Y-%m-%d %H:%M:%S')}
-
-Your results are attached to this email and are also available for download:
-
-{download_links}
-Request details: {request_url}
-
-You can modify and resubmit this request with different parameters from:
-{my_requests_url}
-
-Files are available for download for {req_obj.retention_description()}.
-
----
-Vienna Atomic Line Database (VALD)
-{settings.SITENAME}
-"""
+                    body = render_to_string('vald/email/results_ready.txt', {
+                        'request_type': req_obj.request_type,
+                        'submitted': req_obj.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                        'download_url': download_url,
+                        'bib_download_url': bib_download_url if req_obj.bib_output_exists() else None,
+                        'request_url': request_url,
+                        'my_requests_url': my_requests_url,
+                        'retention': req_obj.retention_description(),
+                        'sitename': settings.SITENAME,
+                    })
 
                     # Create email with attachments
                     email = EmailMessage(

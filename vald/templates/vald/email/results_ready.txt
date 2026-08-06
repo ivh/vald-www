@@ -1,0 +1,20 @@
+{% autoescape off %}Your VALD extraction request has completed successfully.
+
+Request Type: {{ request_type }}
+Submitted: {{ submitted }}
+
+Your results are attached to this email and are also available for download:
+
+Main results: {{ download_url }}
+{% if bib_download_url %}Bibliography: {{ bib_download_url }}
+{% endif %}Request details: {{ request_url }}
+
+You can modify and resubmit this request with different parameters from:
+{{ my_requests_url }}
+
+Files are available for download for {{ retention }}.
+
+---
+Vienna Atomic Line Database (VALD)
+{{ sitename }}
+{% endautoescape %}

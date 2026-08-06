@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.core.mail import send_mail
+from django.template.loader import render_to_string
 from django.conf import settings
 from django.urls import reverse
 from django import forms
@@ -227,13 +228,12 @@ class UserAdmin(admin.ModelAdmin):
                     try:
                         send_mail(
                             'VALD Account Activated',
-                            f'Hello {user.name},\n\n'
-                            f'Your VALD account has been approved!\n\n'
-                            f'Please click the following link to set your password and activate your account:\n'
-                            f'{activation_url}\n\n'
-                            f'This link will expire in 7 days.\n\n'
-                            f'Best regards,\n'
-                            f'VALD Team',
+                            render_to_string('vald/email/activation.txt', {
+                                'user_name': user.name,
+                                'activation_url': activation_url,
+                                'token_max_age_days': settings.VALD_TOKEN_MAX_AGE_DAYS,
+                                'approved': True,
+                            }),
                             settings.DEFAULT_FROM_EMAIL,
                             [user.primary_email],
                             fail_silently=False,

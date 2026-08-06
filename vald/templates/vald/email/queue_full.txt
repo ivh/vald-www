@@ -1,0 +1,6 @@
+{% autoescape off %}The VALD job queue has reached its maximum size and is rejecting new requests.
+
+This may indicate high load or stuck jobs. Please check the server.
+
+Queue settings: VALD_MAX_QUEUE_SIZE={{ max_queue_size }}, VALD_MAX_WORKERS={{ max_workers }}
+{% endautoescape %}

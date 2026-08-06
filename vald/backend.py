@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 from django.conf import settings
 from django.core.mail import send_mail
+from django.template.loader import render_to_string
 
 
 class QueueFullError(Exception):
@@ -125,12 +126,10 @@ def notify_queue_full():
     try:
         send_mail(
             subject='[VALD] Job queue full - requests being rejected',
-            message=(
-                'The VALD job queue has reached its maximum size and is rejecting new requests.\n\n'
-                'This may indicate high load or stuck jobs. Please check the server.\n\n'
-                f'Queue settings: VALD_MAX_QUEUE_SIZE={getattr(settings, "VALD_MAX_QUEUE_SIZE", 10)}, '
-                f'VALD_MAX_WORKERS={getattr(settings, "VALD_MAX_WORKERS", 2)}'
-            ),
+            message=render_to_string('vald/email/queue_full.txt', {
+                'max_queue_size': getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10),
+                'max_workers': getattr(settings, 'VALD_MAX_WORKERS', 2),
+            }),
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[webmaster_email],
             fail_silently=True,
