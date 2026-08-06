@@ -1,0 +1,13 @@
+[Unit]
+Description=VALD: snapshot the sqlite database daily
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+
+# Take a snapshot on next boot if the machine was down at the scheduled time.
+Persistent=true
+
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

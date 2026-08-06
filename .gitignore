@@ -60,6 +60,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 db.sqlite3
+db.sqlite3-wal
+db.sqlite3-shm
 .venv/
 venv/
 *.pyc
@@ -73,3 +75,6 @@ secrets.txt
 
 # Dev results dir (R19: kept out of public_html)
 ftp_results/
+
+# Local DB snapshots (backup_db.sh default dir; the server points elsewhere)
+backups/

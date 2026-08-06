@@ -1,0 +1,21 @@
+[Unit]
+Description=VALD: snapshot the sqlite database
+After=network.target
+
+[Service]
+Type=oneshot
+User=vald
+Group=vald
+
+WorkingDirectory=/home/vald/vald-www.git
+
+# No EnvironmentFile: the script does not import Django and must keep working
+# when secrets.txt or the venv is broken. It needs only these two paths.
+Environment="VALD_DB=/home/vald/vald-www.git/db.sqlite3"
+Environment="VALD_BACKUP_DIR=/home/vald/backups/db"
+
+ExecStart=/home/vald/vald-www.git/scripts/backup_db.sh
+
+# Security hardening (mirrors vald.service)
+PrivateTmp=true
+NoNewPrivileges=true
