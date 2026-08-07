@@ -33,7 +33,6 @@ from .forms import (
 from .utils import (
     validate_user_email,
     spam_check,
-    read_config_file,
     render_request_template,
 )
 

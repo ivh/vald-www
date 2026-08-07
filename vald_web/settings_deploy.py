@@ -219,10 +219,7 @@ if not VALD_HOME.exists():
     )
 
 CLIENTS_REGISTER = BASE_DIR / 'config' / 'clients.register'
-CLIENTS_REGISTER_LOCAL = BASE_DIR / 'config' / 'clients.register.local'
 PERSCONFIG_DIR = BASE_DIR / 'config' / 'personal_configs'
-PERSCONFIG_DEFAULT = BASE_DIR / 'config' / 'default.cfg'
-HTMLCONFIG_DEFAULT = BASE_DIR / 'config' / 'htmldefault.cfg'
 DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
 SITENAME = os.environ.get('VALD_SITENAME', 'VALD Uppsala')

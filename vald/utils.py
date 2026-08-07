@@ -83,41 +83,6 @@ def spam_check(message):
     return True
 
 
-def read_config_file(filepath):
-    """
-    Read a configuration file and return its contents as a list of lines.
-    Performs basic directory traversal attack prevention.
-    """
-    try:
-        # Resolve the full path
-        full_path = Path(filepath).resolve()
-
-        # Basic security: ensure the resolved path is within expected directories
-        base_dirs = [
-            settings.BASE_DIR,
-            settings.DOCUMENTATION_DIR,
-            settings.PERSCONFIG_DIR,
-        ]
-
-        # Check if path is under any allowed base directory
-        is_safe = any(
-            str(full_path).startswith(str(Path(base_dir).resolve()))
-            for base_dir in base_dirs
-        )
-
-        if not is_safe:
-            return [f"Error: Access denied to {filepath}\n"]
-
-        if not full_path.exists():
-            return []
-
-        with open(full_path, 'r') as f:
-            return f.readlines()
-
-    except Exception as e:
-        return [f"Error reading file: {e}\n"]
-
-
 def get_request_template_path(reqtype):
     """Get the path to a request template file"""
     template_map = {
