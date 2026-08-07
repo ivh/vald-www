@@ -68,6 +68,7 @@ The document is ordered by priority, so IDs are not sequential.
 | R47 | Medium | ✅ fixed `0011` | Personal configs were snapshots that only froze - "track the VALD default" was unreachable |
 | R48 | Low | ✅ fixed | `Linelist.is_active` was never read or written; retiring a linelist did nothing |
 | R49 | Cosmetic | ✅ fixed | Four multi-line `{# #}` template comments rendered as visible page text |
+| R50 | — | ✅ added | Admin had no way to see a user's linelist config; the inline omits ranks and the diff |
 
 Dead schema noted under R7: `Request.completed_at` and `Request.queue_position` are
 never written.

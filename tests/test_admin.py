@@ -197,3 +197,111 @@ def test_help_page_does_not_advertise_a_stale_install_command(staff_client):
     body = staff_client.get('/admin/help/').content.decode()
     if not (Path(settings.BASE_DIR) / 'requirements.txt').exists():
         assert 'requirements.txt' not in body
+
+
+# --- read-only view of a user's linelist configuration ----------------------
+
+@pytest.fixture
+def system_default(db):
+    from vald.models import Config, ConfigLinelist, Linelist
+    cfg = Config.objects.create(name='Default', user=None, is_default=True)
+    for i in range(4):
+        ll = Linelist.objects.create(path=f'/CVALD3/ATOMS/x{i}', name=f'List {i}',
+                                     element_min=1, element_max=99)
+        ConfigLinelist.objects.create(config=cfg, linelist=ll, priority=10 * i)
+    return cfg
+
+
+def config_url(user):
+    return f'/admin/vald/user/{user.id}/config/'
+
+
+@pytest.mark.django_db
+def test_config_view_requires_staff(system_default, approved_user):
+    response = Client().get(config_url(approved_user))
+    assert response.status_code == 302
+    assert 'login' in response['Location']
+
+
+@pytest.mark.django_db
+def test_config_view_is_read_only(staff_client, system_default, approved_user):
+    """No POST handling: this is a window, not an editor."""
+    from vald.models import Config
+    staff_client.post(config_url(approved_user), {'action': 'save', 'editid': '1'})
+    assert not Config.objects.filter(user=approved_user).exists()
+
+
+@pytest.mark.django_db
+def test_config_view_reports_a_user_who_tracks_the_default(staff_client, system_default,
+                                                           approved_user):
+    body = staff_client.get(config_url(approved_user)).content.decode()
+    assert 'No personal configuration' in body
+    # nothing to diff against, so the full list is shown rather than an empty one
+    assert 'List 0' in body and 'List 3' in body
+
+
+@pytest.mark.django_db
+def test_config_view_defaults_to_differences_only(staff_client, system_default,
+                                                  approved_user):
+    from vald.persconfig import create_user_config
+    mine = create_user_config(approved_user)
+    entry = mine.configlinelist_set.order_by('priority').first()
+    entry.rank_wl = 9
+    entry.save()
+
+    body = staff_client.get(config_url(approved_user)).content.decode()
+    assert 'Personal configuration' in body
+    assert 'List 0' in body, 'the changed linelist is missing'
+    assert 'List 3' not in body, 'unchanged linelists should be hidden by default'
+
+    everything = staff_client.get(config_url(approved_user) + '?all=1').content.decode()
+    assert 'List 3' in everything
+
+
+@pytest.mark.django_db
+def test_config_view_highlights_what_changed(staff_client, system_default, approved_user):
+    from vald.persconfig import create_user_config
+    mine = create_user_config(approved_user)
+    entry = mine.configlinelist_set.order_by('priority').first()
+    entry.rank_wl, entry.is_enabled = 9, False
+    entry.save()
+
+    body = staff_client.get(config_url(approved_user)).content.decode()
+    assert body.count('class="n changed"') >= 2
+
+
+@pytest.mark.django_db
+def test_config_view_warns_about_linelists_added_since_the_snapshot(
+        staff_client, system_default, approved_user):
+    from vald.models import ConfigLinelist, Linelist
+    from vald.persconfig import create_user_config
+    mine = create_user_config(approved_user)
+    entry = mine.configlinelist_set.first()
+    entry.rank_wl = 9
+    entry.save()
+
+    ll = Linelist.objects.create(path='/CVALD3/ATOMS/new', name='Added in 2027',
+                                 element_min=1, element_max=99)
+    ConfigLinelist.objects.create(config=system_default, linelist=ll, priority=99)
+
+    body = staff_client.get(config_url(approved_user)).content.decode()
+    assert 'added to the' in body and 'Added in 2027' in body
+
+
+@pytest.mark.django_db
+def test_user_changelist_and_change_form_link_to_the_config_view(staff_client,
+                                                                 system_default,
+                                                                 approved_user):
+    changelist = staff_client.get('/admin/vald/user/').content.decode()
+    assert config_url(approved_user) in changelist
+
+    change_form = staff_client.get(f'/admin/vald/user/{approved_user.id}/change/').content.decode()
+    assert config_url(approved_user) in change_form
+
+
+@pytest.mark.django_db
+def test_config_view_survives_an_empty_database(staff_client, approved_user):
+    """No system default imported yet - must explain, not raise."""
+    response = staff_client.get(config_url(approved_user))
+    assert response.status_code == 200
+    assert 'no system default configuration' in response.content.decode().lower()

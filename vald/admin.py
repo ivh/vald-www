@@ -14,6 +14,7 @@ from django.template.loader import render_to_string
 from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.html import format_html
 from django import forms
 from .models import Request, User, UserEmail, UserPreferences, Linelist, Config, ConfigLinelist
 
@@ -263,7 +264,7 @@ class UserPreferencesInline(admin.StackedInline):
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     form = UserChangeForm
-    list_display = ('name', 'get_emails', 'has_password', 'is_active', 'is_pending', 'is_suspended', 'created_at')
+    list_display = ('name', 'get_emails', 'has_password', 'is_active', 'is_pending', 'is_suspended', 'config_link', 'created_at')
     list_filter = ('is_active', HasPasswordFilter, PendingApprovalFilter, 'created_at')
     search_fields = ('name', 'affiliation', 'emails__email')
     readonly_fields = ('created_at', 'updated_at', 'activation_token')
@@ -309,8 +310,79 @@ class UserAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.user_change_password),
                 name='vald_user_password_change',
             ),
+            path(
+                '<id>/config/',
+                self.admin_site.admin_view(self.user_config),
+                name='vald_user_config',
+            ),
         ]
         return custom_urls + urls
+
+    def user_config(self, request, id):
+        """Read-only view of the linelist configuration a user's jobs actually use.
+
+        Deliberately not the ConfigLinelist inline: that omits the nine rank
+        weights, renders ~377 editable rows, and says nothing about which of them
+        the user changed - which is the only part a support question is ever
+        about. Built from the same persconfig functions the user-facing page
+        calls, so what an admin sees is what the user sees.
+
+        No POST handling: this is a window, not an editor. The inline remains for
+        the rare case where something genuinely has to be changed by hand.
+        """
+        from django.contrib.admin.utils import unquote
+        from .persconfig import (
+            get_default_config, get_effective_config, get_linelists_for_display,
+            get_modification_flags, linelists_added_since,
+        )
+
+        user = self.get_object(request, unquote(id))
+        if user is None:
+            raise self.model.DoesNotExist
+
+        config, is_personal = get_effective_config(user)
+        default_config = get_default_config()
+
+        linelists = []
+        if config:
+            modifications = get_modification_flags(config, default_config)
+            for entry in get_linelists_for_display(config):
+                mod = modifications.get(entry['id'], {})
+                entry['mod_comment'] = mod.get('is_enabled', False)
+                entry['mod_flags'] = mod.get('ranks', [False] * 9)
+                entry['any_modification'] = mod.get('any', False)
+                linelists.append(entry)
+
+        # Differences only by default: a personal config is ~377 rows of which a
+        # handful are the user's, and scrolling for them is the whole problem
+        # this page exists to solve.
+        # ...except when there is no personal config, where "differences" is
+        # empty by definition and the toggle would just be a click to nowhere.
+        show_all = request.GET.get('all') == '1' or not is_personal
+        changed = [e for e in linelists if e['any_modification']]
+        shown = linelists if show_all else changed
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'Configuration: {user.name}',
+            'opts': self.model._meta,
+            'vald_user': user,
+            'config': config,
+            'is_personal': is_personal,
+            'snapshot_date': config.created_at if is_personal else None,
+            'added_since': linelists_added_since(config) if is_personal else [],
+            'linelists': shown,
+            'total_count': len(linelists),
+            'changed_count': len(changed),
+            'show_all': show_all,
+        }
+        return render(request, 'admin/vald/user_config.html', context)
+
+    def config_link(self, obj):
+        """Column linking to the read-only configuration view."""
+        url = reverse('admin:vald_user_config', args=[obj.pk])
+        return format_html('<a href="{}">View</a>', url)
+    config_link.short_description = 'Configuration'
 
     def user_change_password(self, request, id, form_url=''):
         from django.contrib import messages

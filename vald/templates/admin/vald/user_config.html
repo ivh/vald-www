@@ -1,0 +1,111 @@
+{% extends "admin/base_site.html" %}
+{% load vald_extras %}
+
+{% comment %}
+Read-only. The ConfigLinelist inline on the Config change page remains the way to
+edit; this exists to answer "what has this user changed, and what are they
+actually running", which the inline cannot show.
+{% endcomment %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .cfg-page { max-width: 72em; }
+  .cfg-page table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+  .cfg-page th, .cfg-page td { text-align: left; padding: .35em .6em;
+      border-bottom: 1px solid var(--hairline-color); }
+  .cfg-page th { background: var(--darkened-bg); font-weight: 600; white-space: nowrap; }
+  .cfg-page td.n { text-align: center; font-family: monospace; width: 2.6em; }
+  .cfg-page td.changed { background: var(--error-fg); color: #fff; font-weight: 600; }
+  .cfg-page .state { border-left: 4px solid var(--border-color); padding: .6em 1em;
+      margin: 1em 0; background: var(--darkened-bg); }
+  .cfg-page .warn { border-left-color: #ff9955; }
+  .cfg-page .muted { color: var(--body-quiet-color); }
+  .cfg-page .toolbar { margin: 1em 0; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">Home</a>
+&rsaquo; <a href="{% url 'admin:vald_user_changelist' %}">Users</a>
+&rsaquo; <a href="{% url 'admin:vald_user_change' vald_user.id %}">{{ vald_user.name }}</a>
+&rsaquo; Configuration
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" class="cfg-page">
+
+<h1>{{ title }}</h1>
+
+{% if not config %}
+  <p class="state warn">There is no system default configuration in the database,
+  so nothing can be shown. Import one with
+  <code>import_default_config</code>.</p>
+{% else %}
+
+  {% if is_personal %}
+    <div class="state">
+      <p><b>Personal configuration</b>, created {{ snapshot_date|date:"j F Y" }}.
+      A copy of the VALD default as it was then, plus this user's changes. It does
+      <b>not</b> follow later updates to the VALD default.</p>
+      <p class="muted">{{ changed_count }} of {{ total_count }} linelist{{ total_count|pluralize }}
+      differ from the current default.</p>
+    </div>
+
+    {% if added_since %}
+      <div class="state warn">
+        <p><b>{{ added_since|length }} linelist{{ added_since|pluralize }} added to the
+        VALD default since this snapshot</b>, and therefore not in use by this user:</p>
+        <ul>{% for l in added_since %}<li>{{ l.name }} <span class="muted">{{ l.path }}</span></li>{% endfor %}</ul>
+        <p class="muted">The user can pick these up by removing their personal
+        configuration on the Personal Configuration page.</p>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="state">
+      <p><b>No personal configuration.</b> This user's requests use the VALD
+      default and automatically include linelists added in future VALD releases.
+      Shown below for reference.</p>
+    </div>
+  {% endif %}
+
+  <div class="toolbar">
+    {% if is_personal %}
+      {% if show_all %}
+        <a class="button" href="?">Show only differences ({{ changed_count }})</a>
+      {% else %}
+        <a class="button" href="?all=1">Show all {{ total_count }} linelists</a>
+      {% endif %}
+    {% endif %}
+    <a class="button" href="{% url 'admin:vald_config_changelist' %}?user__id__exact={{ vald_user.id }}">Edit in Configurations</a>
+  </div>
+
+  {% if not linelists %}
+    <p class="muted">{% if show_all %}This configuration has no linelists.{% else %}
+    Nothing differs from the VALD default.{% endif %}</p>
+  {% else %}
+    <table>
+      <tr>
+        <th>Linelist</th><th>Active</th>
+        <th>WL</th><th>gf</th><th>rad</th><th>stark</th><th>waals</th>
+        <th>lande</th><th>term</th><th>vdw</th><th>zeeman</th>
+      </tr>
+      {% for linelist in linelists %}
+      <tr>
+        <td>{{ linelist.name }}<br><span class="muted">{{ linelist.path }}</span></td>
+        <td class="n{% if linelist.mod_comment %} changed{% endif %}">
+          {% if linelist.is_enabled %}yes{% else %}no{% endif %}</td>
+        {% for i in "012345678" %}
+        <td class="n{% if linelist|get_mod_flag:i %} changed{% endif %}">{{ linelist|get_param:i }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="muted">Values differing from the current VALD default are highlighted.</p>
+  {% endif %}
+
+{% endif %}
+
+</div>
+{% endblock %}

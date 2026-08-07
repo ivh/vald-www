@@ -8,6 +8,10 @@ password are silent no-ops, which read as broken buttons.
 {% block submit_buttons_bottom %}
 {{ block.super }}
 {% if not add %}
+<p style="margin: 1em 0;">
+    <a href="{% url 'admin:vald_user_config' original.id %}">View this user's linelist configuration</a>
+    &mdash; read-only, showing what differs from the VALD default.
+</p>
 <div class="submit-row">
     {% if not original.is_active %}
     <input type="submit" name="_approve_send" value="Approve and send activation email">
