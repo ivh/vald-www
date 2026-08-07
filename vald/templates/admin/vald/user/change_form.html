@@ -1,8 +1,10 @@
 {% extends "admin/change_form.html" %}
 
-{# The same operations as the changelist action dropdown, on the object itself.
-   Rendered conditionally: approving an already-active user or clearing an
-   absent password are silent no-ops, which read as broken buttons. #}
+{% comment %}
+The same operations as the changelist action dropdown, on the object itself.
+Rendered conditionally: approving an already-active user or clearing an absent
+password are silent no-ops, which read as broken buttons.
+{% endcomment %}
 {% block submit_buttons_bottom %}
 {{ block.super }}
 {% if not add %}

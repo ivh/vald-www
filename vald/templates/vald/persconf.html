@@ -8,12 +8,59 @@
 
 <p><b>Note:</b> Modified parameters are highlighted in <span class="modified_data">red</span>.
 
+{% comment %}
+Which of the two states the user is in, and what it costs them. A snapshot whose
+age is invisible is the trap this page used to set.
+{% endcomment %}
+<div class="config-state">
+{% if is_personal %}
+  <p><b>You have a personal configuration</b>, created {{ snapshot_date|date:"j F Y" }}.
+  It is a copy of the VALD default as it was on that date, plus your changes, and
+  it does <b>not</b> change when the VALD default is updated.
+
+  {% if added_since %}
+  <p class="config-state-warning"><b>{{ added_since|length }} linelist{{ added_since|pluralize }}
+  ha{{ added_since|pluralize:"s,ve" }} been added to the VALD default since then</b>,
+  and {{ added_since|pluralize:"is,are" }} not included in your configuration:
+  <ul>
+    {% for linelist in added_since %}<li>{{ linelist.name }}</li>{% endfor %}
+  </ul>
+  Remove your personal configuration to use them, or use
+  &ldquo;Set to current VALD default&rdquo; to take a fresh copy (which discards
+  your changes).
+  {% endif %}
+{% else %}
+  <p><b>You are using the VALD default configuration.</b> Your requests
+  automatically include any linelists added in future VALD releases. Editing any
+  linelist below creates a personal configuration, which is a copy of the VALD
+  default as it is today and will not change when the default is updated.
+{% endif %}
+</div>
+
+{% if is_personal %}
 <p>
 <form method="post" action="{% url 'vald:persconf' %}" style="display:inline;">
 {% csrf_token %}
-<input type="hidden" name="action" value="reset_to_default">
-<input type="submit" value="Reset all to VALD default" onclick="return confirm('This will delete your personal configuration and restore VALD defaults. Are you sure?');">
+<input type="hidden" name="action" value="remove">
+<input type="submit" value="Remove personal configuration"
+       onclick="return confirm('This deletes your personal configuration and all the changes in it. Your requests will use the VALD default and follow future updates to it. Are you sure?');">
 </form>
+
+<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;">
+{% csrf_token %}
+<input type="hidden" name="action" value="set_to_current_default">
+<input type="submit" value="Set to current VALD default"
+       onclick="return confirm('This replaces your personal configuration with a fresh copy of the current VALD default, discarding your changes. The copy will not follow future updates. Are you sure?');">
+</form>
+{% else %}
+<p>
+<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;">
+{% csrf_token %}
+<input type="hidden" name="action" value="set_to_current_default">
+<input type="submit" value="Set to current VALD default"
+       onclick="return confirm('This creates a personal configuration holding a copy of the VALD default as it is now. It will not change when the VALD default is updated. Are you sure?');">
+</form>
+{% endif %}
 
 <form name="thisform" method="post" action="{% url 'vald:persconf' %}">
 {% csrf_token %}
@@ -25,7 +72,7 @@
 <th>ID<th>Active<th>Name<th>WL<th>gf<th>rad<th>stark<th>waals<th>lande<th>term<th>vdw<th>zeeman<th colspan=3>Options
 
 {% for linelist in linelists %}
-{% if editid == linelist.config_linelist_id %}
+{% if editid == linelist.id %}
   {# Editable row #}
   <tr align=center>
   <td align="right">{{ linelist.id }}</td>
@@ -45,9 +92,9 @@
   <td{% if linelist|get_mod_flag:7 %} class="modified_data"{% endif %}><input type="text" name="edit-val-7" value="{{ linelist|get_param:7 }}" size=2></td>
   <td{% if linelist|get_mod_flag:8 %} class="modified_data"{% endif %}><input type="text" name="edit-val-8" value="{{ linelist|get_param:8 }}" size=2></td>
 
-  <td><a href="javascript:void();" onClick="thisform.action.value='save'; thisform.editid.value='{{ linelist.config_linelist_id }}'; thisform.submit(); return false;">Save</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='cancel'; thisform.editid.value='{{ linelist.config_linelist_id }}';thisform.submit(); return false;">Cancel</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.config_linelist_id }}'; thisform.submit(); return false;">Restore VALD default</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='save'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Save</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='cancel'; thisform.editid.value='{{ linelist.id }}';thisform.submit(); return false;">Cancel</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Restore VALD default</a></td>
 
 {% else %}
   {# Read-only row #}
@@ -74,7 +121,7 @@
     <td colspan=3> &nbsp;<br></td>
   {% else %}
     {# When browsing, show edit option #}
-    <td><a href="javascript:void();" onClick="thisform.action.value='edit'; thisform.editid.value='{{ linelist.config_linelist_id }}'; thisform.submit(); return false;">Edit</a></td>
+    <td><a href="javascript:void();" onClick="thisform.action.value='edit'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Edit</a></td>
     <td colspan=2>&nbsp;</td>
   {% endif %}
 {% endif %}

@@ -1,8 +1,10 @@
 {% extends "admin/change_list.html" %}
 
-{# Appended after the object tools rather than prepended to the content block:
-   .object-tools is floated with margin-top:-48px, so anything above it in the
-   flow gets the "Add user" button pulled down on top of it. #}
+{% comment %}
+Appended after the object tools rather than prepended to the content block:
+.object-tools is floated with margin-top:-48px, so anything above it in the flow
+gets the "Add user" button pulled down on top of it.
+{% endcomment %}
 {% block object-tools %}
 {{ block.super }}
 <p style="clear: right; margin: 0 0 1em;">

@@ -25,24 +25,48 @@ def clamp_rank(value, default=3):
         return default
 
 
+# A user is in one of two states, and both must be reachable:
+#
+#   no personal config  - requests use the VALD default, including whatever a
+#                         future release adds to it.
+#   personal config     - a snapshot taken when they first customised something,
+#                         plus their edits. It does not change when the VALD
+#                         default does.
+#
+# Only the second used to be reachable, because merely opening the page created
+# a config. That silently froze every visitor at the linelists of the day they
+# looked, with nothing in the interface saying so (R24/R47).
+
+
 def get_user_config(user):
+    """This user's personal config, or None if they track the VALD default.
+
+    Read-only. Creating on read was the whole defect: a GET wrote 378 rows and
+    moved the user into the frozen state without them asking. Use
+    get_or_create_user_config() on the paths that genuinely mean "customise".
     """
-    Get or create the user's personal config.
-    If user has no config, creates one by copying the system default.
-    
+    return Config.objects.filter(user=user, is_default=True).first()
+
+
+def get_effective_config(user):
+    """(config, is_personal) - the config this user's requests actually use."""
+    personal = get_user_config(user)
+    if personal:
+        return personal, True
+    return get_default_config(), False
+
+
+def create_user_config(user):
+    """
+    Snapshot the current VALD default as this user's personal config.
+
     Returns:
-        Config instance for this user
+        Config instance for this user, or None if there is no system default
     """
-    # Try to get existing user config
-    user_config = Config.objects.filter(user=user, is_default=True).first()
-    if user_config:
-        return user_config
-    
-    # Get system default config
     default_config = Config.objects.filter(user__isnull=True, is_default=True).first()
     if not default_config:
         return None
-    
+
     # Create user config by copying default
     with transaction.atomic():
         user_config = Config.objects.create(
@@ -78,17 +102,53 @@ def get_user_config(user):
     return user_config
 
 
+def get_or_create_user_config(user):
+    """The user's personal config, snapshotting the default if they have none.
+
+    The transition from tracking the default to having a frozen copy. Only the
+    paths that mean "customise this" may call it.
+    """
+    return get_user_config(user) or create_user_config(user)
+
+
 def get_default_config():
     """Get the system default config."""
     return Config.objects.filter(user__isnull=True, is_default=True).first()
 
 
-def reset_user_config(user):
-    """
-    Reset user's config to system default by deleting their personal config.
-    Next call to get_user_config will recreate it from default.
-    """
+def remove_user_config(user):
+    """Delete the personal config, so the user tracks the VALD default again."""
     Config.objects.filter(user=user).delete()
+
+
+def set_user_config_to_current_default(user):
+    """Replace the personal config with a fresh snapshot of today's default.
+
+    Distinct from remove_user_config(): this keeps the user in the frozen state,
+    pinned to the default as it is now. Deleting instead means following the
+    default wherever it goes. Both are legitimate and the old single "reset"
+    button silently did this one.
+    """
+    remove_user_config(user)
+    return create_user_config(user)
+
+
+def linelists_added_since(user_config):
+    """Linelists in the current VALD default that this snapshot does not have.
+
+    What the user is missing by being frozen. Shown on the page, because a
+    snapshot the user cannot see the age of is the same trap with better
+    buttons.
+    """
+    default_config = get_default_config()
+    if not default_config or not user_config or user_config.user_id is None:
+        return []
+
+    mine = set(user_config.configlinelist_set.values_list('linelist_id', flat=True))
+    missing = default_config.configlinelist_set.exclude(
+        linelist_id__in=mine).values_list('linelist_id', flat=True)
+    return list(Linelist.objects.filter(id__in=missing, is_active=True)
+                .order_by('default_priority', 'path'))
 
 
 def get_linelists_for_display(config):
@@ -127,18 +187,37 @@ def get_linelists_for_display(config):
     return linelists
 
 
-def update_config_linelist(config_linelist_id, user, is_enabled=None, ranks=None):
+def update_config_linelist(linelist_id, user, is_enabled=None, ranks=None):
     """
-    Update a ConfigLinelist entry belonging to this user's own config.
+    Update one linelist's settings in this user's own config.
+
+    Keyed by Linelist, not by ConfigLinelist. A user who tracks the default is
+    shown the *system* config's rows, so a ConfigLinelist pk posted back would
+    name a row they do not own - which is precisely R2. Naming a linelist
+    instead leaves the choice of junction row to this function, always inside
+    the user's own config, so the mistake cannot be expressed.
+
+    Creates the personal config if the user has none: this is an edit, which is
+    exactly the point at which they stop tracking the default.
 
     Args:
-        config_linelist_id: pk of ConfigLinelist
-        user: User who must own the parent config
+        linelist_id: pk of Linelist
+        user: User whose config is edited
         is_enabled: new enabled state (or None to keep)
         ranks: list of 9 rank values (or None to keep)
     """
+    # Validated against what the user is currently being shown, before anything
+    # is created - a bogus id must not leave a personal config behind.
+    source, _ = get_effective_config(user)
+    if not source or not source.configlinelist_set.filter(linelist_id=linelist_id).exists():
+        return False
+
+    config = get_or_create_user_config(user)
+    if not config:
+        return False
+
     try:
-        cl = ConfigLinelist.objects.get(pk=config_linelist_id, config__user=user)
+        cl = ConfigLinelist.objects.get(config=config, linelist_id=linelist_id)
 
         if is_enabled is not None:
             cl.is_enabled = is_enabled
@@ -161,30 +240,36 @@ def update_config_linelist(config_linelist_id, user, is_enabled=None, ranks=None
         return False
 
 
-def restore_linelist_to_default(config_linelist_id, user):
+def restore_linelist_to_default(linelist_id, user):
     """
     Restore a single linelist entry to system default values.
 
-    Only entries in this user's own config may be restored.
+    Keyed by Linelist for the same reason as update_config_linelist. Unlike an
+    edit this never creates a personal config: a user who tracks the default is
+    already at the default, so restoring is a no-op success rather than a reason
+    to freeze them.
     """
+    config = get_user_config(user)
+    if not config:
+        return True
+
+    default_config = get_default_config()
+    if not default_config:
+        return False
+
     try:
-        cl = ConfigLinelist.objects.select_related('config', 'linelist').get(
-            pk=config_linelist_id, config__user=user
+        cl = ConfigLinelist.objects.select_related('linelist').get(
+            config=config, linelist_id=linelist_id
         )
 
-        # Find default config's entry for this linelist
-        default_config = get_default_config()
-        if not default_config:
-            return False
-        
         default_cl = ConfigLinelist.objects.filter(
             config=default_config,
-            linelist=cl.linelist
+            linelist_id=linelist_id
         ).first()
-        
+
         if not default_cl:
             return False
-        
+
         # Copy values from default
         cl.is_enabled = default_cl.is_enabled
         cl.priority = default_cl.priority

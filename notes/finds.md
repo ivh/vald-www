@@ -55,7 +55,7 @@ The document is ordered by priority, so IDs are not sequential.
 | R20 | UX | ✅ fixed `8647f39` | My Requests: no λ range/element, no pagination |
 | R21 | UX | ✅ fixed `73de058` | Expired results still show status "Complete" |
 | R22 | UX| ✅ fixed `8079afb` | Spam filter rejects any message containing a URL |
-| R24 | UX | open | "Custom" config falls back silently; persconf mutates on GET |
+| R24 | UX | ✅ fixed (see R47) | "Custom" config falls back silently; persconf mutates on GET |
 | R38 | High | ✅ fixed | Sessions outlive the account state they were granted under; no key rotation on login |
 | R39 | Medium | ✅ fixed | `?modify=<non-uuid>` is an unhandled 500 on all four extraction forms |
 | R40 | Low | ✅ fixed | Out-of-range persconf rank is a 500 (sqlite `OverflowError`); supersedes R30 |
@@ -65,6 +65,9 @@ The document is ordered by priority, so IDs are not sequential.
 | R44 | Low | ✅ fixed | showline error text skipped R25's scrubbing, and failed runs were published anyway |
 | R45 | Low | ✅ fixed | `django_session` never swept — no `clearsessions` anywhere |
 | R46 | — | ✓ not a defect | Result filename collisions are guarded by construction, not merely improbable |
+| R47 | Medium | ✅ fixed `0011` | Personal configs were snapshots that only froze - "track the VALD default" was unreachable |
+| R48 | Low | ✅ fixed | `Linelist.is_active` was never read or written; retiring a linelist did nothing |
+| R49 | Cosmetic | ✅ fixed | Four multi-line `{# #}` template comments rendered as visible page text |
 
 Dead schema noted under R7: `Request.completed_at` and `Request.queue_position` are
 never written.
@@ -644,6 +647,79 @@ survives is whichever one the app was already using - which is not necessarily
 the one named `Default`. That is the safe choice (applying the migration cannot
 silently change anyone's linelist selection), but it is worth checking
 afterwards that the surviving system default is the intended one.
+
+---
+
+### R47. The personal config could only ever freeze
+**Where:** `vald/persconfig.py`, `vald/views.py` (`persconf`), `persconf.html`
+
+A personal config is a *snapshot* of the default, and `import_default_config`
+only ever rebuilds the system config's rows - nothing reconciles user configs.
+So a personal config never sees a linelist added by a later VALD release.
+Measured on a three-linelist default: after adding a fourth, the user's
+generated `.cfg` still had three.
+
+The state "no personal config, follow the VALD default" existed in the code but
+was unreachable, because opening `/persconf/` created a config as a side effect
+of a GET (the original R24). Net effect: **clicking Personal Config once,
+changing nothing, silently froze the user at that day's linelists** - with
+nothing in the interface saying so.
+
+**Fixed** by making both states reachable and each action mean one thing:
+
+| state | meaning |
+|-------|---------|
+| no personal config | requests use the VALD default, including future additions |
+| personal config | snapshot taken at the first edit, plus edits; does not follow the default |
+
+- GET creates nothing. `get_user_config()` is read-only; `create_user_config()`
+  and `get_or_create_user_config()` are separate and called only from paths that
+  mean "customise".
+- **Save** performs the transition and says so.
+- **Remove** deletes the config, returning the user to tracking the default.
+- **Set to current VALD default** re-snapshots: stay frozen, pinned to today.
+- The page states which state you are in, when the snapshot was taken, and which
+  linelists have been added to the default since - without that the snapshot is
+  the same trap with better buttons.
+
+Two consequences worth recording:
+
+*The form now names a `Linelist`, not a `ConfigLinelist`.* It had to: a user
+who tracks the default is shown the *system* config's rows, so a pk posted back
+would name a row they do not own - exactly R2. Keying by linelist leaves the
+choice of junction row to the view, always inside the poster's own config, so
+that whole class of mistake became unrepresentable rather than guarded against.
+
+*Migration `0011` deletes personal configs byte-identical to the default.* Under
+the two-state model, holding a config means "do not follow the VALD default",
+and the users who got one from a bare GET never asked for that. Configs
+differing anywhere - including in fields the web UI cannot edit, which is how
+the imported legacy persconf files differ - are left alone. Verified against a
+copy of the real database: the one user config there differs in four entries
+(one disabled list, one rank, one replacement window) and was correctly kept.
+
+R24's second half dissolves rather than being fixed: `pconf=personal` with no
+personal config returns the default, which under this model is the correct
+answer rather than a silent fallback.
+
+### R48. `Linelist.is_active` was decorative
+Declared as "whether this linelist is currently available", never read by
+`generate_cfg_content()` and never written by `import_default_config`. An admin
+unticking it had no effect.
+
+This is the mechanism a snapshot model needs most: a personal config can outlive
+the linelists in it by years, and a retired linelist means a `.cfg` naming a
+data file that may have left the SVN tree, which surfaces as an opaque
+preselect5 failure. **Fixed:** generation skips inactive linelists, and
+re-importing `default.cfg` retires anything absent from it (and reactivates
+anything that returns).
+
+### R49. Four template comments were rendering as page text
+`{# #}` does not span lines - Django emits the remainder as content. Three
+predated this work (`admin/index.html`, and the user changelist and change form)
+and were visible on live admin pages. Found by looking at the rendered output
+rather than the template. `tests/test_templates.py` now scans every template for
+it.
 
 ---
 

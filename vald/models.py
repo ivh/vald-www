@@ -652,6 +652,14 @@ class Config(models.Model):
         
         # Linelist lines (sorted by priority)
         for cl in self.configlinelist_set.select_related('linelist').order_by('priority'):
+            # A retired linelist is omitted entirely rather than commented out:
+            # its data file may be gone from the SVN tree, and a personal config
+            # is a snapshot that can outlive the linelists in it by years, so
+            # this is the only thing standing between an old snapshot and
+            # preselect5 failing to open a file that no longer exists.
+            if not cl.linelist.is_active:
+                continue
+
             if not cl.is_enabled:
                 prefix = ";"  # Comment out disabled linelists
             else:

@@ -99,34 +99,68 @@ def system_config(db):
     return config, entry
 
 
+def save_linelist(client, linelist_id, **fields):
+    """Post the persconf save action for one linelist.
+
+    The form names a Linelist, not a ConfigLinelist: the view resolves it inside
+    the posting user's own config, so no pk belonging to another config can be
+    named at all (R47). These tests therefore probe the id space rather than a
+    specific victim row.
+    """
+    payload = {'action': 'save', 'editid': str(linelist_id)}
+    payload.update(fields)
+    return client.post('/persconf/', payload)
+
+
 @pytest.mark.django_db
 def test_user_cannot_disable_a_linelist_in_the_system_default(logged_in_client, system_config):
-    """The system default owns the lowest ConfigLinelist pks, so they are guessable."""
+    """The original R2: the system default owns low, guessable pks."""
     _, entry = system_config
-    logged_in_client.get('/persconf/')          # creates this user's own config
-    logged_in_client.post('/persconf/', {'action': 'save', 'editid': str(entry.pk)})
+    logged_in_client.get('/persconf/')
+    # Sweep the low id space - under the old keying one of these named the
+    # system default's junction row directly.
+    for candidate in range(1, 6):
+        save_linelist(logged_in_client, candidate)
     entry.refresh_from_db()
     assert entry.is_enabled is True, 'system default config was modified by a user'
 
 
 @pytest.mark.django_db
 def test_user_cannot_edit_another_users_config(logged_in_client, system_config, db):
-    from vald.persconfig import get_user_config
+    from vald.persconfig import create_user_config
     other = User.objects.create(name='Other', is_active=True)
-    other_entry = get_user_config(other).configlinelist_set.first()
+    other_entry = create_user_config(other).configlinelist_set.first()
 
     logged_in_client.get('/persconf/')
-    logged_in_client.post('/persconf/', {'action': 'save', 'editid': str(other_entry.pk)})
+    for candidate in range(1, 6):
+        save_linelist(logged_in_client, candidate)
     other_entry.refresh_from_db()
     assert other_entry.is_enabled is True, "another user's config was modified"
 
 
 @pytest.mark.django_db
-def test_user_can_still_edit_their_own_config(logged_in_client, system_config):
-    logged_in_client.get('/persconf/')
-    mine = Config.objects.get(user__isnull=False).configlinelist_set.first()
-    logged_in_client.post('/persconf/', {'action': 'save', 'editid': str(mine.pk)})
-    mine.refresh_from_db()
+def test_a_posted_id_only_ever_reaches_the_posting_users_own_config(
+        logged_in_client, system_config, approved_user):
+    """The property that replaces the ownership check: whatever id is posted,
+    the row that changes belongs to the poster."""
+    from vald.models import Linelist
+    linelist = Linelist.objects.get(path='/CVALD3/ATOMS/x1')
+
+    save_linelist(logged_in_client, linelist.pk)
+
+    changed = ConfigLinelist.objects.filter(is_enabled=False)
+    assert changed.count() == 1
+    assert changed.first().config.user_id == approved_user.pk
+
+
+@pytest.mark.django_db
+def test_user_can_still_edit_their_own_config(logged_in_client, system_config, approved_user):
+    from vald.models import Linelist
+    linelist = Linelist.objects.get(path='/CVALD3/ATOMS/x1')
+
+    save_linelist(logged_in_client, linelist.pk)
+
+    mine = ConfigLinelist.objects.get(config__user=approved_user, linelist=linelist)
     assert mine.is_enabled is False, 'owner can no longer edit their own config'
 
 
@@ -418,29 +452,32 @@ def test_modify_does_not_leak_another_users_request(logged_in_client):
     ('not-a-number', 3), # unparseable, falls back
     ('', 3),
 ])
-def test_rank_weights_are_clamped(logged_in_client, system_config, posted, expected):
-    logged_in_client.get('/persconf/')
-    mine = Config.objects.get(user__isnull=False).configlinelist_set.first()
+def test_rank_weights_are_clamped(logged_in_client, system_config, approved_user,
+                                 posted, expected):
+    from vald.models import Linelist
+    linelist = Linelist.objects.get(path='/CVALD3/ATOMS/x1')
 
-    payload = {'action': 'save', 'editid': str(mine.pk), 'linelist-checked': 'on',
-               'edit-val-0': posted}
+    payload = {'linelist-checked': 'on', 'edit-val-0': posted}
     payload.update({f'edit-val-{j}': '3' for j in range(1, 9)})
-    assert logged_in_client.post('/persconf/', payload).status_code == 200
+    assert save_linelist(logged_in_client, linelist.pk, **payload).status_code == 200
 
-    mine.refresh_from_db()
+    mine = ConfigLinelist.objects.get(config__user=approved_user, linelist=linelist)
     assert mine.rank_wl == expected
 
 
 @pytest.mark.django_db
-def test_generated_cfg_only_contains_legal_ranks(logged_in_client, system_config):
+def test_generated_cfg_only_contains_legal_ranks(logged_in_client, system_config,
+                                                approved_user):
     """What preselect5 actually parses."""
-    logged_in_client.get('/persconf/')
-    mine = Config.objects.get(user__isnull=False).configlinelist_set.first()
-    payload = {'action': 'save', 'editid': str(mine.pk), 'linelist-checked': 'on'}
-    payload.update({f'edit-val-{j}': '99999' for j in range(9)})
-    logged_in_client.post('/persconf/', payload)
+    from vald.models import Linelist
+    linelist = Linelist.objects.get(path='/CVALD3/ATOMS/x1')
 
-    ranks = mine.config.generate_cfg_content().splitlines()[1].split(',')[5:14]
+    payload = {'linelist-checked': 'on'}
+    payload.update({f'edit-val-{j}': '99999' for j in range(9)})
+    save_linelist(logged_in_client, linelist.pk, **payload)
+
+    mine = Config.objects.get(user=approved_user)
+    ranks = mine.generate_cfg_content().splitlines()[1].split(',')[5:14]
     assert [int(r) for r in ranks] == [9] * 9
 
 

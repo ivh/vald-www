@@ -148,9 +148,30 @@ class Command(BaseCommand):
                         self.style.WARNING(f"Linelist not found: {entry['path']}")
                     )
 
+            # Retire linelists this default.cfg no longer mentions. Personal
+            # configs are snapshots that keep their own rows, so without this a
+            # retired linelist stays in every existing user's generated .cfg -
+            # pointing at a data file that may have left the SVN tree.
+            # generate_cfg_content() skips inactive linelists, which is what
+            # makes deactivating here take effect for old snapshots too.
+            imported_paths = {entry['path'] for entry in linelist_entries}
+            retired = Linelist.objects.filter(is_active=True).exclude(path__in=imported_paths)
+            retired_count = retired.count()
+            if retired_count:
+                for path in retired.values_list('path', flat=True):
+                    self.stdout.write(f"  Retiring (absent from this default.cfg): {path}")
+                retired.update(is_active=False)
+
+            # ...and un-retire anything that has come back.
+            revived = Linelist.objects.filter(is_active=False, path__in=imported_paths)
+            revived_count = revived.count()
+            if revived_count:
+                revived.update(is_active=True)
+
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Successfully imported {len(linelist_entries)} linelists into config '{config_name}'"
+                    f"Successfully imported {len(linelist_entries)} linelists into config '{config_name}' "
+                    f"({retired_count} retired, {revived_count} reactivated)"
                 )
             )
 

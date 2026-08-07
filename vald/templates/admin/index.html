@@ -1,7 +1,9 @@
 {% extends "admin/index.html" %}
 
-{# Self-extends: the loader skips the template doing the extending, so this picks
-   up the stock admin index and only adds the help link above the app list. #}
+{% comment %}
+Self-extends: the loader skips the template doing the extending, so this picks up
+the stock admin index and only adds the help link above the app list.
+{% endcomment %}
 
 {% block content %}
 <p style="margin-bottom: 1em;">

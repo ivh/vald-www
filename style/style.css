@@ -112,6 +112,19 @@ input[type="submit"]:hover, input[type="button"]:hover {
 .new_data {
   background-color: #ff9955;
 }
+/* Which personal-configuration state the user is in. Deliberately prominent:
+   a snapshot whose age is invisible is what made the old page misleading. */
+.config-state {
+  margin:           15px 0;
+  padding:          10px 15px;
+  border-left:      4px solid #8888cc;
+  background-color: #f0f0f8;
+}
+.config-state-warning {
+  border-left:      4px solid #ff9955;
+  padding-left:     11px;
+  background-color: #fff4e8;
+}
 .messages {
   margin: 15px 0;
   padding: 0;

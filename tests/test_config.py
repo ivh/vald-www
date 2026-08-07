@@ -198,3 +198,56 @@ def test_each_user_may_still_have_their_own_default(approved_user):
 # and one after, so the name ordering was actually exercised. The migration kept
 # the row get_default_config() had been returning all along, demoted the other
 # two without deleting them, and the constraint then rejected a third.
+
+
+# --- R47: retiring linelists that leave default.cfg -------------------------
+
+@pytest.mark.django_db
+def test_reimport_retires_linelists_no_longer_in_the_cfg(tmp_path):
+    """Personal configs keep their own rows, so a retired linelist would
+    otherwise stay in every existing snapshot's generated .cfg forever."""
+    from django.core.management import call_command
+    from vald.models import Linelist, Config
+
+    header = "0.05,5000.,9,150.\n"
+    two = (header
+           + "'/CVALD3/ATOMS/keep', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'Keeper'\n"
+           + "'/CVALD3/ATOMS/drop', 20, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'Goes away'\n")
+    one = (header
+           + "'/CVALD3/ATOMS/keep', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'Keeper'\n")
+
+    first = tmp_path / 'default.cfg'
+    first.write_text(two)
+    call_command('import_default_config', str(first), verbosity=0)
+    assert Linelist.objects.filter(path='/CVALD3/ATOMS/drop', is_active=True).exists()
+
+    second = tmp_path / 'default2.cfg'
+    second.write_text(one)
+    call_command('import_default_config', str(second), verbosity=0)
+
+    assert not Linelist.objects.filter(path='/CVALD3/ATOMS/drop', is_active=True).exists()
+    assert Linelist.objects.filter(path='/CVALD3/ATOMS/keep', is_active=True).exists()
+
+    content = Config.get_default_config().generate_cfg_content()
+    assert 'ATOMS/drop' not in content
+
+
+@pytest.mark.django_db
+def test_reimport_reactivates_a_linelist_that_comes_back(tmp_path):
+    from django.core.management import call_command
+    from vald.models import Linelist
+
+    header = "0.05,5000.,9,150.\n"
+    entry = "'/CVALD3/ATOMS/onoff', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'Comes and goes'\n"
+
+    with_it = tmp_path / 'a.cfg'
+    with_it.write_text(header + entry)
+    without = tmp_path / 'b.cfg'
+    without.write_text(header)
+
+    call_command('import_default_config', str(with_it), verbosity=0)
+    call_command('import_default_config', str(without), verbosity=0)
+    assert not Linelist.objects.get(path='/CVALD3/ATOMS/onoff').is_active
+
+    call_command('import_default_config', str(with_it), verbosity=0)
+    assert Linelist.objects.get(path='/CVALD3/ATOMS/onoff').is_active

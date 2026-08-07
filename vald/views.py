@@ -1175,83 +1175,109 @@ def news(request, newsitem=None):
 
 @require_login
 def persconf(request):
-    """Personal configuration page - database-backed implementation"""
+    """Personal configuration page - database-backed implementation.
+
+    Two states, both reachable (R47):
+
+      no personal config - requests use the VALD default and pick up whatever a
+                           future release adds to it.
+      personal config    - a snapshot taken at the first edit, plus the edits.
+                           It does not follow the VALD default.
+
+    Nothing here creates a config as a side effect of being looked at, which is
+    what used to move every visitor into the second state without asking.
+    """
     from .persconfig import (
-        get_user_config, get_default_config, reset_user_config,
-        get_linelists_for_display, update_config_linelist,
-        restore_linelist_to_default, get_modification_flags, clamp_rank
+        get_user_config, get_default_config, get_effective_config,
+        remove_user_config, set_user_config_to_current_default,
+        linelists_added_since, get_linelists_for_display,
+        update_config_linelist, restore_linelist_to_default,
+        get_modification_flags, clamp_rank
     )
 
     context = get_user_context(request)
     user = get_current_user(request)
 
-    if not user:
-        messages.error(request, 'Could not determine user.')
-        return redirect('vald:index')
-
-    # Get or create user's config
-    user_config = get_user_config(user)
     default_config = get_default_config()
-    
-    if not user_config:
+    if not default_config:
         messages.error(request, 'No default configuration found. Please contact administrator.')
         return redirect('vald:index')
+
+    def posted_linelist_id():
+        """The Linelist named by the form, or None. Never a ConfigLinelist pk."""
+        try:
+            return int(request.POST.get('editid', ''))
+        except (TypeError, ValueError):
+            return None
 
     # Handle actions
     action = request.POST.get('action') if request.method == 'POST' else None
     editid = request.POST.get('editid')
+    linelist_id = posted_linelist_id()
 
-    if action == 'reset_to_default':
-        reset_user_config(user)
-        messages.success(request, 'Personal configuration has been reset to VALD default.')
-        # Recreate config from default
-        user_config = get_user_config(user)
+    if action == 'remove':
+        if get_user_config(user):
+            remove_user_config(user)
+            messages.success(
+                request,
+                'Personal configuration removed. Your requests now use the VALD '
+                'default, including linelists added in future VALD releases.')
+        else:
+            messages.info(request, 'You have no personal configuration to remove.')
+        editid = action = None
 
-    elif action == 'save' and editid:
-        try:
-            config_linelist_id = int(editid)
-            
-            # Get enabled status
-            is_enabled = bool(request.POST.get('linelist-checked'))
-            
-            # Get rank values (indices 5-13 in old system = 9 rank values).
-            # clamp_rank bounds them to the 1-9 the .cfg format allows.
-            ranks = [clamp_rank(request.POST.get(f'edit-val-{j}', '3'))
-                     for j in range(9)]
+    elif action == 'set_to_current_default':
+        if set_user_config_to_current_default(user):
+            messages.success(
+                request,
+                'Personal configuration set to a copy of the current VALD default. '
+                'It will stay as it is now when the VALD default is updated.')
+        else:
+            messages.error(request, 'Could not copy the VALD default.')
+        editid = action = None
 
-            if update_config_linelist(config_linelist_id, user, is_enabled=is_enabled, ranks=ranks):
+    elif action == 'save' and linelist_id is not None:
+        is_enabled = bool(request.POST.get('linelist-checked'))
+
+        # Rank values (indices 5-13 in old system = 9 rank values).
+        # clamp_rank bounds them to the 1-9 the .cfg format allows.
+        ranks = [clamp_rank(request.POST.get(f'edit-val-{j}', '3'))
+                 for j in range(9)]
+
+        had_config = get_user_config(user) is not None
+        if update_config_linelist(linelist_id, user, is_enabled=is_enabled, ranks=ranks):
+            if had_config:
                 messages.success(request, 'Linelist settings saved successfully.')
             else:
-                messages.error(request, 'Failed to save linelist settings.')
-        except (ValueError, KeyError) as e:
-            messages.error(request, f'Failed to save: {e}')
-        
-        editid = None
-        action = None
+                # The transition deserves saying out loud - it is the moment the
+                # user stops tracking the VALD default.
+                messages.success(
+                    request,
+                    'Linelist settings saved. This created your personal '
+                    'configuration from the current VALD default; it will not '
+                    'change when the VALD default is updated.')
+        else:
+            messages.error(request, 'Failed to save linelist settings.')
 
-    elif action == 'restore' and editid:
-        try:
-            config_linelist_id = int(editid)
-            if restore_linelist_to_default(config_linelist_id, user):
-                messages.success(request, 'Linelist restored to default settings.')
-            else:
-                messages.error(request, 'Failed to restore linelist.')
-        except (ValueError, KeyError) as e:
-            messages.error(request, f'Failed to restore: {e}')
-        
-        editid = None
-        action = None
+        editid = action = None
+
+    elif action == 'restore' and linelist_id is not None:
+        if restore_linelist_to_default(linelist_id, user):
+            messages.success(request, 'Linelist restored to default settings.')
+        else:
+            messages.error(request, 'Failed to restore linelist.')
+
+        editid = action = None
 
     elif action == 'cancel':
-        editid = None
-        action = None
+        editid = action = None
 
-    # Get linelists for display
+    # Read state only from here on
+    user_config, is_personal = get_effective_config(user)
+
     linelists = get_linelists_for_display(user_config)
-    
-    # Get modification flags
     modifications = get_modification_flags(user_config, default_config)
-    
+
     # Add modification info to linelists
     for ll in linelists:
         mod = modifications.get(ll['id'], {})
@@ -1262,9 +1288,12 @@ def persconf(request):
     # Build context for template
     context.update({
         'linelists': linelists,
-        'editid': int(editid) if editid and action == 'edit' else None,
+        'editid': linelist_id if action == 'edit' else None,
         'action': action,
         'config': user_config,
+        'is_personal': is_personal,
+        'snapshot_date': user_config.created_at if is_personal else None,
+        'added_since': linelists_added_since(user_config) if is_personal else [],
     })
 
     return render(request, 'vald/persconf.html', context)
