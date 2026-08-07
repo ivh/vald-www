@@ -1,5 +1,5 @@
 [Unit]
-Description=VALD: delete expired result files
+Description=VALD: delete expired result files and sessions
 After=network.target
 
 [Service]
@@ -21,6 +21,11 @@ Environment="DJANGO_SETTINGS_MODULE=vald_web.settings_deploy"
 # completion emails. The command refuses to run if VALD_FTP_DIR is missing,
 # so a misconfigured environment fails loudly instead of silently no-opping.
 ExecStart=/home/vald/vald-www.git/.venv/bin/python manage.py cleanup_old_results
+
+# Expired session rows are ignored on read but never deleted - Django only
+# removes them when told to, and nothing was telling it. Pure table growth, one
+# row per login, but the table is in the same sqlite file as everything else.
+ExecStart=/home/vald/vald-www.git/.venv/bin/python manage.py clearsessions
 
 # Security hardening (mirrors vald.service)
 PrivateTmp=true

@@ -287,7 +287,7 @@ class JobRunner:
             else:
                 return self._run_extract(config)
         except Exception as e:
-            return (False, f"Job execution error: {e}")
+            return (False, f"Job execution error: {summarise_stage_error(str(e))}")
     
     def _run_extract(self, config: JobConfig) -> Tuple[bool, str]:
         """Run extract all/element pipeline: preselect | presformat"""
@@ -333,7 +333,7 @@ class JobRunner:
             return (False, "Job execution timed out")
         except Exception as e:
             logger.exception("Extract pipeline error in %s", config.job_dir)
-            return (False, f"Pipeline error: {e}")
+            return (False, f"Pipeline error: {summarise_stage_error(str(e))}")
     
     def _run_pipeline_simple(self, pres_in, output_file: Path, bib_file: Path,
                              cwd: Path) -> Tuple[bool, str]:
@@ -592,7 +592,7 @@ class JobRunner:
             return (False, "Job execution timed out")
         except Exception as e:
             logger.exception("Stellar pipeline error in %s", cwd)
-            return (False, f"Stellar pipeline error: {e}")
+            return (False, f"Stellar pipeline error: {summarise_stage_error(str(e))}")
         finally:
             self._kill_all(procs)
     
@@ -639,9 +639,17 @@ class JobRunner:
                     if result.returncode != 0:
                         # returncode was previously ignored entirely, so a
                         # failing binary produced an empty "Complete" result
-                        detail = result.stderr.decode('utf-8', 'replace').strip()
+                        raw = result.stderr.decode('utf-8', 'replace').strip()
                         logger.error("showline query %d (%s %s) failed rc=%s: %s",
-                                     i, element, wl_center, result.returncode, detail)
+                                     i, element, wl_center, result.returncode, raw)
+                        # Scrubbed the same way the pipeline stages are (R25):
+                        # the full text goes to the log, what reaches the user
+                        # is condensed and stripped of server paths. showline
+                        # does not go through _stage_error, so it was the one
+                        # pipeline still showing raw gfortran backtraces - and
+                        # this text is also written into the result file, which
+                        # the vhost serves directly (R37).
+                        detail = summarise_stage_error(raw)
                         failures.append(
                             f"query {i + 1} ({element} at {wl_center}): "
                             f"{detail or f'exited with code {result.returncode}'}"
@@ -673,17 +681,23 @@ class JobRunner:
                 except Exception as e:
                     logger.exception("showline query %d (%s %s) errored",
                                      i, element, wl_center)
-                    failures.append(f"query {i + 1} ({element} at {wl_center}): {e}")
-                    out.write(f"Error processing query: {e}\n")
+                    detail = summarise_stage_error(str(e))
+                    failures.append(f"query {i + 1} ({element} at {wl_center}): {detail}")
+                    out.write(f"Error processing query: {detail}\n")
 
-        # Move to FTP directory as .txt file
+        # A failed run must not be published. The results directory is served
+        # directly by the vhost (R37), so a file moved there is reachable by URL
+        # - while on failure no Request row ever points at it, leaving an orphan
+        # full of error text until the sweep. Keep it in the job directory
+        # instead, next to the stage .err files, where it is just as useful for
+        # debugging and not web-reachable.
+        if failures:
+            return (False, "Showline failed for " + "; ".join(failures))
+
         final_output = self.ftp_dir / f"{config.client_name}.{config.job_id:06d}.txt"
         self.ftp_dir.mkdir(parents=True, exist_ok=True)
         shutil.move(str(output_file), str(final_output))
         os.chmod(final_output, 0o644)
-
-        if failures:
-            return (False, "Showline failed for " + "; ".join(failures))
 
         return (True, str(final_output))
     
@@ -798,7 +812,7 @@ class JobRunner:
         """Compress output and move to FTP directory."""
         
         if not output_file.exists():
-            return (False, f"Output file not found: {output_file}")
+            return (False, f"Output file not found: {output_file.name}")
         
         self.ftp_dir.mkdir(parents=True, exist_ok=True)
         

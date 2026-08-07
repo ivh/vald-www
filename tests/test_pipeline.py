@@ -169,3 +169,93 @@ def test_failing_stage_message_has_no_absolute_paths(extract):
     assert not ok
     assert 'presformat5.f' in result
     assert '/opt/vald' not in result
+
+
+# --- R44: showline is a separate pipeline and missed both of R25's fixes ----
+
+@pytest.fixture
+def showline(tmp_path):
+    """Run _run_showline with a stand-in binary. Returns (ok, result, runner, job)."""
+    def run(body, queries=None):
+        job = tmp_path / 'job'
+        ftp = tmp_path / 'ftp'
+        for d in (job, ftp):
+            d.mkdir(exist_ok=True)
+
+        runner = JobRunner()
+        runner.showline = fake_binary(tmp_path, 'vald-testfake-showline', body)
+        runner.ftp_dir = ftp
+
+        config = JobConfig(job_id=1, job_dir=job, client_name='Tester',
+                           request_type='showline', wl_start=5000, wl_end=1.0,
+                           config_path=str(tmp_path / 'config.cfg'),
+                           showline_queries=queries or [(5000.0, 1.0, 'Fe 1')])
+        ok, result = runner.run(config)
+        return ok, result, ftp, job
+
+    yield run
+    subprocess.run(['pkill', '-f', 'vald-testfake-'], capture_output=True)
+
+
+BACKTRACE = (
+    'echo "At line 42 of file /opt/vald/SOURCE/SHOWLINE/showline4.1.f" >&2;'
+    'echo "#0  0x7f3c in ??? " >&2;'
+    'echo "Error termination. Backtrace:" >&2;'
+    'exit 2'
+)
+
+
+def test_showline_failure_message_has_no_absolute_paths(showline):
+    """showline does not go through _stage_error, so R25's scrubbing missed it."""
+    ok, result, _, _ = showline(BACKTRACE)
+    assert not ok
+    assert 'showline4.1.f' in result
+    assert '/opt/vald' not in result
+
+
+def test_showline_failure_is_not_published(showline):
+    """The results dir is served directly by the vhost, so a failed run must not
+    leave a file there that no Request row points at."""
+    ok, _, ftp, job = showline(BACKTRACE)
+    assert not ok
+    assert list(ftp.iterdir()) == [], 'failed showline published a result file'
+    # still kept next to the stage .err files for debugging
+    assert (job / 'result.000001').exists()
+
+
+def test_showline_result_file_has_no_absolute_paths(showline):
+    """The error text is written into the file too, not just the error message."""
+    _, _, _, job = showline(BACKTRACE)
+    assert '/opt/vald' not in (job / 'result.000001').read_text()
+
+
+def test_showline_success_is_still_published(showline):
+    ok, result, ftp, _ = showline('echo "Fe 1  5000.000  -1.234"')
+    assert ok, result
+    assert [p.name for p in ftp.iterdir()] == ['Tester.000001.txt']
+
+
+def test_showline_partial_failure_is_not_published(showline):
+    """One good query and one bad one is still a failed request."""
+    body = 'read a; read b; read c; case "$a" in *6000*) exit 3;; esac; echo ok'
+    ok, _, ftp, _ = showline(body, queries=[(5000.0, 1.0, 'Fe 1'),
+                                            (6000.0, 1.0, 'Ca 1')])
+    assert not ok
+    assert list(ftp.iterdir()) == []
+
+
+def test_missing_showline_binary_does_not_leak_its_path(tmp_path):
+    """The generic exception handlers returned str(e), which carries the path."""
+    job = tmp_path / 'job2'
+    ftp = tmp_path / 'ftp2'
+    for d in (job, ftp):
+        d.mkdir()
+    runner = JobRunner()
+    runner.showline = tmp_path / 'nowhere' / 'vald-testfake-absent'
+    runner.ftp_dir = ftp
+    config = JobConfig(job_id=2, job_dir=job, client_name='Tester',
+                       request_type='showline', wl_start=5000, wl_end=1.0,
+                       showline_queries=[(5000.0, 1.0, 'Fe 1')])
+    ok, result = runner.run(config)
+    assert not ok
+    assert str(tmp_path) not in result

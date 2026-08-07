@@ -62,6 +62,9 @@ The document is ordered by priority, so IDs are not sequential.
 | R41 | Medium | ✅ fixed | Django admin login unthrottled; admin-set passwords skip the validators |
 | R42 | Low | ✅ removed | `MAINTENANCE` was documented and configurable but read by nothing |
 | R43 | Low | ⏸ won't-fix (accepted) | No upper bound on the extraction wavelength range for download delivery |
+| R44 | Low | ✅ fixed | showline error text skipped R25's scrubbing, and failed runs were published anyway |
+| R45 | Low | ✅ fixed | `django_session` never swept — no `clearsessions` anywhere |
+| R46 | — | ✓ not a defect | Result filename collisions are guarded by construction, not merely improbable |
 
 Dead schema noted under R7: `Request.completed_at` and `Request.queue_position` are
 never written.
@@ -570,6 +573,52 @@ looked available.
 50 Å email cap. `VALD_MAX_LINES_PER_REQUEST` and `VALD_JOB_TIMEOUT` bound the
 work, so the cost ceiling is 5 in-flight jobs × 1 h per user.
 **Decided (Tom):** leave it. The existing caps do their job.
+
+---
+
+### R44. showline missed both halves of R25
+**Where:** `vald/job_runner.py` — `_run_showline`, and the generic handlers in
+`run` / `_run_extract` / `_run_stellar`
+
+`summarise_stage_error()` — which strips gfortran backtrace frames and reduces
+absolute source paths to a basename — was reached from exactly one place,
+`_stage_error()`. showline runs its own subprocess loop and never called it, so
+raw stderr went to two destinations: `Request.error_message` (R25's target) and
+the result file itself.
+
+The result file made it worse. `_run_showline` moved the `.txt` into
+`VALD_FTP_DIR` and chmod 644'd it *before* checking `failures`. On failure no
+`Request` row ever points at that file, so it sat in a directory the vhost
+serves directly (R37) for 48 h, containing a backtrace, referenced by nothing.
+
+**Fixed:** scrub showline stderr through `summarise_stage_error()`; publish only
+on success, keeping the file in the job directory next to the stage `.err` files
+otherwise. The same scrubbing was extended to the three generic
+`except Exception` handlers, which returned `str(e)` — a missing binary reports
+its full path that way — so the invariant now holds for every path that reaches
+a user, not just the pipeline stages.
+
+### R45. Expired sessions are never deleted
+Django ignores expired session rows on read but only deletes them when told to,
+and nothing was telling it. Pure table growth, one row per login, in the same
+sqlite file as everything else. **Fixed:** second `ExecStart=` in
+`vald-cleanup.service` running `manage.py clearsessions`.
+
+### R46. Result filename collisions — not a defect
+Raised and withdrawn. `{ClientName}.{6-digit}` is not unique by construction:
+two users whose alphanumeric-reduced names match could in principle collide.
+But `submit_request_direct` checks `working/NNNNNN/.uuid` and increments the ID
+on a mismatch, and `cleanup_old_results` sweeps job directories and result files
+from a single `cutoff_time` — so the guard is live for exactly as long as the
+file it protects. No collision window exists.
+
+The coupling is worth remembering: job directories are kept for the full
+retention period *only* because the collision guard reads them, though their
+contents are dead on completion. In one dev tree, `TMP.LIST` intermediates were
+71% of 106 MB in `working/` against 3.9 MB of delivered results — peak disk
+runs 20-30x the delivered size. Sweeping job directories sooner would reclaim
+that, but requires moving the guard to look at `VALD_FTP_DIR` instead.
+**Decided (Tom):** leave it, the array is large.
 
 ---
 
