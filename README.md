@@ -7,10 +7,10 @@ Django replacement for the 30-year-old PHP-based VALD (Vienna Atomic Line Databa
 - Password authentication with activation tokens
 - 5 request forms: Extract All/Element/Stellar, Show Line, Show Line ONLINE
 - **Request tracking** - real-time status updates, download links
-- **Direct backend submission** - calls VALD binaries directly, bypasses email
-- **Hybrid architecture** - supports both direct and email-based modes
+- **Direct backend submission** - calls the VALD binaries directly; email is a
+  delivery option, not a separate execution path
 - User preferences stored in database (energy units, wavelength, medium)
-- Personal linelist configurations (file-based)
+- Personal linelist configurations (database-backed, opt-in)
 - Job queue system with parallel processing
 - Re-uses original HTML/CSS for familiarity
 
@@ -23,19 +23,19 @@ Django replacement for the 30-year-old PHP-based VALD (Vienna Atomic Line Databa
 
 ## Installation
 
-1. **Install dependencies:**
+1. **Install dependencies** (pinned in `uv.lock`):
    ```bash
-   python -m pip install -r requirements.txt
+   uv sync
    ```
 
 2. **Run migrations:**
    ```bash
-   python manage.py migrate
+   uv run python manage.py migrate
    ```
 
 3. **Sync user register:**
    ```bash
-   python manage.py sync_register_files
+   uv run python manage.py sync_register_files
    ```
 
 4. **Set VALD_HOME environment variable:**
@@ -46,20 +46,25 @@ Django replacement for the 30-year-old PHP-based VALD (Vienna Atomic Line Databa
 ## Running
 
 ```bash
-python manage.py runserver
+uv run python manage.py runserver
 ```
 
 Server runs at http://127.0.0.1:8000/
 
 ## Production deployment
 
-The app runs under gunicorn via `vald.service`. Two further pieces handle
-scheduled maintenance:
+The app runs under gunicorn via `vald.service`, with two timers for scheduled
+maintenance:
 
 | file | purpose |
 |------|---------|
-| `vald-cleanup.timer` / `.service` | delete expired result files daily at 02:23 |
-| `bin/vald-manage` | run any management command with the production environment |
+| `vald-cleanup.timer` / `.service` | daily at 02:23 - delete expired result files, then expired sessions |
+| `vald-backup.timer` / `.service` | daily at 03:17 - snapshot the database, tagged with the git revision |
+| `bin/vald-manage` | run any management command with the production environment (not a timer) |
+
+**The step-by-step deploy procedure lives on the admin help page**
+(`/admin/help/`), where the install path and unit file list are read from the
+running instance instead of being written down here.
 
 ### Why not cron
 
@@ -118,12 +123,12 @@ still adjust. For a mirror installed somewhere other than `/home/vald`:
 ```bash
 sed -i -e 's#/home/vald/vald-www\.git#/srv/vald/app#g' \
        -e 's#/home/vald/VALD3#/srv/vald/VALD3#g' \
-       vald.service vald-cleanup.service
+       vald.service vald-cleanup.service vald-backup.service
 ```
 
-Also check `User=`/`Group=` in both units.
+Also check `User=`/`Group=` in all three units.
 
-### Installing the timer
+### Installing the timers
 
 ```bash
 # 1. See what the first run would remove - it may be a lot on an existing
@@ -131,12 +136,13 @@ Also check `User=`/`Group=` in both units.
 bin/vald-manage cleanup_old_results --dry-run | tail -20
 
 # 2. Install and enable
-sudo cp vald-cleanup.service vald-cleanup.timer /etc/systemd/system/
+sudo cp vald-cleanup.service vald-cleanup.timer \
+        vald-backup.service vald-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now vald-cleanup.timer
+sudo systemctl enable --now vald-cleanup.timer vald-backup.timer
 
 # 3. Verify
-systemctl list-timers vald-cleanup.timer
+systemctl list-timers 'vald*'
 sudo systemctl start vald-cleanup.service   # run once now
 journalctl -u vald-cleanup.service -n 30
 ```
@@ -206,12 +212,29 @@ editing `default.cfg` alone changes nothing; the database must be re-imported.
 Repeat all three steps on each mirror — every site has its own database and its
 own copy of the data files.
 
-**Effect on users.** The new list is picked up automatically by everyone using
-the default configuration, and by any user who customises their configuration
-*after* the re-import. Users who have **already** customised their configuration
-keep their existing selection and do **not** get the new list — their choices are
-a snapshot and are deliberately left untouched. (Changing an existing linelist's
-*element range* is the exception: that field is shared, so it does reach everyone.)
+**Effect on users.** Every user is in one of two states:
+
+| state | effect of the re-import |
+|-------|-------------------------|
+| no personal configuration | picks up the new list automatically |
+| has a personal configuration | keeps their existing selection; does **not** get the new list |
+
+A personal configuration is a *snapshot* taken when the user first edits
+something, and is deliberately left untouched — but the Personal Configuration
+page now tells them so, naming the linelists added to the VALD default since
+their snapshot was taken, with buttons to remove the personal configuration (and
+track the default again) or to re-copy the current default. Simply *viewing* that
+page creates nothing, so a user who has never customised anything stays in the
+first row.
+
+Changing an existing linelist's *element range* is the exception: that field
+lives on the shared `Linelist` row, so it reaches everyone either way.
+
+**Removing a linelist** is handled by leaving it out of `default.cfg` and
+re-importing: the importer deactivates any linelist absent from the file, and
+generated `.cfg` files skip inactive linelists. That is what stops an old
+snapshot from naming a data file that has left the SVN tree. A list that
+reappears in a later `default.cfg` is reactivated.
 
 ## Configuration
 
@@ -245,7 +268,8 @@ Edit `config/clients.register`:
 email@domain.com
 ```
 
-Run `python manage.py sync_register_files` after changes.
+Run `bin/vald-manage sync_register_files` after changes (or `uv run python
+manage.py sync_register_files` in development).
 
 ## Architecture
 
@@ -262,13 +286,14 @@ Run `python manage.py sync_register_files` after changes.
 - **Job working directory**: Binaries run FROM the job subdirectory, for correct `pres_in.NNNNNN` naming and to keep concurrent jobs isolated
 - **Showline requests**: No bib files, output is `result.NNNNNN` → moved to FTP as `.txt`
 - **Extract requests**: Create `.gz` and `.bib.gz` files
-- **Job queue**: Thread pool limits parallel execution (default 2 workers)
+- **Job queue**: Thread pool limits parallel execution (`VALD_MAX_WORKERS`, 5 in production)
 
 ## Troubleshooting
 
-**"Output file not found"** → Job execution failed; check the per-binary `err.*.log` in the job subdirectory
+**"Output file not found"** → Job execution failed; check the per-stage `.err` files
+(`preselect5.err`, `presformat5.err`, ...) in the job subdirectory under `working/`
 **"Can't open input data file"** → `pres_in.*` file missing or misnamed
-**"User not registered"** → Run `python manage.py sync_register_files`
+**"User not registered"** → Run `bin/vald-manage sync_register_files`
 
 ## References
 

@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
@@ -129,6 +132,15 @@ def admin_help(request):
          'here means links that go nowhere.'),
     ]
 
+    # Deployment paths come from the running instance, and the unit list from
+    # what is actually in the checkout, so adding a timer shows up here without
+    # anyone remembering to edit this page.
+    base_dir = Path(settings.BASE_DIR)
+    unit_files = sorted(
+        p.name for p in base_dir.iterdir()
+        if p.suffix in ('.service', '.timer')
+    )
+
     context = {
         **admin.site.each_context(request),
         'title': 'Admin help',
@@ -139,6 +151,9 @@ def admin_help(request):
         'retention_days': settings.VALD_RESULT_RETENTION_DAYS,
         'queue_stats': get_queue_stats(),
         'user_changelist': changelist,
+        'base_dir': base_dir,
+        'unit_files': unit_files,
+        'settings_module': os.environ.get('DJANGO_SETTINGS_MODULE', '(default)'),
     }
     return render(request, 'admin/vald/help.html', context)
 

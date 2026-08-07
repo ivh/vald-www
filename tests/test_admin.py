@@ -153,3 +153,47 @@ def test_user_changelist_and_change_form_link_to_help(staff_client):
     change_form = staff_client.get(f'/admin/vald/user/{user.pk}/change/').content.decode()
     assert '/admin/help/' in change_form
     assert 'suspended' in change_form
+
+
+# --- deployment section ------------------------------------------------------
+
+@pytest.mark.django_db
+def test_help_page_documents_deployment(staff_client):
+    body = staff_client.get('/admin/help/').content.decode()
+    assert 'Deploying a new version' in body
+    for command in ['git pull', 'uv sync', 'bin/vald-manage migrate',
+                    'systemctl daemon-reload', 'systemctl restart vald']:
+        assert command in body, f'deployment section does not mention {command!r}'
+
+
+@pytest.mark.django_db
+def test_deployment_section_lists_every_unit_file_in_the_checkout(staff_client):
+    """Discovered from the checkout, so adding a timer cannot leave this stale."""
+    from pathlib import Path
+    from django.conf import settings
+
+    units = {p.name for p in Path(settings.BASE_DIR).iterdir()
+             if p.suffix in ('.service', '.timer')}
+    assert units, 'no unit files found - the fixture assumption is wrong'
+
+    listed = set(staff_client.get('/admin/help/').context['unit_files'])
+    assert listed == units
+
+
+@pytest.mark.django_db
+def test_deployment_section_shows_the_real_install_path(staff_client):
+    """Paths come from the running instance rather than being written down."""
+    from django.conf import settings
+    body = staff_client.get('/admin/help/').content.decode()
+    assert str(settings.BASE_DIR) in body
+
+
+@pytest.mark.django_db
+def test_help_page_does_not_advertise_a_stale_install_command(staff_client):
+    """There is no requirements.txt; README still tells you to use one."""
+    from pathlib import Path
+    from django.conf import settings
+
+    body = staff_client.get('/admin/help/').content.decode()
+    if not (Path(settings.BASE_DIR) / 'requirements.txt').exists():
+        assert 'requirements.txt' not in body

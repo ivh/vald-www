@@ -26,6 +26,10 @@ follows the light/dark theme instead of hard-coding a background.
   .help-page .state .flags { font-weight: normal; font-size: .85em; font-family: monospace;
       color: var(--body-quiet-color); margin-left: .6em; }
   .help-page .lbl { display: inline-block; min-width: 9.5em; color: var(--body-quiet-color); }
+  .help-page pre { background: var(--darkened-bg); padding: .8em 1em; border-radius: 3px;
+      overflow-x: auto; line-height: 1.5; margin: .6em 0; }
+  .help-page pre .c { color: var(--body-quiet-color); }
+  .help-page ol.steps > li { margin-bottom: 1.2em; }
 </style>
 {% endblock %}
 
@@ -177,6 +181,84 @@ service restart.</p>
   <dd>Seeded the initial import and are <strong>not</strong> authoritative any more.
       Editing them has no effect on the running site; edit the configuration here
       instead.</dd>
+</dl>
+
+<h2>Deploying a new version</h2>
+
+<p>All of this runs on the server as the <code>vald</code> user, from
+<code>{{ base_dir }}</code>. Steps 4&ndash;5 are only needed when the unit files
+themselves changed; the rest apply to every deploy.
+
+<ol class="steps">
+  <li><b>Snapshot the database first.</b>
+    <pre>sudo systemctl start vald-backup.service</pre>
+    The nightly timer does this too, but a migration is the one thing worth having
+    a fresh snapshot before. Snapshots are tagged with the git revision, because a
+    dump only restores against a codebase at a compatible migration state.
+    <span class="note">Start the <em>unit</em>, not <code>scripts/backup_db.sh</code>
+    directly: the script defaults to <code>backups/</code> inside the checkout,
+    while the unit sets <code>VALD_BACKUP_DIR</code> to where the nightly
+    snapshots actually go. Running the script bare puts the one snapshot you
+    care about somewhere you will not look for it.</span></li>
+
+  <li><b>Pull the code, and sync dependencies if they changed.</b>
+    <pre>git pull
+uv sync</pre>
+    Dependencies are pinned in <code>uv.lock</code>; <code>uv sync</code> makes
+    <code>.venv</code> match it exactly.</li>
+
+  <li><b>Apply migrations.</b>
+    <pre>bin/vald-manage migrate</pre>
+    <span class="note">Use <code>bin/vald-manage</code>, not
+    <code>python manage.py</code>. <code>manage.py</code> defaults to the
+    <em>development</em> settings module, whose <code>VALD_HOME</code> and result
+    directory point somewhere else entirely; the wrapper reads
+    <code>secrets.txt</code> and sets
+    <code>DJANGO_SETTINGS_MODULE=vald_web.settings_deploy</code>. This instance is
+    running <code>{{ settings_module }}</code>.</span></li>
+
+  <li><b>If any unit file changed</b>, copy it into place:
+    <pre>sudo cp {% for name in unit_files %}{{ name }} {% endfor %}/etc/systemd/system/</pre></li>
+
+  <li><b>...and reload systemd</b>, which is what makes a changed unit file take
+    effect. Restarting alone will not.
+    <pre>sudo systemctl daemon-reload</pre></li>
+
+  <li><b>Restart the application.</b>
+    <pre>sudo systemctl restart vald</pre></li>
+
+  <li><b>Check it came back.</b>
+    <pre>systemctl status vald
+journalctl -u vald -n 50</pre></li>
+</ol>
+
+<p>First-time setup only, to arm the scheduled jobs:
+<pre>sudo systemctl enable --now vald-cleanup.timer vald-backup.timer</pre>
+Verify with <code>systemctl list-timers 'vald*'</code>.
+
+<h3>Things that surprise people</h3>
+
+<dl>
+  <dt>There is no <code>collectstatic</code> step</dt>
+  <dd>Static files are served by the reverse proxy directly from the checkout.
+      <code>STATIC_ROOT</code> is declared but unused.</dd>
+
+  <dt>Some deploys sign everyone out</dt>
+  <dd>Sessions are revalidated against the database on every request, so a change
+      to how they are keyed invalidates existing ones. Changing
+      <code>VALD_URL_PREFIX</code> does the same, because the session and CSRF
+      cookie paths derive from it. Harmless, but expect the support email.</dd>
+
+  <dt>A restart kills running extractions</dt>
+  <dd>Jobs run in a daemon thread inside the gunicorn worker, so restarting loses
+      them and their rows sit at "processing" indefinitely.
+      <code>bin/vald-manage reconcile_stuck_requests</code> marks those failed; it
+      leaves a merely slow job alone, using twice the job timeout as the cutoff.
+      Better to deploy when nothing is in flight &mdash; the Requests list shows
+      what is, and the queue counter is at the top of it.</dd>
+
+  <dt>Editing <code>secrets.txt</code> needs a restart, not a reload</dt>
+  <dd>systemd reads <code>EnvironmentFile=</code> at process start.</dd>
 </dl>
 
 </div>
