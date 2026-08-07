@@ -305,3 +305,14 @@ def test_config_view_survives_an_empty_database(staff_client, approved_user):
     response = staff_client.get(config_url(approved_user))
     assert response.status_code == 200
     assert 'no system default configuration' in response.content.decode().lower()
+
+
+@pytest.mark.django_db
+def test_admin_pages_render_their_title_once(staff_client, system_default, approved_user):
+    """admin/base.html already emits <h1>{{ title }}</h1> from the context, so a
+    template that adds its own shows the heading twice."""
+    import re
+    for url in [config_url(approved_user), '/admin/help/']:
+        body = staff_client.get(url).content.decode()
+        headings = re.findall(r'<h1[^>]*>(.*?)</h1>', body, re.S)
+        assert len(headings) == 1, f'{url} rendered {len(headings)} <h1>: {headings}'

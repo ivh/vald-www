@@ -447,7 +447,7 @@ def test_modify_does_not_leak_another_users_request(logged_in_client):
 @pytest.mark.parametrize('posted,expected', [
     ('7', 7),            # in range, kept
     ('500', 9),          # above range, clamped
-    ('-9', 1),           # below range, clamped
+    ('-9', 0),           # below range, clamped (0 is legal - see RANK_MIN)
     ('9' * 25, 9),       # past 2**63: used to raise OverflowError from sqlite
     ('not-a-number', 3), # unparseable, falls back
     ('', 3),
@@ -514,3 +514,20 @@ def test_admin_set_password_applies_the_password_validators(staff_client, approv
                             'password2': 'correct-horse-batt-9'})
     approved_user.refresh_from_db()
     assert approved_user.check_password('correct-horse-batt-9')
+
+
+@pytest.mark.django_db
+def test_zero_is_a_legal_rank(logged_in_client, system_config, approved_user):
+    """The shipped default.cfg has 19 entries with a rank of 0, so clamping the
+    lower bound to 1 would silently rewrite real VALD data on the first edit."""
+    from vald.models import Linelist
+    from vald.persconfig import clamp_rank
+    assert clamp_rank(0) == 0
+
+    linelist = Linelist.objects.get(path='/CVALD3/ATOMS/x1')
+    payload = {'linelist-checked': 'on', 'edit-val-0': '0'}
+    payload.update({f'edit-val-{j}': '3' for j in range(1, 9)})
+    save_linelist(logged_in_client, linelist.pk, **payload)
+
+    mine = ConfigLinelist.objects.get(config__user=approved_user, linelist=linelist)
+    assert mine.rank_wl == 0

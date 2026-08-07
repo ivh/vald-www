@@ -35,8 +35,7 @@ actually running", which the inline cannot show.
 
 {% block content %}
 <div id="content-main" class="cfg-page">
-
-<h1>{{ title }}</h1>
+{# No <h1> here: base.html already renders one from `title` in the context. #}
 
 {% if not config %}
   <p class="state warn">There is no system default configuration in the database,

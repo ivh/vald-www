@@ -547,9 +547,10 @@ class Linelist(models.Model):
     # Default priority (lower = higher priority in merging)
     default_priority = models.IntegerField(default=1000)
     
-    # Default rank weights (1-9, higher = better quality)
+    # Default rank weights (0-9, higher = better quality; the shipped
+    # default.cfg uses 0 for 'no data' on 19 entries)
     # These are used when merging duplicate lines from multiple sources
-    default_rank_wl = models.IntegerField(default=3, help_text="Wavelength quality rank (1-9)")
+    default_rank_wl = models.IntegerField(default=3, help_text="Wavelength quality rank (0-9)")
     default_rank_gf = models.IntegerField(default=3, help_text="Oscillator strength quality rank")
     default_rank_rad = models.IntegerField(default=3, help_text="Radiative damping quality rank")
     default_rank_stark = models.IntegerField(default=3, help_text="Stark damping quality rank")

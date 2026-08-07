@@ -6,14 +6,23 @@ Uses Linelist, Config, and ConfigLinelist models instead of .cfg files.
 from django.db import transaction
 from .models import Linelist, Config, ConfigLinelist
 
-# Quality rank weights are 1-9 by the .cfg format's definition. Clamped rather
-# than rejected: the values arrive from nine separate form fields, and silently
-# pinning an out-of-range one to the nearest legal value is friendlier than
-# failing the whole save. Enforced here, at the only place they are persisted,
-# so nothing downstream has to trust the view's parsing - an unbounded int
+# Quality rank weights, as observed in the shipped default.cfg: 0 through 9.
+# The lower bound is 0, not 1 - the real default has 19 entries with a rank of 0
+# (vdw_barklem_final and friends), so clamping to 1 would silently rewrite
+# legitimate VALD data the moment a user edited one of those linelists. The
+# model help_text saying "1-9" was wrong about this too.
+#
+# Clamped rather than rejected: the values arrive from nine separate form fields,
+# and pinning an out-of-range one to the nearest legal value is friendlier than
+# failing the whole save. Enforced here, at the only place the web UI persists
+# them, so nothing downstream has to trust the view's parsing - an unbounded int
 # reaches both the Fortran config parser and sqlite, and sqlite raises
 # OverflowError past 2^63 (which surfaced as a 500 on the persconf page).
-RANK_MIN = 1
+#
+# The import commands deliberately do NOT clamp: a migration should carry legacy
+# configuration across verbatim, and the legacy files do contain the occasional
+# out-of-range value that the Fortran has evidently tolerated for years.
+RANK_MIN = 0
 RANK_MAX = 9
 
 
