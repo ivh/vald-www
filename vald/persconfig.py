@@ -6,6 +6,24 @@ Uses Linelist, Config, and ConfigLinelist models instead of .cfg files.
 from django.db import transaction
 from .models import Linelist, Config, ConfigLinelist
 
+# Quality rank weights are 1-9 by the .cfg format's definition. Clamped rather
+# than rejected: the values arrive from nine separate form fields, and silently
+# pinning an out-of-range one to the nearest legal value is friendlier than
+# failing the whole save. Enforced here, at the only place they are persisted,
+# so nothing downstream has to trust the view's parsing - an unbounded int
+# reaches both the Fortran config parser and sqlite, and sqlite raises
+# OverflowError past 2^63 (which surfaced as a 500 on the persconf page).
+RANK_MIN = 1
+RANK_MAX = 9
+
+
+def clamp_rank(value, default=3):
+    """Coerce a rank weight to an int within RANK_MIN..RANK_MAX."""
+    try:
+        return max(RANK_MIN, min(RANK_MAX, int(value)))
+    except (TypeError, ValueError):
+        return default
+
 
 def get_user_config(user):
     """
@@ -126,6 +144,7 @@ def update_config_linelist(config_linelist_id, user, is_enabled=None, ranks=None
             cl.is_enabled = is_enabled
         
         if ranks and len(ranks) == 9:
+            ranks = [clamp_rank(r) for r in ranks]
             cl.rank_wl = ranks[0]
             cl.rank_gf = ranks[1]
             cl.rank_rad = ranks[2]

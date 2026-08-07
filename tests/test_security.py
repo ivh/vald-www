@@ -299,3 +299,181 @@ def test_blank_password_counts_as_no_password_in_the_pending_filter():
     assert blank.is_pending_approval()
     assert User.objects.filter(PENDING_APPROVAL).filter(pk=blank.pk).exists()
 
+
+
+# --- R38: a session must stop working when the account does ----------------
+#
+# R1 checked is_active at the login gate. Nothing rechecked it afterwards, so
+# every one of these was a session that outlived the account state it was
+# granted under - by up to SESSION_COOKIE_AGE.
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('page', ['/extractall/', '/my-requests/', '/persconf/',
+                                  '/unitselection/'])
+def test_suspending_an_account_ends_its_live_sessions(logged_in_client, approved_user, page):
+    approved_user.is_active = False
+    approved_user.save()
+    assert logged_in_client.get(page).status_code == 302
+    assert 'user_id' not in logged_in_client.session
+
+
+@pytest.mark.django_db
+def test_deleting_an_account_ends_its_live_sessions(logged_in_client, approved_user):
+    approved_user.delete()
+    assert logged_in_client.get('/my-requests/').status_code == 302
+    assert 'user_id' not in logged_in_client.session
+
+
+@pytest.mark.django_db
+def test_password_reset_ends_other_sessions(logged_in_client, approved_user):
+    """The stolen-session case: recovering the account must actually recover it."""
+    token = approved_user.generate_activation_token()
+    approved_user.save()
+    Client().post(f'/reset-password/{token}/',
+                  {'password': 'brand-new-passw-77', 'password_confirm': 'brand-new-passw-77'})
+
+    assert logged_in_client.get('/my-requests/').status_code == 302
+    assert 'user_id' not in logged_in_client.session
+
+
+@pytest.mark.django_db
+def test_clearing_a_password_from_the_admin_ends_live_sessions(logged_in_client, approved_user):
+    """The 'force re-activation' action, which is also how an admin locks someone out."""
+    User.objects.filter(pk=approved_user.pk).update(password=None)
+    assert logged_in_client.get('/my-requests/').status_code == 302
+
+
+@pytest.mark.django_db
+def test_an_ordinary_session_survives_unrelated_saves(logged_in_client, approved_user):
+    """The revalidation must not log people out for no reason."""
+    approved_user.affiliation = 'Uppsala'
+    approved_user.save()
+    assert logged_in_client.get('/my-requests/').status_code == 200
+
+
+@pytest.mark.django_db
+def test_session_key_is_rotated_on_login(approved_user):
+    """Session fixation: a key fixed before login must not become authenticated."""
+    client = Client()
+    client.get('/')
+    client.session.save()
+    before = client.session.session_key
+
+    client.post('/login/', {'user': 'test@example.com', 'password': 'pw-for-testing-123'})
+
+    assert 'user_id' in client.session
+    assert client.session.session_key != before
+
+
+@pytest.mark.django_db
+def test_session_key_is_rotated_when_setting_a_password(db):
+    user = User.objects.create(name='T', is_active=True)
+    UserEmail.objects.create(user=user, email='t@example.com', is_primary=True)
+    token = user.generate_activation_token()
+    user.save()
+
+    client = Client()
+    client.get(f'/activate/{token}/')
+    client.session.save()
+    before = client.session.session_key
+    client.post('/set-password/', {'password': 'correct-horse-batt-9',
+                                   'password_confirm': 'correct-horse-batt-9'})
+
+    assert 'user_id' in client.session
+    assert client.session.session_key != before
+
+
+# --- R39: ?modify= is raw query string, not a validated UUID ----------------
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('page', ['/extractall/', '/extractelement/',
+                                  '/extractstellar/', '/showline/'])
+@pytest.mark.parametrize('value', ['not-a-uuid', '', '../../etc/passwd', '1 OR 1=1'])
+def test_modify_with_an_unparseable_uuid_is_not_a_500(logged_in_client, page, value):
+    """A UUIDField lookup raises ValidationError, which was never caught."""
+    assert logged_in_client.get(f'{page}?modify={value}').status_code == 200
+
+
+@pytest.mark.django_db
+def test_modify_does_not_leak_another_users_request(logged_in_client):
+    from vald.models import Request
+    other = User.objects.create(name='Other', is_active=True)
+    req = Request.objects.create(
+        user=other, request_type='extractall', status='complete',
+        parameters={'stwvl': 1234.5, 'endwvl': 1240.0, 'subject': 'SECRET-PROJECT'})
+
+    body = logged_in_client.get(f'/extractall/?modify={req.uuid}').content.decode()
+    assert 'SECRET-PROJECT' not in body
+    assert '1234.5' not in body
+
+
+# --- R30/R40: rank weights reach both sqlite and the Fortran config parser --
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('posted,expected', [
+    ('7', 7),            # in range, kept
+    ('500', 9),          # above range, clamped
+    ('-9', 1),           # below range, clamped
+    ('9' * 25, 9),       # past 2**63: used to raise OverflowError from sqlite
+    ('not-a-number', 3), # unparseable, falls back
+    ('', 3),
+])
+def test_rank_weights_are_clamped(logged_in_client, system_config, posted, expected):
+    logged_in_client.get('/persconf/')
+    mine = Config.objects.get(user__isnull=False).configlinelist_set.first()
+
+    payload = {'action': 'save', 'editid': str(mine.pk), 'linelist-checked': 'on',
+               'edit-val-0': posted}
+    payload.update({f'edit-val-{j}': '3' for j in range(1, 9)})
+    assert logged_in_client.post('/persconf/', payload).status_code == 200
+
+    mine.refresh_from_db()
+    assert mine.rank_wl == expected
+
+
+@pytest.mark.django_db
+def test_generated_cfg_only_contains_legal_ranks(logged_in_client, system_config):
+    """What preselect5 actually parses."""
+    logged_in_client.get('/persconf/')
+    mine = Config.objects.get(user__isnull=False).configlinelist_set.first()
+    payload = {'action': 'save', 'editid': str(mine.pk), 'linelist-checked': 'on'}
+    payload.update({f'edit-val-{j}': '99999' for j in range(9)})
+    logged_in_client.post('/persconf/', payload)
+
+    ranks = mine.config.generate_cfg_content().splitlines()[1].split(',')[5:14]
+    assert [int(r) for r in ranks] == [9] * 9
+
+
+# --- R41: the admin is a public login form too -----------------------------
+
+@pytest.fixture
+def staff_client(db):
+    from django.contrib.auth.models import User as AuthUser
+    AuthUser.objects.create_superuser('root', 'root@example.com', 'admin-pw-for-testing-1')
+    client = Client()
+    client.force_login(AuthUser.objects.get(username='root'))
+    return client
+
+
+@pytest.mark.django_db
+def test_admin_login_is_rate_limited(settings):
+    settings.VALD_ADMIN_LOGIN_RATE = '3/h'
+    client = Client()
+    codes = [client.post('/admin/login/',
+                         {'username': 'root', 'password': f'guess{i}'}).status_code
+             for i in range(5)]
+    assert 403 in codes, f'admin login accepted unlimited guesses: {codes}'
+
+
+@pytest.mark.django_db
+def test_admin_set_password_applies_the_password_validators(staff_client, approved_user):
+    """This path accepted anything six characters long."""
+    url = f'/admin/vald/user/{approved_user.pk}/password/'
+    staff_client.post(url, {'password1': '123456', 'password2': '123456'})
+    approved_user.refresh_from_db()
+    assert not approved_user.check_password('123456')
+
+    staff_client.post(url, {'password1': 'correct-horse-batt-9',
+                            'password2': 'correct-horse-batt-9'})
+    approved_user.refresh_from_db()
+    assert approved_user.check_password('correct-horse-batt-9')

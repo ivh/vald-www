@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.db.models import Q
 from django.http import HttpResponseRedirect
@@ -312,13 +314,21 @@ class UserAdmin(admin.ModelAdmin):
                 messages.error(request, 'Password cannot be empty.')
             elif password != password2:
                 messages.error(request, 'Passwords do not match.')
-            elif len(password) < 6:
-                messages.error(request, 'Password must be at least 6 characters.')
             else:
-                user.set_password(password)
-                user.save()
-                messages.success(request, f'Password changed successfully for {user.name}.')
-                return redirect('admin:vald_user_change', user.id)
+                # AUTH_PASSWORD_VALIDATORS, same as the activation and reset
+                # forms. This path used to accept anything six characters long,
+                # so the one password an admin sets by hand was the weakest the
+                # site allowed.
+                try:
+                    validate_password(password, user)
+                except DjangoValidationError as e:
+                    for message in e.messages:
+                        messages.error(request, message)
+                else:
+                    user.set_password(password)
+                    user.save()
+                    messages.success(request, f'Password changed successfully for {user.name}.')
+                    return redirect('admin:vald_user_change', user.id)
 
         context = {
             'user': user,

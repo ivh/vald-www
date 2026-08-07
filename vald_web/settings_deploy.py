@@ -229,7 +229,6 @@ SITENAME = os.environ.get('VALD_SITENAME', 'VALD Uppsala')
 # Base URL without the sub-path prefix; completion emails append
 # FORCE_SCRIPT_NAME themselves (reverse() omits it in a background thread).
 SITE_URL = os.environ.get('VALD_SITE_URL', 'https://vald.astro.uu.se')
-MAINTENANCE = _env_bool('VALD_MAINTENANCE')
 
 # Backend processing configuration
 VALD_BIN = VALD_HOME / 'bin'
@@ -255,6 +254,15 @@ VALD_MAX_REQUESTS_PER_USER = 5
 # Submission rate per user (django-ratelimit syntax). The in-flight cap above
 # is the real protection; this just stops a scripted loop.
 VALD_SUBMIT_RATE = '120/h'
+
+# Rate limit on the Django admin login (django-ratelimit syntax). The admin is
+# publicly reachable and Django does not throttle it at all on its own.
+VALD_ADMIN_LOGIN_RATE = '10/h'
+
+# Session lifetime. Django's default is two weeks. Sessions are revalidated
+# against the database on every request (see views.get_current_user), so this
+# only bounds how long an idle, untouched cookie stays usable.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 1 week
 
 # Minimum gap between "job queue full" alerts to the webmaster. The alert fires
 # once per rejected submission, and a full queue produces those in bursts.

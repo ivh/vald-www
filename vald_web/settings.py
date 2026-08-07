@@ -158,7 +158,6 @@ DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
 SITENAME = 'VALD'
 SITE_URL = 'http://localhost:8000'  # Base URL for email links (update for production)
-MAINTENANCE = False
 
 # Backend processing configuration
 VALD_BIN = VALD_HOME / 'bin'
@@ -186,6 +185,15 @@ VALD_MAX_REQUESTS_PER_USER = 5
 # Submission rate per user (django-ratelimit syntax). The in-flight cap above
 # is the real protection; this just stops a scripted loop.
 VALD_SUBMIT_RATE = '120/h'
+
+# Rate limit on the Django admin login (django-ratelimit syntax). The admin is
+# publicly reachable and Django does not throttle it at all on its own.
+VALD_ADMIN_LOGIN_RATE = '10/h'
+
+# Session lifetime. Django's default is two weeks. Sessions are revalidated
+# against the database on every request (see views.get_current_user), so this
+# only bounds how long an idle, untouched cookie stays usable.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 1 week
 
 # Minimum gap between "job queue full" alerts to the webmaster.
 VALD_QUEUE_FULL_COOLDOWN = 1800  # 30 minutes

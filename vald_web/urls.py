@@ -17,6 +17,7 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from django_ratelimit.decorators import ratelimit
 
 from vald.admin import admin_help
 
@@ -24,6 +25,23 @@ from vald.admin import admin_help
 admin.site.site_header = "VALD admin"
 admin.site.site_title = "VALD admin"
 admin.site.index_title = "VALD administration"
+
+# /admin/ is reachable from the public internet and Django's admin login has no
+# throttle of its own, so staff passwords were guessable at full speed - while
+# the VALD login next door is limited to 5/min. Wrapping the bound method is the
+# cheap way in; a custom AdminSite would mean re-registering every ModelAdmin.
+#
+# Must happen before admin.site.urls is evaluated below, which is when
+# get_urls() captures self.login.
+#
+# block=True unlike the site's own limits: there is no admin template in which
+# to render a friendly "try again later", so a 403 is the honest answer.
+admin.site.login = ratelimit(
+    key='vald.ratelimit.client_ip',
+    rate='vald.ratelimit.admin_login_rate',
+    method='POST',
+    block=True,
+)(admin.site.login)
 
 urlpatterns = [
     # Ahead of admin.site.urls so it resolves; it spans models, so it belongs to

@@ -54,3 +54,8 @@ def session_user(group, request):
 def submit_rate(group, request):
     """Submission rate, read from settings so it can be tuned without a deploy."""
     return getattr(settings, 'VALD_SUBMIT_RATE', '120/h')
+
+
+def admin_login_rate(group, request):
+    """Django admin login rate, read from settings like submit_rate."""
+    return getattr(settings, 'VALD_ADMIN_LOGIN_RATE', '10/h')

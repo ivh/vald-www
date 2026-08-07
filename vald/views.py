@@ -10,7 +10,9 @@ from django.core.paginator import Paginator
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils.crypto import constant_time_compare
 from datetime import timedelta
+from functools import wraps
 from django_ratelimit.decorators import ratelimit
 from pathlib import Path
 import glob
@@ -38,15 +40,68 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
+# Session keys that together constitute "logged in". Cleared as a unit when a
+# session stops being valid; the rest of the session (messages, activation
+# state) is deliberately left alone.
+SESSION_AUTH_KEYS = ('user_id', 'email', 'name', 'auth_hash')
+
+
+def start_session(request, user, email):
+    """Authenticate this session as `user`.
+
+    cycle_key() issues a fresh session id, so a session id fixed by an attacker
+    before login does not become an authenticated one. The auth hash lets every
+    later request notice a password change - see User.session_auth_hash.
+    """
+    request.session.cycle_key()
+    request.session['email'] = email
+    request.session['name'] = user.name
+    request.session['user_id'] = user.id
+    request.session['auth_hash'] = user.session_auth_hash()
+
+
+def end_session(request):
+    """Drop the authentication keys, leaving the session itself intact."""
+    for key in SESSION_AUTH_KEYS:
+        request.session.pop(key, None)
+
+
 def get_current_user(request):
-    """Get the User object from session. Returns None if not logged in."""
-    user_id = request.session.get('user_id')
-    if not user_id:
-        return None
-    try:
-        return User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        return None
+    """Get the User object from session. Returns None if not logged in.
+
+    The session is revalidated against the database on every request rather than
+    trusted on the strength of session['user_id'] alone. Two states have to end a
+    session immediately rather than whenever the cookie happens to expire: an
+    admin unticking is_active, and a password reset (the stolen-session case).
+    Both are checked here because this is the single place every logged-in view
+    resolves its user.
+    """
+    # One resolution per request: the decorator, get_user_context() and the view
+    # body all ask, and this is a database round trip.
+    cached = getattr(request, '_vald_user', Ellipsis)
+    if cached is not Ellipsis:
+        return cached
+
+    def resolve():
+        user_id = request.session.get('user_id')
+        if not user_id:
+            return None
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            end_session(request)
+            return None
+        if not user.is_active:
+            end_session(request)
+            return None
+        if not constant_time_compare(request.session.get('auth_hash', ''),
+                                     user.session_auth_hash()):
+            end_session(request)
+            return None
+        return user
+
+    request._vald_user = resolve()
+    return request._vald_user
 
 
 def inactive_account_message(user):
@@ -64,14 +119,16 @@ def inactive_account_message(user):
 
 def get_user_context(request):
     """Get common context data for templates"""
+    # Resolved first: it clears the session keys read below if the session has
+    # stopped being valid, so a suspended user is not greeted by name.
+    user = get_current_user(request)
+
     context = {
         'sitename': settings.SITENAME,
         'user_email': request.session.get('email'),
         'user_name': request.session.get('name'),
     }
 
-    # Add user preferences if logged in
-    user = get_current_user(request) if request.session.get('user_id') else None
     if user:
         # Load preferences from database
         prefs = user.get_preferences()
@@ -198,9 +255,7 @@ def login(request):
             return redirect('vald:index')
 
         # Login successful
-        request.session['email'] = email
-        request.session['name'] = user.name
-        request.session['user_id'] = user.id
+        start_session(request, user, email)
 
         # Set the login email as primary (tracks actively used email)
         user.emails.update(is_primary=False)  # Clear all primary flags
@@ -328,11 +383,7 @@ def set_password(request):
         del request.session['activation_token']
 
         # Log user in
-        request.session['email'] = activation_email
-        request.session['name'] = user.name
-        request.session['user_id'] = user.id
-
-        # User preferences are now file-based, no DB object needed
+        start_session(request, user, activation_email)
 
         messages.success(request, 'Password set successfully! You are now logged in.')
         return redirect('vald:index')
@@ -483,126 +534,68 @@ def serve_path_or_none(path):
 
 
 def require_login(view_func):
-    """Decorator to require login"""
+    """Decorator to require a session that is still valid.
+
+    Checks the user, not just the session key: get_current_user() rejects (and
+    clears) a session whose account has been suspended or whose password has
+    changed since it was opened.
+    """
+    @wraps(view_func)
     def wrapper(request, *args, **kwargs):
-        if not request.session.get('user_id'):
+        if get_current_user(request) is None:
             messages.error(request, 'You are not logged in. Please log in and try again.')
             return redirect('vald:index')
         return view_func(request, *args, **kwargs)
     return wrapper
 
 
-@require_login
-def extractall(request):
-    """Extract All form"""
-    context = get_user_context(request)
-    user = get_current_user(request)
+def modify_initial_data(request, user):
+    """Parameters of the request named by ?modify=, for pre-filling a form.
 
-    # Check if modifying an existing request
+    Returns {} and explains itself for anything that does not name a request of
+    `user`'s. `modify` is raw query string, so an unparseable value has to be
+    caught here: a UUIDField lookup raises ValidationError, not DoesNotExist, for
+    a value that is not a UUID at all - which made every hand-edited URL a 500.
+    """
     modify_uuid = request.GET.get('modify')
-    initial_data = {}
+    if not modify_uuid:
+        return {}
 
-    if modify_uuid:
-        try:
-            req_obj = Request.objects.get(uuid=modify_uuid)
-            # Security: only allow user to modify their own requests
-            if req_obj.user_id == user.id:
-                initial_data = req_obj.parameters
-                messages.info(request, 'Form pre-filled with previous request values.')
-            else:
-                messages.error(request, 'You do not have permission to modify this request.')
-        except Request.DoesNotExist:
-            messages.error(request, 'Request not found.')
+    try:
+        req_obj = Request.objects.get(uuid=modify_uuid)
+    except (Request.DoesNotExist, DjangoValidationError, ValueError):
+        messages.error(request, 'Request not found.')
+        return {}
 
-    context['form'] = ExtractAllForm(initial=initial_data)
-    return render(request, 'vald/extractall.html', context)
+    # Only the owner may see a previous request's parameters
+    if req_obj.user_id != user.id:
+        messages.error(request, 'You do not have permission to modify this request.')
+        return {}
 
-
-@require_login
-def extractelement(request):
-    """Extract Element form"""
-    context = get_user_context(request)
-    user = get_current_user(request)
-
-    # Check if modifying an existing request
-    modify_uuid = request.GET.get('modify')
-    initial_data = {}
-
-    if modify_uuid:
-        try:
-            req_obj = Request.objects.get(uuid=modify_uuid)
-            # Security: only allow user to modify their own requests
-            if req_obj.user_id == user.id:
-                initial_data = req_obj.parameters
-                messages.info(request, 'Form pre-filled with previous request values.')
-            else:
-                messages.error(request, 'You do not have permission to modify this request.')
-        except Request.DoesNotExist:
-            messages.error(request, 'Request not found.')
-
-    context['form'] = ExtractElementForm(initial=initial_data)
-    return render(request, 'vald/extractelement.html', context)
+    messages.info(request, 'Form pre-filled with previous request values.')
+    return req_obj.parameters or {}
 
 
-@require_login
-def extractstellar(request):
-    """Extract Stellar form"""
-    context = get_user_context(request)
-    user = get_current_user(request)
-
-    # Check if modifying an existing request
-    modify_uuid = request.GET.get('modify')
-    initial_data = {}
-
-    if modify_uuid:
-        try:
-            req_obj = Request.objects.get(uuid=modify_uuid)
-            # Security: only allow user to modify their own requests
-            if req_obj.user_id == user.id:
-                initial_data = req_obj.parameters
-                messages.info(request, 'Form pre-filled with previous request values.')
-            else:
-                messages.error(request, 'You do not have permission to modify this request.')
-        except Request.DoesNotExist:
-            messages.error(request, 'Request not found.')
-
-    context['form'] = ExtractStellarForm(initial=initial_data)
-    return render(request, 'vald/extractstellar.html', context)
+def extract_form_view(name, form_class, template):
+    """Build one of the four near-identical extraction form views."""
+    @require_login
+    def view(request):
+        context = get_user_context(request)
+        initial = modify_initial_data(request, get_current_user(request))
+        context['form'] = form_class(initial=initial)
+        return render(request, template, context)
+    view.__name__ = name
+    return view
 
 
-@require_login
-def showline(request):
-    """Show Line form - uses simplified ONLINE form"""
-    context = get_user_context(request)
-    user = get_current_user(request)
+extractall = extract_form_view('extractall', ExtractAllForm, 'vald/extractall.html')
+extractelement = extract_form_view('extractelement', ExtractElementForm, 'vald/extractelement.html')
+extractstellar = extract_form_view('extractstellar', ExtractStellarForm, 'vald/extractstellar.html')
+showline = extract_form_view('showline', ShowLineOnlineForm, 'vald/showline.html')
 
-    # Check if modifying an existing request
-    modify_uuid = request.GET.get('modify')
-    initial_data = {}
-
-    if modify_uuid:
-        try:
-            req_obj = Request.objects.get(uuid=modify_uuid)
-            # Security: only allow user to modify their own requests
-            if req_obj.user_id == user.id:
-                initial_data = req_obj.parameters
-                messages.info(request, 'Form pre-filled with previous request values.')
-            else:
-                messages.error(request, 'You do not have permission to modify this request.')
-        except Request.DoesNotExist:
-            messages.error(request, 'Request not found.')
-
-    context['form'] = ShowLineOnlineForm(initial=initial_data)
-    return render(request, 'vald/showline.html', context)
-
-
-@require_login
-def showline_online(request):
-    """Show Line form - same as showline()"""
-    return showline(request)
-
-
-# Removed - showline now uses queue like other extracts
+# Two URLs, one page - the legacy interface had separate "show line" and
+# "show line ONLINE" entry points and existing links use both.
+showline_online = showline
 
 
 def submit_request(request):
@@ -620,7 +613,7 @@ def submit_request(request):
         return handle_registration_request(request)
 
     # All other requests require login
-    if not request.session.get('user_id'):
+    if get_current_user(request) is None:
         context['error'] = 'You are not logged in. Please log in and try again.'
         return render(request, 'vald/error.html', context)
 
@@ -1186,7 +1179,7 @@ def persconf(request):
     from .persconfig import (
         get_user_config, get_default_config, reset_user_config,
         get_linelists_for_display, update_config_linelist,
-        restore_linelist_to_default, get_modification_flags
+        restore_linelist_to_default, get_modification_flags, clamp_rank
     )
 
     context = get_user_context(request)
@@ -1221,15 +1214,11 @@ def persconf(request):
             # Get enabled status
             is_enabled = bool(request.POST.get('linelist-checked'))
             
-            # Get rank values (indices 5-13 in old system = 9 rank values)
-            ranks = []
-            for j in range(9):
-                val = request.POST.get(f'edit-val-{j}', '3')
-                try:
-                    ranks.append(int(val))
-                except ValueError:
-                    ranks.append(3)
-            
+            # Get rank values (indices 5-13 in old system = 9 rank values).
+            # clamp_rank bounds them to the 1-9 the .cfg format allows.
+            ranks = [clamp_rank(request.POST.get(f'edit-val-{j}', '3'))
+                     for j in range(9)]
+
             if update_config_linelist(config_linelist_id, user, is_enabled=is_enabled, ranks=ranks):
                 messages.success(request, 'Linelist settings saved successfully.')
             else:

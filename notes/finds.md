@@ -44,7 +44,7 @@ The document is ordered by priority, so IDs are not sequential.
 | R35 | Medium | ✅ fixed `a0f0442` | django-ratelimit block=True made every friendly "too many attempts" branch dead code |
 | R15 | Medium | ✅ fixed `b61fa8c` | Effectively no test coverage |
 | R29 | Low| ✅ fixed `90464f5` | `VALD_MAX_LINES_PER_REQUEST` is a phantom setting |
-| R30 | Low| ⏸ won't-fix (accepted) | Rank weights not range-checked before reaching the `.cfg` |
+| R30 | Low| ✅ fixed (see R40) | Rank weights not range-checked before reaching the `.cfg` |
 | R31 | Low| ⏸ won't-fix (accepted) | `ConfigLinelist.save()` silently overrides a deliberate rank of 3 |
 | R32 | Low | open | Multiple system default configs possible; `.first()` picks arbitrarily |
 | R27 | Low| ✅ fixed `3523937` | `save_units` writes unvalidated POST values |
@@ -56,6 +56,12 @@ The document is ordered by priority, so IDs are not sequential.
 | R21 | UX | ✅ fixed `73de058` | Expired results still show status "Complete" |
 | R22 | UX| ✅ fixed `8079afb` | Spam filter rejects any message containing a URL |
 | R24 | UX | open | "Custom" config falls back silently; persconf mutates on GET |
+| R38 | High | ✅ fixed | Sessions outlive the account state they were granted under; no key rotation on login |
+| R39 | Medium | ✅ fixed | `?modify=<non-uuid>` is an unhandled 500 on all four extraction forms |
+| R40 | Low | ✅ fixed | Out-of-range persconf rank is a 500 (sqlite `OverflowError`); supersedes R30 |
+| R41 | Medium | ✅ fixed | Django admin login unthrottled; admin-set passwords skip the validators |
+| R42 | Low | ✅ removed | `MAINTENANCE` was documented and configurable but read by nothing |
+| R43 | Low | ⏸ won't-fix (accepted) | No upper bound on the extraction wavelength range for download delivery |
 
 Dead schema noted under R7: `Request.completed_at` and `Request.queue_position` are
 never written.
@@ -486,6 +492,84 @@ the user gets no notification at all despite the files being ready.
 used for the "Forgot your password?" link with a `build_absolute_uri` value, so it is not
 exploitable today — but it becomes XSS the moment user data goes into a `safe`-tagged
 message.
+
+---
+
+## Second pass — 2026-08-07
+
+Review of the same tree after the P1/P2 work, looking for what the first pass
+missed. All five were confirmed by test before fixing; the regression tests live
+in `tests/test_security.py`.
+
+### R38. A session outlives the account state it was granted under
+**Where:** `vald/views.py` — `require_login`, `get_current_user`, `login`, `set_password`
+
+R1 fixed the `is_active` check *at the login gate*. Nothing rechecked it for an
+already-established session, so three things that ought to end a session did not:
+
+- **Suspension.** Unticking `is_active` left the user fully functional —
+  submitting jobs, downloading, editing config — until the cookie expired,
+  two weeks out by Django's default. The admin help page (`admin.py:94`)
+  told the operator the opposite.
+- **Password reset.** A stolen session survived the victim's own recovery.
+- **Login itself.** No `cycle_key()`, so a session id fixed before login became
+  an authenticated one (fixation).
+
+**Fixed:** `User.session_auth_hash()` (a salted HMAC of the password field,
+mirroring `django.contrib.auth`) is stored at login and compared on every
+request, alongside a fresh `is_active` check, in `get_current_user()` — now the
+single choke point, cached per request. `start_session()`/`end_session()`
+replace the ad-hoc session writes and add `cycle_key()`. `SESSION_COOKIE_AGE`
+also dropped from Django's two-week default to one week.
+
+### R39. `?modify=` is raw query string, not a validated UUID
+**Where:** `vald/views.py` — the four extraction form views
+
+`Request.objects.get(uuid=...)` caught only `DoesNotExist`, but a value that is
+not a UUID at all raises `ValidationError` from the field. Any hand-edited URL
+was a 500 — and with R13's `ADMINS` wired up, an email per hit.
+
+**Fixed:** one `modify_initial_data()` helper catching the full set, shared by
+all four views, which were 95% duplicated. The ownership check itself was sound
+and is now covered by a test.
+
+### R40. Out-of-range rank weights are a 500, not just bad config
+Supersedes the R30 won't-fix, which was accepted on the reasoning that the blast
+radius is the user's own extractions. That holds for the *values*, but not for
+the crash: `int()` accepts arbitrary precision and sqlite raises `OverflowError`
+past 2^63, so `edit-val-0=9999…` (25 digits) was an unhandled 500 on
+`/persconf/`. Moderate values persisted and reached the Fortran config parser.
+
+**Fixed:** `persconfig.clamp_rank()`, applied both where the POST is parsed and
+in `update_config_linelist()` — the latter being the choke point that persists,
+so nothing downstream has to trust the view.
+
+### R41. The admin is a public login form too
+- `/admin/login/` had no throttle of its own while the VALD login next door is
+  limited to 5/min, so staff passwords were guessable at full speed.
+  **Fixed:** `admin.site.login` wrapped in `django-ratelimit`, `VALD_ADMIN_LOGIN_RATE`
+  (default `10/h`), `block=True` — there is no admin template in which to render
+  a friendly retry message, so 403 is the honest answer.
+- `user_change_password` enforced `len >= 6` only, bypassing the
+  `AUTH_PASSWORD_VALIDATORS` that R6 wired into every other path — the one
+  password an admin sets by hand was the weakest the site allowed.
+  **Fixed:** `validate_password(password, user)`.
+
+Still open, and not a code question: which `django.contrib.auth` superusers exist
+on the production database, and whether any carries a development-era password.
+
+### R42. `MAINTENANCE` was a setting that did nothing
+Defined in both settings modules and documented in `secrets.txt.example` as
+"Show a maintenance notice instead of serving requests". No middleware, view or
+template read it. Flipping it on cutover day would have appeared to work.
+**Removed** rather than implemented — the dangerous state was the one where it
+looked available.
+
+### R43. No upper bound on the extraction wavelength range — accepted
+`ExtractAllForm` accepts `stwvl=0.01, endwvl=1e30`; the only range check is the
+50 Å email cap. `VALD_MAX_LINES_PER_REQUEST` and `VALD_JOB_TIMEOUT` bound the
+work, so the cost ceiling is 5 in-flight jobs × 1 h per user.
+**Decided (Tom):** leave it. The existing caps do their job.
 
 ---
 

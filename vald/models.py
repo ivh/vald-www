@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 from datetime import timedelta
 from pathlib import Path
 import secrets
@@ -257,6 +258,21 @@ class User(models.Model):
         if not self.password:
             return False
         return check_password(raw_password, self.password)
+
+    def session_auth_hash(self):
+        """Stamp tying a session to the password it was opened with.
+
+        Same idea as django.contrib.auth's _auth_user_hash, which this app does
+        not get because it authenticates through session['user_id'] directly.
+        Changing or clearing the password changes the stamp, so sessions opened
+        with the old one stop validating - without it a stolen session survived
+        the victim's own password reset.
+        """
+        return salted_hmac(
+            'vald.models.User.session_auth_hash',
+            self.password or '',
+            algorithm='sha256',
+        ).hexdigest()
 
     def generate_activation_token(self):
         """Generate a unique activation token"""
