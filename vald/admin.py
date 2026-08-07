@@ -97,7 +97,9 @@ def admin_help(request):
             'is_active': False,
             'has_password': True,
             'how': 'Was working, then is_active was unticked.',
-            'sees': 'Cannot log in: "account has been deactivated, contact the administrator".',
+            'sees': 'Cannot log in: "account has been deactivated, contact the administrator". '
+                    'Any session they already had stops working on their next click - '
+                    'sessions are revalidated against this flag on every request.',
             'do': 'Tick is_active to reinstate; the old password still works. '
                   'Reject does not touch these - delete deliberately if that is the intent.',
             'count': users.filter(is_active=False).exclude(NO_PASSWORD).count(),
@@ -125,7 +127,19 @@ def admin_help(request):
         ('VALD_JOB_TIMEOUT', settings.VALD_JOB_TIMEOUT,
          'Seconds before a running Fortran job is killed and marked failed.'),
         ('VALD_SUBMIT_RATE', settings.VALD_SUBMIT_RATE,
-         'Rate limit on request submission, per client IP.'),
+         'Rate limit on request submission, per logged-in user.'),
+        ('VALD_ADMIN_LOGIN_RATE', getattr(settings, 'VALD_ADMIN_LOGIN_RATE', '10/h'),
+         'Rate limit on this admin login form, per client IP. Django does not '
+         'throttle it on its own; exceeding this returns 403.'),
+        ('SESSION_COOKIE_AGE', settings.SESSION_COOKIE_AGE,
+         'Seconds an idle login survives. Sessions are also revalidated against '
+         'the database every request, so suspending an account or changing a '
+         'password ends them at once regardless of this.'),
+        ('VALD_MAX_EMAIL_ATTACH_BYTES', settings.VALD_MAX_EMAIL_ATTACH_BYTES,
+         'Results larger than this are not attached to the completion email; '
+         'the download links in the body are the fallback.'),
+        ('VALD_QUEUE_FULL_COOLDOWN', settings.VALD_QUEUE_FULL_COOLDOWN,
+         'Minimum gap between "job queue full" alerts to the webmaster.'),
         ('VALD_ADMIN_EMAIL', settings.VALD_ADMIN_EMAIL,
          'Recipient of new-registration and queue-full notifications.'),
         ('SITE_URL', settings.SITE_URL,
@@ -142,9 +156,30 @@ def admin_help(request):
         if p.suffix in ('.service', '.timer')
     )
 
+    # Personal-configuration split. One GROUP BY over the junction table; the
+    # alternative is 700-odd per-config queries, which is what an obvious
+    # implementation would do.
+    default_config = Config.objects.filter(user__isnull=True, is_default=True).first()
+    default_ids = set()
+    if default_config:
+        default_ids = set(default_config.configlinelist_set.values_list(
+            'linelist_id', flat=True))
+    personal_total = Config.objects.filter(user__isnull=False).count()
+    behind = 0
+    if default_ids:
+        from django.db.models import Count
+        rows = (ConfigLinelist.objects
+                .filter(config__user__isnull=False, linelist_id__in=default_ids)
+                .values('config_id').annotate(n=Count('linelist_id')))
+        behind = sum(1 for row in rows if row['n'] < len(default_ids))
+
     context = {
         **admin.site.each_context(request),
         'title': 'Admin help',
+        'personal_total': personal_total,
+        'personal_behind': behind,
+        'tracking_default': users.count() - personal_total,
+        'default_linelist_count': len(default_ids),
         'account_states': account_states,
         'user_total': users.count(),
         'limits': limits,

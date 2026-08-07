@@ -316,3 +316,35 @@ def test_admin_pages_render_their_title_once(staff_client, system_default, appro
         body = staff_client.get(url).content.decode()
         headings = re.findall(r'<h1[^>]*>(.*?)</h1>', body, re.S)
         assert len(headings) == 1, f'{url} rendered {len(headings)} <h1>: {headings}'
+
+
+@pytest.mark.django_db
+def test_help_page_reports_the_personal_config_split(staff_client, system_default,
+                                                     approved_user):
+    """The counts an admin needs when someone asks why they lack a new linelist."""
+    from vald.models import ConfigLinelist, Linelist, User
+    from vald.persconfig import create_user_config
+
+    User.objects.create(name='Tracks Default', is_active=True)
+    create_user_config(approved_user)
+
+    # a release adds a linelist the snapshot will not have
+    ll = Linelist.objects.create(path='/CVALD3/ATOMS/new', name='Added later',
+                                 element_min=1, element_max=99)
+    ConfigLinelist.objects.create(config=system_default, linelist=ll, priority=99)
+
+    context = staff_client.get('/admin/help/').context
+    assert context['personal_total'] == 1
+    assert context['personal_behind'] == 1, 'snapshot missing a new linelist not counted'
+    assert context['tracking_default'] == User.objects.count() - 1
+
+    body = staff_client.get('/admin/help/').content.decode()
+    assert 'Personal linelist configurations' in body
+    assert 'Retiring a linelist' in body
+
+
+@pytest.mark.django_db
+def test_help_page_lists_the_rate_limits_that_exist(staff_client):
+    listed = {name for name, _, _ in staff_client.get('/admin/help/').context['limits']}
+    for setting in ['VALD_SUBMIT_RATE', 'VALD_ADMIN_LOGIN_RATE', 'SESSION_COOKIE_AGE']:
+        assert setting in listed, f'{setting} is configurable but undocumented'

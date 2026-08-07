@@ -148,6 +148,81 @@ try to log in again, which issues another.</p>
   its results as expired, which is why an old completed request can show no
   download.</p>
 
+<h2>Personal linelist configurations</h2>
+
+<p>Every user is in one of two states, and the difference decides what their
+extractions actually use. This is the most common thing users ask about.
+
+<div class="state">
+  <h3>Using the VALD default</h3>
+  <p><span class="lbl">How</span> They have never edited anything on the Personal
+     Configuration page &mdash; merely visiting it does not count.</p>
+  <p><span class="lbl">Effect</span> Their requests use the VALD default, and
+     <strong>automatically pick up linelists added in future VALD releases</strong>.</p>
+  <p><span class="lbl">Count</span> <span class="count">{{ tracking_default }}</span> user(s)</p>
+</div>
+
+<div class="state">
+  <h3>Personal configuration</h3>
+  <p><span class="lbl">How</span> They edited a linelist, used &ldquo;Set to current
+     VALD default&rdquo;, or the account was migrated from the legacy interface.</p>
+  <p><span class="lbl">Effect</span> A <em>snapshot</em> of the VALD default as it
+     was when taken, plus their changes. It does <strong>not</strong> follow later
+     updates &mdash; a new linelist in a VALD release does not reach them.</p>
+  <p><span class="lbl">Count</span> <span class="count">{{ personal_total }}</span> user(s),
+     of which <span class="count">{{ personal_behind }}</span>
+     {{ personal_behind|pluralize:"is,are" }} missing at least one
+     of the {{ default_linelist_count }} linelists now in the default.</p>
+  <p><span class="lbl">Do</span> Nothing, usually &mdash; a snapshot is a deliberate
+     choice, and stability is often what the user wants. The Personal Configuration
+     page tells them what they are missing and offers to remove it.</p>
+</div>
+
+<p><strong>To see a specific user's configuration</strong>, open them from the
+<a href="{{ user_changelist }}">user list</a> and follow the <em>Configuration</em>
+link, or use the column on the list itself. It is read-only and shows only the
+entries that differ from the current default, which is usually a handful out of
+several hundred.
+
+<p>Their three buttons, and what each means:
+
+<dl>
+  <dt>Save (on any linelist row)</dt>
+  <dd>Creates the personal configuration if they had none. This is the moment they
+      stop tracking the VALD default.</dd>
+
+  <dt>Remove personal configuration</dt>
+  <dd>Deletes it. They go back to tracking the default and pick up everything
+      added since. Their changes are lost &mdash; there is no undo.</dd>
+
+  <dt>Set to current VALD default</dt>
+  <dd>Replaces it with a fresh copy of today's default, discarding their changes.
+      They stay frozen, just at a newer starting point.</dd>
+</dl>
+
+<p class="note">The date shown on a configuration is when it was <em>taken</em>,
+not when the database row was written. For the accounts migrated from the legacy
+interface that is the old <code>.cfg</code> file's timestamp, often years back &mdash;
+which is exactly how far behind the current default they are.
+
+<p class="note">Rank weights run <strong>0&ndash;9</strong>, not 1&ndash;9: the
+shipped <code>default.cfg</code> uses 0 on a number of entries. Values outside that
+range are pinned to it when edited here, but configurations imported from legacy
+files are carried across verbatim, so an occasional out-of-range value from the old
+system survives.
+
+<h2>Retiring a linelist</h2>
+
+<p>Leave it out of <code>default.cfg</code> and re-import:
+
+<pre>bin/vald-manage import_default_config $VALD_HOME/CONFIG/default.cfg</pre>
+
+<p>The importer deactivates any linelist absent from the file, and generated
+configurations skip inactive ones. That is what stops a years-old personal
+snapshot from naming a data file that has left the SVN tree. A linelist that
+reappears in a later <code>default.cfg</code> is reactivated. Re-importing rebuilds
+the system default in place and never touches personal configurations.
+
 <h2>Limits and settings</h2>
 
 <p>Live values from <code>vald_web/settings.py</code>. Changing any of these needs a

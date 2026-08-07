@@ -166,6 +166,31 @@ worker that was restarted mid-job, and marks one complete instead if its output
 file turns out to exist. It has no timer — run it by hand if requests appear
 stuck.
 
+### Migrating from the legacy interface
+
+One-off, in this order — each step is the comparison baseline for the next:
+
+```bash
+bin/vald-manage import_default_config $VALD_HOME/CONFIG/default.cfg
+bin/vald-manage import_users --file /path/to/clients.register --dry-run
+bin/vald-manage import_users --file /path/to/clients.register
+cp /path/to/legacy/*.cfg config/personal_configs/
+bin/vald-manage import_persconf --all --dry-run
+bin/vald-manage import_persconf --all
+```
+
+`import_persconf` matches a file to a user by filename with whitespace removed,
+so `JeffA.Valenti.cfg` finds `Jeff A. Valenti`. Anything else is reported as
+`No user matches` and skipped — expect a tail of those for people who left, and
+for files written under an older naming convention whose modern twin imported
+successfully. A file identical to the default produces no configuration at all,
+which is correct: no personal configuration means the user tracks the VALD
+default.
+
+All three are re-runnable. `import_persconf` replaces a user's configuration
+outright, so re-running it after the site is live would discard anything they
+have changed through the web interface.
+
 ## Adding a new linelist
 
 The application reads its linelist catalogue and configuration from the
