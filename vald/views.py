@@ -31,7 +31,6 @@ from .forms import (
     ShowLineOnlineForm,
 )
 from .utils import (
-    validate_user_email,
     spam_check,
     render_request_template,
 )
@@ -186,12 +185,7 @@ def login(request):
             user_email = UserEmail.objects.select_related('user').get(email=email)
             user = user_email.user
         except UserEmail.DoesNotExist:
-            # Fallback: check if email is in register files (for new imports)
-            is_valid, user_name = validate_user_email(email)
-            if is_valid:
-                messages.error(request, 'Your account has not been imported yet. Please contact the administrator.')
-            else:
-                messages.error(request, 'Email address not registered. Please use the contact form to register.')
+            messages.error(request, 'Email address not registered. Please use the contact form to register.')
             context = get_user_context(request)
             return render(request, 'vald/notregistered.html', context)
 

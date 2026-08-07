@@ -22,12 +22,16 @@ Three stores, deliberately separate:
   `old/config/default.cfg`, which is a snapshot of the seed used for the initial
   import and is not consulted by anything.
 
-  `config/` is the opposite: only what the running app actually reads.
-  `clients.register` (login fallback, and `sync_register_files`) and
-  `personal_configs/` (the `import_persconf` source). If something in `config/`
-  stops being read, it belongs in `old/config/` or deleted - three settings
+  `config/` is the opposite: only what the running app actually reads. That is
+  now just `personal_configs/`, the `import_persconf` source. If something in
+  `config/` stops being read, it belongs in `old/config/` or deleted - settings
   pointing at files nothing opened is how `CLIENTS_REGISTER_LOCAL` came to look
   like a working knob.
+
+  Nothing reads a `clients.register` at runtime. It is a migration input only:
+  `sync_register_files --file <path>` imports it into the database, and `--file`
+  is required precisely so a stale copy in the repo cannot become the implicit
+  source for a real import.
 - **VALD3 SVN repo** (`$VALD_HOME`) - linelists, the Fortran binaries in `bin/`,
   and the original `.cfg` files. Maintained by the group, backed up and mirrored
   via SVN. Stays on SVN deliberately: large append-mostly data files are what SVN

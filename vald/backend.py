@@ -203,30 +203,6 @@ def uuid_to_6digit(uuid_obj):
     return hash_val % 1000000
 
 
-def get_client_name(user_email):
-    """
-    Extract ClientName from user email by looking up in User model or clients.register.
-    Returns alphanumeric-only version of the name.
-    """
-    from .models import UserEmail
-    from .utils import validate_user_email
-
-    # First try to get from database (new auth system)
-    try:
-        user_email_obj = UserEmail.objects.select_related('user').get(email=user_email.lower())
-        user_name = user_email_obj.user.name
-    except UserEmail.DoesNotExist:
-        # Fallback to clients.register file (legacy)
-        is_valid, user_name = validate_user_email(user_email)
-        if not is_valid:
-            return None
-
-    # Convert to alphanumeric only (matching parsemail.c logic line 86)
-    client_name = ''.join(c for c in user_name if c.isalnum())
-
-    return client_name
-
-
 def submit_request_direct(request_obj):
     """
     Submit a request directly to the backend processing system.

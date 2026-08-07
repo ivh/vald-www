@@ -263,14 +263,23 @@ EMAIL_PORT = 25
 
 ### User Registration
 
-Edit `config/clients.register`:
+Users live in the database. Accounts are created by self-registration through
+the contact form (then approved in the admin), or in bulk from a legacy
+`clients.register` file:
+
 ```
 #$ Full Name
 email@domain.com
 ```
 
-Run `bin/vald-manage sync_register_files` after changes (or `uv run python
-manage.py sync_register_files` in development).
+```bash
+bin/vald-manage sync_register_files --file /path/to/clients.register --dry-run
+bin/vald-manage sync_register_files --file /path/to/clients.register
+```
+
+This is a one-off migration path, not something the running app consults —
+nothing reads the file at request time. `--file` is required so that a stale
+copy sitting in the repo cannot silently become the source for a real import.
 
 ## Architecture
 

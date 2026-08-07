@@ -218,7 +218,6 @@ if not VALD_HOME.exists():
         "Please check the path in your VALD_HOME environment variable."
     )
 
-CLIENTS_REGISTER = BASE_DIR / 'config' / 'clients.register'
 PERSCONFIG_DIR = BASE_DIR / 'config' / 'personal_configs'
 DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'

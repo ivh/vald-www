@@ -3,7 +3,6 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
-from django.conf import settings
 
 from vald.models import User, UserEmail
 
@@ -20,17 +19,17 @@ class Command(BaseCommand):
         parser.add_argument(
             '--file',
             type=str,
-            help='Process specific register file instead of default (clients.register)',
+            required=True,
+            help='Path to the clients.register file to import',
         )
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
-        custom_file = options.get('file')
-
-        if custom_file:
-            register_file = Path(custom_file)
-        else:
-            register_file = settings.CLIENTS_REGISTER
+        # Required: there is no default any more. The register is a migration
+        # input, not something the app reads - it used to live at
+        # settings.CLIENTS_REGISTER, which turned a stale sample copy in the
+        # repo into the implicit source for a real import.
+        register_file = Path(options['file'])
 
         if not register_file.exists():
             self.stdout.write(self.style.ERROR(f'Register file not found: {register_file}'))

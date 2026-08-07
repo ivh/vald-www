@@ -2,57 +2,7 @@
 Utility functions for VALD web interface
 """
 import re
-from pathlib import Path
 from django.conf import settings
-
-
-def validate_user_email(email):
-    """
-    Validate user email against client register file.
-    Returns (is_valid, user_name) tuple.
-    """
-    email = email.lower().strip()
-
-    # Check main register
-    result = _check_register_file(settings.CLIENTS_REGISTER, email)
-    if result:
-        return (True, result)
-
-    return (False, None)
-
-
-def _check_register_file(filepath, email):
-    """
-    Check a single register file for an email address.
-    Returns the user's full name if found, None otherwise.
-    """
-    if not Path(filepath).exists():
-        return None
-
-    try:
-        with open(filepath, 'r') as f:
-            current_name = None
-            for line in f:
-                line = line.strip()
-
-                # Extract full user name from comments
-                match = re.match(r'^#\$\s+(.*)$', line)
-                if match:
-                    current_name = match.group(1).strip()
-                    continue
-
-                # Skip other comments
-                if line.startswith('#') or not line:
-                    continue
-
-                # Check if this line matches the email
-                if line.lower() == email:
-                    return current_name
-
-    except Exception as e:
-        print(f"Error reading register file {filepath}: {e}")
-
-    return None
 
 
 def spam_check(message):

@@ -149,7 +149,6 @@ VALD_WEBMASTER_EMAIL = 'vald@tmy.se'
 
 # VALD-specific configuration
 VALD_HOME = Path(os.getenv('VALD_HOME', '/home/tom/VALD3'))
-CLIENTS_REGISTER = BASE_DIR / 'config' / 'clients.register'
 PERSCONFIG_DIR = BASE_DIR / 'config' / 'personal_configs'
 DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
