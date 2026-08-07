@@ -57,6 +57,21 @@ class Command(BaseCommand):
             if entry:
                 linelist_entries.append(entry)
 
+        # ConfigLinelist is unique on (config, linelist), so a path named twice
+        # would raise IntegrityError partway through the rebuild. Keep the first
+        # occurrence, which is the one preselect5 reads first.
+        seen, duplicates = {}, []
+        for entry in linelist_entries:
+            if entry['path'] in seen:
+                duplicates.append(entry['path'])
+            else:
+                seen[entry['path']] = entry
+        if duplicates:
+            self.stdout.write(self.style.WARNING(
+                f"{len(duplicates)} duplicate linelist path(s), keeping the first "
+                f"of each: {', '.join(sorted(set(duplicates)))}"))
+        linelist_entries = list(seen.values())
+
         self.stdout.write(f"Found {len(linelist_entries)} linelist entries")
 
         if dry_run:

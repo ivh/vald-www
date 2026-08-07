@@ -63,12 +63,22 @@ class Command(BaseCommand):
 
         success = 0
         failed = 0
-        for cfg_file in cfg_files:
+        for cfg_file in sorted(cfg_files):
             try:
                 self._import_file(cfg_file.name, dry_run)
                 success += 1
             except CommandError as e:
                 self.stderr.write(self.style.WARNING(f'{cfg_file.name}: {e}'))
+                failed += 1
+            except Exception as e:
+                # Anything unexpected must cost one file, not the whole run.
+                # A duplicate linelist path used to raise IntegrityError here and
+                # abort at that file, leaving the rest of the register
+                # unprocessed and the operator reading a traceback instead of a
+                # summary. Each file has its own transaction, so the ones already
+                # done are committed and safe.
+                self.stderr.write(self.style.ERROR(
+                    f'{cfg_file.name}: {e.__class__.__name__}: {e}'))
                 failed += 1
 
         self.stdout.write(
@@ -101,6 +111,24 @@ class Command(BaseCommand):
 
         if not linelist_entries:
             raise CommandError(f'No linelists found in {filepath}')
+
+        # A legacy file may name the same linelist twice. ConfigLinelist is
+        # unique on (config, linelist), so creating both raised IntegrityError
+        # and - before the per-file guard above - aborted the whole run. Keep the
+        # first occurrence: the file's order is its read order, so the first is
+        # the one preselect5 would have reached first.
+        seen = {}
+        duplicates = []
+        for entry in linelist_entries:
+            if entry['path'] in seen:
+                duplicates.append(entry['path'])
+            else:
+                seen[entry['path']] = entry
+        if duplicates:
+            self.stdout.write(self.style.WARNING(
+                f'  {len(duplicates)} duplicate linelist(s), keeping the first '
+                f'of each: {", ".join(sorted(set(duplicates)))}'))
+        linelist_entries = list(seen.values())
 
         self.stdout.write(f'  Found {len(linelist_entries)} linelists')
 

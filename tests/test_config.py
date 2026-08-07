@@ -251,3 +251,79 @@ def test_reimport_reactivates_a_linelist_that_comes_back(tmp_path):
 
     call_command('import_default_config', str(with_it), verbosity=0)
     assert Linelist.objects.get(path='/CVALD3/ATOMS/onoff').is_active
+
+
+# --- R50: a duplicate linelist path must not abort the import ---------------
+
+@pytest.mark.django_db
+def test_duplicate_path_in_default_cfg_does_not_crash(tmp_path):
+    """ConfigLinelist is unique on (config, linelist); a repeated path used to
+    raise IntegrityError partway through the rebuild."""
+    from django.core.management import call_command
+    from vald.models import Config
+
+    cfg = tmp_path / 'default.cfg'
+    cfg.write_text(
+        "0.05,5000.,9,150.\n"
+        "'/CVALD3/ATOMS/a', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List A'\n"
+        "'/CVALD3/ATOMS/a', 20, 1, 99, 0, 9,9,9,9,9,9,9,9,9, 'List A again'\n"
+        "'/CVALD3/ATOMS/b', 30, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List B'\n")
+    call_command('import_default_config', str(cfg), verbosity=0)
+
+    config = Config.get_default_config()
+    assert config.configlinelist_set.count() == 2
+    first = config.configlinelist_set.get(linelist__path='/CVALD3/ATOMS/a')
+    assert first.priority == 10, 'the first occurrence should win'
+
+
+@pytest.mark.django_db
+def test_duplicate_path_in_persconf_does_not_crash(tmp_path, settings):
+    from django.core.management import call_command
+    from vald.models import User, Config
+
+    settings.PERSCONFIG_DIR = tmp_path
+    default = tmp_path / 'default.cfg'
+    default.write_text(
+        "0.05,5000.,9,150.\n"
+        "'/CVALD3/ATOMS/a', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List A'\n"
+        "'/CVALD3/ATOMS/b', 20, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List B'\n")
+    call_command('import_default_config', str(default), verbosity=0)
+    User.objects.create(name='Jane Doe', is_active=True)
+
+    (tmp_path / 'JaneDoe.cfg').write_text(
+        "0.05,5000.,9,150.\n"
+        "'/CVALD3/ATOMS/a', 10, 1, 99, 0, 9,3,3,3,3,3,3,3,3, 'List A'\n"
+        "'/CVALD3/ATOMS/a', 15, 1, 99, 0, 1,1,1,1,1,1,1,1,1, 'List A dup'\n"
+        "'/CVALD3/ATOMS/b', 20, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List B'\n")
+    call_command('import_persconf', 'JaneDoe.cfg', verbosity=0)
+
+    mine = Config.objects.get(user__name='Jane Doe')
+    assert mine.configlinelist_set.count() == 2
+    assert mine.configlinelist_set.get(linelist__path='/CVALD3/ATOMS/a').rank_wl == 9
+
+
+@pytest.mark.django_db
+def test_one_bad_file_does_not_abort_the_whole_run(tmp_path, settings, capsys):
+    """--all used to catch only CommandError, so anything else killed the run
+    and left the remaining files unprocessed."""
+    from django.core.management import call_command
+    from vald.models import User, Config
+
+    settings.PERSCONFIG_DIR = tmp_path
+    default = tmp_path / 'default.cfg'
+    default.write_text(
+        "0.05,5000.,9,150.\n"
+        "'/CVALD3/ATOMS/a', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List A'\n")
+    call_command('import_default_config', str(default), verbosity=0)
+    for name in ['Aaa Aaa', 'Zzz Zzz']:
+        User.objects.create(name=name, is_active=True)
+
+    # sorts first, and is unparseable
+    (tmp_path / 'AaaAaa.cfg').write_text('not a config at all\n')
+    (tmp_path / 'ZzzZzz.cfg').write_text(
+        "0.05,5000.,9,150.\n"
+        "'/CVALD3/ATOMS/a', 10, 1, 99, 0, 7,3,3,3,3,3,3,3,3, 'List A'\n")
+
+    call_command('import_persconf', '--all', verbosity=0)
+    assert Config.objects.filter(user__name='Zzz Zzz').exists(), \
+        'a later file was skipped because an earlier one failed'
