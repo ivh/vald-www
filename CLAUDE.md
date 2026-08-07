@@ -15,9 +15,19 @@ Technical context for Claude Code sessions. See README.md for user documentation
 Three stores, deliberately separate:
 
 - **This git repo** - application code only, no data. Includes `old/` (legacy PHP
-  interface and the C glue `job_runner.py` replaced) kept purely as reference for
-  behaviour the Python still reproduces, e.g. `CheckAbund()` in
-  `old/backend/parserequest.c`. Nothing in `old/` is built or executed.
+  interface, the C glue `job_runner.py` replaced, and the PHP-era config under
+  `old/config/`) kept purely as reference for behaviour the Python still
+  reproduces, e.g. `CheckAbund()` in `old/backend/parserequest.c`. Nothing in
+  `old/` is built, executed or read at runtime - including
+  `old/config/default.cfg`, which is a snapshot of the seed used for the initial
+  import and is not consulted by anything.
+
+  `config/` is the opposite: only what the running app actually reads.
+  `clients.register` (login fallback, and `sync_register_files`) and
+  `personal_configs/` (the `import_persconf` source). If something in `config/`
+  stops being read, it belongs in `old/config/` or deleted - three settings
+  pointing at files nothing opened is how `CLIENTS_REGISTER_LOCAL` came to look
+  like a working knob.
 - **VALD3 SVN repo** (`$VALD_HOME`) - linelists, the Fortran binaries in `bin/`,
   and the original `.cfg` files. Maintained by the group, backed up and mirrored
   via SVN. Stays on SVN deliberately: large append-mostly data files are what SVN

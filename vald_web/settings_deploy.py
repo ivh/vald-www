@@ -28,7 +28,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # identical on every site and does not conflict on pull. See
 # secrets.txt.example for the full list; the defaults below are the Uppsala
 # values, so an existing deployment behaves the same with no secrets.txt
-# change. This mirrors what config/site_config_local.php.template did for the
+# change. This mirrors what old/config/site_config_local.php.template did for the
 # PHP interface.
 # ---------------------------------------------------------------------------
 

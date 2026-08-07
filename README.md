@@ -90,7 +90,8 @@ accumulate forever. Setting only `DJANGO_SETTINGS_MODULE` is not enough either:
 
 Everything that differs between mirrors lives in `secrets.txt`, so no tracked
 file needs editing and nothing conflicts on pull. It is the successor to the PHP
-interface's `config/site_config_local.php`.
+interface's `config/site_config_local.php` (kept for reference under
+`old/config/`).
 
 ```bash
 cp secrets.txt.example secrets.txt
