@@ -45,7 +45,8 @@ actually running", which the inline cannot show.
 
   {% if is_personal %}
     <div class="state">
-      <p><b>Personal configuration</b>, created {{ snapshot_date|date:"j F Y" }}.
+      <p><b>Personal configuration</b>, dated {{ snapshot_date|date:"j F Y" }}{% if snapshot_from_file %}
+      <span class="muted">(mtime of the legacy .cfg it was imported from)</span>{% endif %}.
       A copy of the VALD default as it was then, plus this user's changes. It does
       <b>not</b> follow later updates to the VALD default.</p>
       <p class="muted">{{ changed_count }} of {{ total_count }} linelist{{ total_count|pluralize }}

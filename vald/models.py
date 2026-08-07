@@ -608,7 +608,15 @@ class Config(models.Model):
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # When the configuration was actually taken, as opposed to when this row was
+    # written. They differ only for configs imported from a legacy .cfg, where
+    # created_at is the import run and the file's mtime is when the user last
+    # made these choices - often years earlier. Null means "same as created_at".
+    snapshot_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Source file mtime for an imported config; blank if created here")
+
     class Meta:
         verbose_name = "Configuration"
         verbose_name_plural = "Configurations"
@@ -638,6 +646,16 @@ class Config(models.Model):
         default_marker = " (default)" if self.is_default else ""
         return f"{owner}: {self.name}{default_marker}"
     
+    @property
+    def snapshot_date(self):
+        """When this configuration reflects the VALD default, for display.
+
+        The import date is not what a user recognises: a config carried over
+        from the legacy interface describes choices they made when that file was
+        written, so that is the date the page must show.
+        """
+        return self.snapshot_at or self.created_at
+
     def generate_cfg_content(self):
         """
         Generate the .cfg file content from this configuration.

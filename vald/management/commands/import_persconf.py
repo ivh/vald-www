@@ -6,11 +6,14 @@ Usage:
     python manage.py import_persconf --all  # Import all .cfg files in PERSCONFIG_DIR
 """
 
+from datetime import datetime
+from pathlib import Path
+import re
+
 from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
 from django.db import transaction
-from pathlib import Path
-import re
+from django.utils.timezone import get_current_timezone
 
 from vald.models import User, Config, ConfigLinelist, Linelist
 
@@ -184,6 +187,11 @@ class Command(BaseCommand):
                 name=f"{user.name}'s Config",
                 user=user,
                 is_default=True,
+                # When the user actually made these choices. created_at will say
+                # today, which tells nobody anything about a config carried over
+                # from the legacy interface.
+                snapshot_at=datetime.fromtimestamp(
+                    filepath.stat().st_mtime, tz=get_current_timezone()),
                 wl_window_ref=global_params.get('wl_window', 0.05),
                 wl_ref=global_params.get('wl_ref', 5000.0),
                 max_ionization=global_params.get('max_ion', 9),

@@ -369,7 +369,11 @@ class UserAdmin(admin.ModelAdmin):
             'vald_user': user,
             'config': config,
             'is_personal': is_personal,
-            'snapshot_date': config.created_at if is_personal else None,
+            'snapshot_date': config.snapshot_date if is_personal else None,
+            # Distinguishes "created here on that date" from "carried over from a
+            # legacy file with that mtime" - otherwise a 2019 date on a row
+            # written today reads as a bug.
+            'snapshot_from_file': bool(config.snapshot_at) if is_personal else False,
             'added_since': linelists_added_since(config) if is_personal else [],
             'linelists': shown,
             'total_count': len(linelists),
@@ -605,7 +609,7 @@ class ConfigAdmin(admin.ModelAdmin):
             )
         }),
         ('Timestamps', {
-            'fields': ('created_at', 'updated_at')
+            'fields': ('snapshot_at', 'created_at', 'updated_at')
         }),
     )
     

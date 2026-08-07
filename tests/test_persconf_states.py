@@ -286,3 +286,65 @@ def test_cleanup_keeps_a_config_differing_only_in_global_params(vald_default, ap
 
     run_cleanup_migration()
     assert Config.objects.filter(user=approved_user).exists()
+
+
+# --- the snapshot date must be the user's, not the import run's -------------
+
+@pytest.mark.django_db
+def test_imported_config_reports_the_source_file_date(vald_default, tmp_path, settings):
+    """created_at is the import run - today - which says nothing about a config
+    carried over from the legacy interface."""
+    import os, datetime
+    from django.core.management import call_command
+    from django.utils.timezone import get_current_timezone
+    from vald.models import User
+
+    settings.PERSCONFIG_DIR = tmp_path
+    User.objects.create(name='Jane Doe', is_active=True)
+    cfg = tmp_path / 'JaneDoe.cfg'
+    cfg.write_text(
+        "0.05,5000.,9,150.\n"
+        "'/CVALD3/ATOMS/x0', 0, 1, 99, 0, 9,3,3,3,3,3,3,3,3, 'List 0'\n"
+        "'/CVALD3/ATOMS/x1', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List 1'\n"
+        "'/CVALD3/ATOMS/x2', 20, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List 2'\n")
+
+    long_ago = datetime.datetime(2019, 5, 3, 14, 30, tzinfo=get_current_timezone())
+    os.utime(cfg, (long_ago.timestamp(), long_ago.timestamp()))
+
+    call_command('import_persconf', 'JaneDoe.cfg', verbosity=0)
+
+    mine = Config.objects.get(user__name='Jane Doe')
+    assert mine.snapshot_at.date() == long_ago.date()
+    assert mine.snapshot_date.date() == long_ago.date()
+    assert mine.created_at.date() != long_ago.date(), 'created_at should be the import run'
+
+
+@pytest.mark.django_db
+def test_a_config_made_here_falls_back_to_created_at(logged_in_client, vald_default,
+                                                     approved_user):
+    edit_first_linelist(logged_in_client, vald_default)
+    mine = Config.objects.get(user=approved_user)
+    assert mine.snapshot_at is None
+    assert mine.snapshot_date == mine.created_at
+
+
+@pytest.mark.django_db
+def test_the_page_shows_the_source_file_date(logged_in_client, vald_default, tmp_path,
+                                             settings, approved_user):
+    import os, datetime
+    from django.core.management import call_command
+    from django.utils.timezone import get_current_timezone
+
+    settings.PERSCONFIG_DIR = tmp_path
+    cfg = tmp_path / 'TestUser.cfg'
+    cfg.write_text(
+        "0.05,5000.,9,150.\n"
+        "'/CVALD3/ATOMS/x0', 0, 1, 99, 0, 9,3,3,3,3,3,3,3,3, 'List 0'\n"
+        "'/CVALD3/ATOMS/x1', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List 1'\n"
+        "'/CVALD3/ATOMS/x2', 20, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'List 2'\n")
+    long_ago = datetime.datetime(2019, 5, 3, 14, 30, tzinfo=get_current_timezone())
+    os.utime(cfg, (long_ago.timestamp(), long_ago.timestamp()))
+    call_command('import_persconf', 'TestUser.cfg', verbosity=0)
+
+    body = logged_in_client.get('/persconf/').content.decode()
+    assert '3 May 2019' in body, 'the page still shows the import date'

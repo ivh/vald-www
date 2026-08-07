@@ -1285,7 +1285,7 @@ def persconf(request):
         'action': action,
         'config': user_config,
         'is_personal': is_personal,
-        'snapshot_date': user_config.created_at if is_personal else None,
+        'snapshot_date': user_config.snapshot_date if is_personal else None,
         'added_since': linelists_added_since(user_config) if is_personal else [],
     })
 
