@@ -1,0 +1,18 @@
+# One line-ending rule for the whole tree.
+#
+# The repo had accumulated a mix - 58 of 201 tracked files were CRLF, including
+# vald.service and half the templates - with no pattern to it. The cost was not
+# cosmetic: any tool that rewrites a file whole (an editor, a script, a
+# refactor) silently converted it to LF, so a three-line change arrived as a
+# diff of the entire file and buried the real edit. That happened three times
+# during the pre-launch review.
+#
+# text=auto lets git detect binary content and leave it alone; eol=lf sets the
+# working-tree ending on every platform, which is what both macOS and the Linux
+# server want.
+* text=auto eol=lf
+
+# The binary formats actually present, marked explicitly rather than relying on
+# the heuristic - a corrupted PNG is a silent, ugly failure.
+*.png binary
+*.ico binary
