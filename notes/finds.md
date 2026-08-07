@@ -46,7 +46,7 @@ The document is ordered by priority, so IDs are not sequential.
 | R29 | Low| ✅ fixed `90464f5` | `VALD_MAX_LINES_PER_REQUEST` is a phantom setting |
 | R30 | Low| ✅ fixed (see R40) | Rank weights not range-checked before reaching the `.cfg` |
 | R31 | Low| ⏸ won't-fix (accepted) | `ConfigLinelist.save()` silently overrides a deliberate rank of 3 |
-| R32 | Low | open | Multiple system default configs possible; `.first()` picks arbitrarily |
+| R32 | Low | ✅ fixed `0010` | Multiple system default configs possible; `.first()` picks arbitrarily |
 | R27 | Low| ✅ fixed `3523937` | `save_units` writes unvalidated POST values |
 | R25 | Low | ✅ fixed `b61fa8c` | `error_message` leaks internal paths to users |
 | R26 | Low| ⏸ won't-fix (accepted) | Account enumeration in login/registration messages |
@@ -619,6 +619,31 @@ contents are dead on completion. In one dev tree, `TMP.LIST` intermediates were
 runs 20-30x the delivered size. Sweeping job directories sooner would reclaim
 that, but requires moving the guard to look at `VALD_FTP_DIR` instead.
 **Decided (Tom):** leave it, the array is large.
+
+---
+
+### R32 (fixed). Partial constraint for the system default
+Migration `0010_system_default_config_unique` adds
+`UniqueConstraint(fields=['is_default'], condition=Q(user__isnull=True, is_default=True))`,
+which the original constraint could not express because `user IS NULL` makes it
+vacuous.
+
+A `RunPython` step precedes it, because the constraint cannot be applied to a
+database that already has the problem. It keeps the row `get_default_config()`
+was *already* returning - `.first()` under `Meta.ordering = ['user', 'name']`,
+so lowest name then pk - and demotes the rest to `is_default=False` rather than
+deleting them, since they own `ConfigLinelist` rows.
+
+Verified against a copy of the real database with two extra system defaults
+inserted by raw SQL, one sorting before `'Default'` and one after: the migration
+kept the row the app had been using, demoted the other two, and the constraint
+then rejected a third.
+
+**Operational note:** on a database that has this problem, the config that
+survives is whichever one the app was already using - which is not necessarily
+the one named `Default`. That is the safe choice (applying the migration cannot
+silently change anyone's linelist selection), but it is worth checking
+afterwards that the surviving system default is the intended one.
 
 ---
 

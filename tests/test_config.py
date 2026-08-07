@@ -152,3 +152,49 @@ def test_import_persconf_creates_user_config(imported_default_config, tmp_path):
     assert user_config.is_default is True
     assert user_config.configlinelist_set.count() == \
         imported_default_config.configlinelist_set.count()
+
+
+# --- R32: the system default was unconstrained ------------------------------
+#
+# UniqueConstraint(fields=['user', 'is_default']) does not constrain rows where
+# user IS NULL, because NULLs never compare equal in a unique index. Several
+# system defaults could coexist and get_default_config() chose between them by
+# name ordering.
+
+@pytest.mark.django_db
+def test_only_one_system_default_config_is_allowed():
+    from django.db import IntegrityError
+    from vald.models import Config
+
+    Config.objects.create(name='Default', user=None, is_default=True)
+    with pytest.raises(IntegrityError):
+        Config.objects.create(name='Another default', user=None, is_default=True)
+
+
+@pytest.mark.django_db
+def test_a_non_default_system_config_is_still_allowed():
+    from vald.models import Config
+
+    Config.objects.create(name='Default', user=None, is_default=True)
+    Config.objects.create(name='Archived 2019', user=None, is_default=False)
+    assert Config.objects.filter(user__isnull=True).count() == 2
+
+
+@pytest.mark.django_db
+def test_each_user_may_still_have_their_own_default(approved_user):
+    from vald.models import Config, User
+
+    Config.objects.create(name='Default', user=None, is_default=True)
+    other = User.objects.create(name='Other', is_active=True)
+    Config.objects.create(name='Mine', user=approved_user, is_default=True)
+    Config.objects.create(name='Theirs', user=other, is_default=True)
+    assert Config.objects.filter(is_default=True).count() == 3
+
+
+# The migration's demotion step is not reachable from a test: the constraint it
+# precedes makes the multi-default state it repairs impossible to construct
+# through the ORM. Verified against a copy of the real database instead, with
+# two extra system defaults inserted by raw SQL - one sorting before 'Default'
+# and one after, so the name ordering was actually exercised. The migration kept
+# the row get_default_config() had been returning all along, demoted the other
+# two without deleting them, and the constraint then rejected a third.

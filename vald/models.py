@@ -612,13 +612,24 @@ class Config(models.Model):
         verbose_name = "Configuration"
         verbose_name_plural = "Configurations"
         ordering = ['user', 'name']
-        # Ensure only one default config per user (or system)
         constraints = [
+            # One default per user. Does not constrain the system config at all:
+            # user IS NULL there, and NULLs never compare equal in a unique
+            # index, so any number of rows can satisfy it.
             models.UniqueConstraint(
                 fields=['user', 'is_default'],
                 condition=models.Q(is_default=True),
                 name='unique_default_config_per_user'
-            )
+            ),
+            # Hence this one for the system config. Without it several system
+            # defaults could coexist and get_default_config() picked between
+            # them by name ordering - so which linelists everyone got came down
+            # to what the extra config happened to be called.
+            models.UniqueConstraint(
+                fields=['is_default'],
+                condition=models.Q(user__isnull=True, is_default=True),
+                name='unique_system_default_config'
+            ),
         ]
     
     def __str__(self):
