@@ -1,3 +1,10 @@
+"""Import user accounts from a legacy clients.register file.
+
+A one-off migration path, not something the running app consults - nothing reads
+clients.register at request time. Renamed from sync_register_files: it neither
+syncs (it is one-way, and never removes) nor deals in files plural.
+"""
+
 from pathlib import Path
 
 from django.core.management.base import BaseCommand
@@ -8,7 +15,7 @@ from vald.models import User, UserEmail
 
 
 class Command(BaseCommand):
-    help = 'Import users from clients.register files'
+    help = 'Import user accounts from a legacy clients.register file'
 
     def add_arguments(self, parser):
         parser.add_argument(

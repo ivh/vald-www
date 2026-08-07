@@ -219,8 +219,6 @@ def submit_request_direct(request_obj):
     if not request_obj.user:
         return (False, "User not found")
     client_name = request_obj.user.client_name
-    if not client_name:
-        return (False, "User not registered")
     
     # Ensure working directory exists
     working_dir = settings.VALD_WORKING_DIR

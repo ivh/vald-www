@@ -1,4 +1,4 @@
-"""Hardening of sync_register_files: validation, collision reporting, counts."""
+"""Hardening of import_users: validation, collision reporting, counts."""
 import io
 
 import pytest
@@ -11,7 +11,7 @@ def run(tmp_path, text, *args):
     reg = tmp_path / 'clients.register'
     reg.write_text(text, encoding='utf-8')
     out = io.StringIO()
-    call_command('sync_register_files', '--file', str(reg), *args, stdout=out)
+    call_command('import_users', '--file', str(reg), *args, stdout=out)
     return out.getvalue()
 
 
@@ -127,6 +127,6 @@ def test_non_utf8_bytes_do_not_abort_the_import(tmp_path):
         b'jose@example.com\n'
     )
     out = io.StringIO()
-    call_command('sync_register_files', '--file', str(reg), stdout=out)
+    call_command('import_users', '--file', str(reg), stdout=out)
     assert User.objects.filter(name='Jose Nunez').exists()
     assert UserEmail.objects.filter(email='jose@example.com').exists()

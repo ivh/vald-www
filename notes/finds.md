@@ -6,7 +6,7 @@ Review date: 2026-08-02/03. Branch: `master` @ `f3055ee`.
 `persconfig.py`, `utils.py`, `admin.py`, `cleanup_old_results.py`, both settings modules,
 `vald.service`, `urls.py`, and the templates cited below.
 
-**Not reviewed:** the `import_*` / `sync_register_files` management commands in depth,
+**Not reviewed:** the `import_*` management commands in depth,
 templates not cited here, and whether the flag→`pres_in` mapping matches the Fortran
 source (that needs test runs against the binaries, not reading).
 

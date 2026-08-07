@@ -33,9 +33,10 @@ Django replacement for the 30-year-old PHP-based VALD (Vienna Atomic Line Databa
    uv run python manage.py migrate
    ```
 
-3. **Sync user register:**
+3. **Import existing users** (migration only; new accounts come from the
+   registration form):
    ```bash
-   uv run python manage.py sync_register_files
+   uv run python manage.py import_users --file /path/to/clients.register
    ```
 
 4. **Set VALD_HOME environment variable:**
@@ -273,8 +274,8 @@ email@domain.com
 ```
 
 ```bash
-bin/vald-manage sync_register_files --file /path/to/clients.register --dry-run
-bin/vald-manage sync_register_files --file /path/to/clients.register
+bin/vald-manage import_users --file /path/to/clients.register --dry-run
+bin/vald-manage import_users --file /path/to/clients.register
 ```
 
 This is a one-off migration path, not something the running app consults —
@@ -303,7 +304,6 @@ copy sitting in the repo cannot silently become the source for a real import.
 **"Output file not found"** → Job execution failed; check the per-stage `.err` files
 (`preselect5.err`, `presformat5.err`, ...) in the job subdirectory under `working/`
 **"Can't open input data file"** → `pres_in.*` file missing or misnamed
-**"User not registered"** → Run `bin/vald-manage sync_register_files`
 
 ## References
 

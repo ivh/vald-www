@@ -56,7 +56,7 @@ set expectations.
   They are in sync immediately after an import, but anyone who registers ONLY
   through the app (admin-approved, not added to `clients.register`) will be
   REJECTED by the email path. **Keep `clients.register` authoritative** — add
-  new email-eligible users there too, and re-run `sync_register_files` to fold
+  new email-eligible users there too, and re-run `import_users` to fold
   them into the DB.
 
 - **No tracking.** Email jobs never touch the database, so they will not appear
@@ -125,7 +125,7 @@ everything that is not `www-data@neon...` is non-webapp. Once the PHP app is off
 ## If you keep it running — the short checklist
 
 1. Keep `clients.register` updated with any new email-eligible users, and
-   `sync_register_files` them into the DB so both doors agree.
+   `import_users` them into the DB so both doors agree.
 2. Tell email power-users that extractions use the shared default config, not
    their web-app config customisations.
 3. Leave the FTP cleanup as-is (either cleaner suffices; running both is fine).

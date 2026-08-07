@@ -29,7 +29,7 @@ Three stores, deliberately separate:
   like a working knob.
 
   Nothing reads a `clients.register` at runtime. It is a migration input only:
-  `sync_register_files --file <path>` imports it into the database, and `--file`
+  `import_users --file <path>` imports it into the database, and `--file`
   is required precisely so a stale copy in the repo cannot become the implicit
   source for a real import.
 - **VALD3 SVN repo** (`$VALD_HOME`) - linelists, the Fortran binaries in `bin/`,
