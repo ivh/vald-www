@@ -46,10 +46,11 @@ class Command(BaseCommand):
         stats = self.parse_register_file(register_file, dry_run)
 
         verb = 'Would create' if dry_run else 'Created'
+        merge_verb = 'would merge' if dry_run else 'merged'
         self.stdout.write(self.style.SUCCESS(
             f'\nDone. {stats["records"]} records: '
             f'{verb} {stats["new"]} user(s), '
-            f'{stats["merged"]} merged into existing, '
+            f'{merge_verb} {stats["merged"]} into existing, '
             f'{stats["emails"]} email(s).'
         ))
         if stats['invalid']:
@@ -138,29 +139,45 @@ class Command(BaseCommand):
             stats['emails'] += len(emails)
 
             # Cross-record collision check
-            merges = False
+            claimed_earlier = None
             for email in emails:
                 prior = claimed_by.get(email)
-                if prior is not None and prior != name:
-                    stats['collisions'] += 1
-                    merges = True
-                    self.stdout.write(self.style.WARNING(
-                        f"  COLLISION: {email} already used by '{prior}'; "
-                        f"'{name}' will merge into that account"
-                    ))
+                if prior is not None:
+                    claimed_earlier = claimed_earlier or prior
+                    if prior != name:
+                        stats['collisions'] += 1
+                        self.stdout.write(self.style.WARNING(
+                            f"  COLLISION: {email} already used by '{prior}'; "
+                            f"'{name}' will merge into that account"
+                        ))
                 claimed_by.setdefault(email, name)
 
             if dry_run:
-                self.stdout.write(f'  Would create user: {name}')
+                # Predict new-vs-merge exactly as create_or_update_user decides
+                # it: an address already in the database means a merge. Judging
+                # this from the file alone reported "would create 3934" against a
+                # database that already held 3940 of those people - the dry run
+                # was answering a question about an empty database, which is not
+                # the one anybody re-runs it to ask.
+                existing = UserEmail.objects.filter(
+                    email__in=emails).select_related('user').first()
+                if existing:
+                    stats['merged'] += 1
+                    self.stdout.write(f'  Would merge into existing user: {existing.user.name}')
+                elif claimed_earlier:
+                    # Not in the database yet, but an earlier record in this same
+                    # file claims the address - a real import would have created
+                    # that account by now and this record would merge into it.
+                    stats['merged'] += 1
+                    self.stdout.write(
+                        f"  Would merge into '{claimed_earlier}' from earlier in this file")
+                else:
+                    stats['new'] += 1
+                    self.stdout.write(f'  Would create user: {name}')
                 for email in emails:
                     self.stdout.write(f'    - {email}')
                 if affiliation:
                     self.stdout.write(f'    Affiliation: {affiliation}')
-                # Predict new-vs-merge so dry-run counts match a real import
-                if merges:
-                    stats['merged'] += 1
-                else:
-                    stats['new'] += 1
             else:
                 user, created = self.create_or_update_user(name, affiliation, emails)
                 if created:

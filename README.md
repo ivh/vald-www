@@ -179,17 +179,26 @@ bin/vald-manage import_persconf --all --dry-run
 bin/vald-manage import_persconf --all
 ```
 
-`import_persconf` matches a file to a user by filename with whitespace removed,
-so `JeffA.Valenti.cfg` finds `Jeff A. Valenti`. Anything else is reported as
-`No user matches` and skipped — expect a tail of those for people who left, and
-for files written under an older naming convention whose modern twin imported
-successfully. A file identical to the default produces no configuration at all,
-which is correct: no personal configuration means the user tracks the VALD
-default.
+`import_persconf` handles both kinds of legacy file, telling them apart by name:
+`<Name>.cfg` is the personal linelist configuration, `<Name>-HTMLdefs.cfg` the
+unit preferences (energy unit, medium, wavelength unit, van der Waals format,
+isotopic scaling). Both go through the same user matching: filename with
+whitespace removed, so `JeffA.Valenti.cfg` finds `Jeff A. Valenti`. Anything
+else is reported as `No user matches` and skipped — expect a tail of those for
+people who left, and for files written under an older naming convention whose
+modern twin imported successfully. A linelist file identical to the default
+produces no configuration at all, which is correct: no personal configuration
+means the user tracks the VALD default.
 
-All three are re-runnable. `import_persconf` replaces a user's configuration
-outright, so re-running it after the site is live would discard anything they
-have changed through the web interface.
+Preferences are not overwritten if the user has already changed them here, since
+that choice is newer than the legacy file; `--force` overrides. A row created by
+merely visiting the units page holds nothing but defaults and is not treated as
+a choice.
+
+All three are re-runnable, but `import_persconf` replaces a user's linelist
+configuration outright, so re-running it after the site is live would discard
+anything they have changed through the web interface. Use `--prefs-only` to pick
+up the `-HTMLdefs` preferences without touching the linelist configurations.
 
 ## Adding a new linelist
 

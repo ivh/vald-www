@@ -1,9 +1,17 @@
 """
 Import personal configuration from a .cfg file into the database.
 
+Two kinds of file live side by side in PERSCONFIG_DIR, both written by the
+legacy PHP interface for the same user:
+
+    <Name>.cfg           the personal linelist configuration
+    <Name>-HTMLdefs.cfg  the unit preferences (energy, medium, wavelength, ...)
+
 Usage:
     python manage.py import_persconf ThomasMarquart.cfg
-    python manage.py import_persconf --all  # Import all .cfg files in PERSCONFIG_DIR
+    python manage.py import_persconf ThomasMarquart-HTMLdefs.cfg
+    python manage.py import_persconf --all  # Both kinds, every file in PERSCONFIG_DIR
+    python manage.py import_persconf --all --prefs-only  # Only the -HTMLdefs files
 """
 
 from datetime import datetime
@@ -15,7 +23,10 @@ from django.conf import settings
 from django.db import transaction
 from django.utils.timezone import get_current_timezone
 
-from vald.models import User, Config, ConfigLinelist, Linelist
+from vald.models import User, Config, ConfigLinelist, Linelist, UserPreferences
+
+
+HTMLDEFS_SUFFIX = '-HTMLdefs.cfg'
 
 
 class Command(BaseCommand):
@@ -38,37 +49,67 @@ class Command(BaseCommand):
             action='store_true',
             help='Show what would be imported without making changes',
         )
+        parser.add_argument(
+            '--prefs-only',
+            action='store_true',
+            help='With --all, import only the -HTMLdefs.cfg unit preferences. '
+                 'Importing a linelist config replaces the one in the database, '
+                 'so this is the safe way to pick up preferences on a site whose '
+                 'users have already edited their configs here.',
+        )
+        parser.add_argument(
+            '--force',
+            action='store_true',
+            help='Overwrite unit preferences the user has already changed in '
+                 'this interface (they are otherwise left alone).',
+        )
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
         import_all = options['all']
         filename = options.get('filename')
+        prefs_only = options['prefs_only']
+        force = options['force']
 
         if import_all:
-            self._import_all(dry_run)
+            self._import_all(dry_run, prefs_only, force)
         elif filename:
-            self._import_file(filename, dry_run)
+            self._import_file(filename, dry_run, force)
         else:
             raise CommandError('Provide a filename or use --all')
 
-    def _import_all(self, dry_run):
+    def _import_all(self, dry_run, prefs_only, force):
         """Import all .cfg files from PERSCONFIG_DIR."""
         cfg_dir = settings.PERSCONFIG_DIR
         if not cfg_dir.exists():
             raise CommandError(f'PERSCONFIG_DIR not found: {cfg_dir}')
 
-        cfg_files = list(cfg_dir.glob('*.cfg'))
+        cfg_files = sorted(cfg_dir.glob('*.cfg'))
         if not cfg_files:
             self.stdout.write('No .cfg files found')
             return
 
-        self.stdout.write(f'Found {len(cfg_files)} config files')
+        htmldefs = [f for f in cfg_files if f.name.endswith(HTMLDEFS_SUFFIX)]
+        configs = [] if prefs_only else [
+            f for f in cfg_files if not f.name.endswith(HTMLDEFS_SUFFIX)]
 
+        self.stdout.write(
+            f'Found {len(configs)} linelist configs and {len(htmldefs)} preference files')
+
+        success, failed = self._import_batch(configs, dry_run, force)
+        s, f = self._import_batch(htmldefs, dry_run, force)
+
+        self.stdout.write(
+            self.style.SUCCESS(f'\nImported: {success + s}, Failed: {failed + f}')
+        )
+
+    def _import_batch(self, files, dry_run, force):
+        """Import a list of files, returning (success, failed)."""
         success = 0
         failed = 0
-        for cfg_file in sorted(cfg_files):
+        for cfg_file in files:
             try:
-                self._import_file(cfg_file.name, dry_run)
+                self._import_file(cfg_file.name, dry_run, force)
                 success += 1
             except CommandError as e:
                 self.stderr.write(self.style.WARNING(f'{cfg_file.name}: {e}'))
@@ -83,13 +124,10 @@ class Command(BaseCommand):
                 self.stderr.write(self.style.ERROR(
                     f'{cfg_file.name}: {e.__class__.__name__}: {e}'))
                 failed += 1
+        return success, failed
 
-        self.stdout.write(
-            self.style.SUCCESS(f'\nImported: {success}, Failed: {failed}')
-        )
-
-    def _import_file(self, filename, dry_run):
-        """Import a single .cfg file."""
+    def _import_file(self, filename, dry_run, force=False):
+        """Import a single .cfg file, dispatching on which kind it is."""
         filepath = Path(filename)
         if not filepath.is_absolute():
             filepath = settings.PERSCONFIG_DIR / filename
@@ -97,6 +135,91 @@ class Command(BaseCommand):
         if not filepath.exists():
             raise CommandError(f'File not found: {filepath}')
 
+        if filepath.name.endswith(HTMLDEFS_SUFFIX):
+            self._import_htmldefs(filepath, dry_run, force)
+        else:
+            self._import_linelist_config(filepath, dry_run)
+
+    def _import_htmldefs(self, filepath, dry_run, force):
+        """Import a <Name>-HTMLdefs.cfg unit-preferences file."""
+        name_from_file = filepath.name[:-len(HTMLDEFS_SUFFIX)]
+        user = self._find_user_by_filename(name_from_file)
+        if not user:
+            raise CommandError(
+                f'No user matches "{name_from_file}". '
+                f'Filename should be user name without spaces.'
+            )
+
+        values = self._parse_htmldefs(filepath)
+        if not values:
+            raise CommandError(f'No usable settings in {filepath.name}')
+
+        defaults = {name: UserPreferences._meta.get_field(name).default
+                    for name in self._pref_choices()}
+        # Keys the file merely restates the site default for say nothing about
+        # the user; only report the rest.
+        chosen = {k: v for k, v in values.items() if v != defaults[k]}
+
+        prefs = UserPreferences.objects.filter(user=user).first()
+        if prefs and not force:
+            # A row exists for everyone who ever opened the units page, since
+            # get_preferences() creates one; that alone is not a choice. Only a
+            # value differing from the default is.
+            customised = [k for k, default in defaults.items()
+                          if getattr(prefs, k) != default]
+            if customised:
+                self.stdout.write(self.style.WARNING(
+                    f'{filepath.name}: {user.name} already set '
+                    f'{", ".join(sorted(customised))} here - skipping (--force to overwrite)'))
+                return
+
+        summary = ', '.join(f'{k}={v}' for k, v in sorted(chosen.items())) or 'site defaults'
+        if dry_run:
+            self.stdout.write(f'{filepath.name}: would set {summary} for {user.name}')
+            return
+
+        prefs = prefs or UserPreferences(user=user)
+        for key, value in values.items():
+            setattr(prefs, key, value)
+        prefs.save()
+        self.stdout.write(f'{filepath.name}: {summary} for {user.name}')
+
+    def _pref_choices(self):
+        """{field name: set of accepted values} for the unit preferences."""
+        return {f.name: {value for value, _label in f.choices}
+                for f in UserPreferences._meta.get_fields()
+                if getattr(f, 'choices', None)}
+
+    def _parse_htmldefs(self, filepath):
+        """Parse the legacy key/value file, dropping anything the model rejects.
+
+        The legacy interface rewrote this file on every login from whatever the
+        site default contained at the time, so old files can carry keys and
+        values this version knows nothing about. Those must not reach the
+        database: SQLite does not enforce max_length and Django does not enforce
+        choices on save(), so a bad value would sit there until it reached
+        pres_in flag generation.
+        """
+        accepted = self._pref_choices()
+        values = {}
+        with open(filepath, 'r') as f:
+            for line in f:
+                fields = line.split(None, 1)
+                if len(fields) != 2:
+                    continue
+                key, value = fields[0], fields[1].strip()
+                if key not in accepted:
+                    self.stdout.write(self.style.WARNING(
+                        f'  {filepath.name}: unknown setting "{key}" - ignored'))
+                elif value not in accepted[key]:
+                    self.stdout.write(self.style.WARNING(
+                        f'  {filepath.name}: {key}="{value}" is not a valid choice - ignored'))
+                else:
+                    values[key] = value
+        return values
+
+    def _import_linelist_config(self, filepath, dry_run):
+        """Import a <Name>.cfg personal linelist configuration."""
         # Find user by filename
         name_from_file = filepath.stem
         user = self._find_user_by_filename(name_from_file)

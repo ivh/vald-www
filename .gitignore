@@ -67,8 +67,10 @@ venv/
 *.pyc
 staticfiles/
 
-# Personal configs
+# Personal configs. .cfg_local is the legacy interface's variant for users in
+# the local register; nothing here reads it, but it is still user data.
 config/personal_configs/*.cfg
+config/personal_configs/*.cfg_local
 working/
 clients.register
 secrets.txt

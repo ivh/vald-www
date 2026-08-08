@@ -133,7 +133,10 @@ The `pres_in.NNNNNN` file controls preselect5 behavior:
 # Import system default config (required before first use)
 python manage.py import_default_config /path/to/default.cfg
 
-# Import existing personal configs from files
+# Import existing personal configs from files. Both kinds of legacy file are
+# handled: <Name>.cfg is the linelist configuration, <Name>-HTMLdefs.cfg the
+# unit preferences.
 python manage.py import_persconf --all  # All files in config/personal_configs/
 python manage.py import_persconf ThomasMarquart.cfg  # Single file
+python manage.py import_persconf --all --prefs-only  # Only the -HTMLdefs files
 ```

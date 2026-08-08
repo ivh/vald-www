@@ -80,7 +80,7 @@ shared@tls.de
     assert '1 email(s) shared between differently-named records' in out
     # dry-run predicts the merge, so counts reflect a real import
     assert 'Would create 1 user(s)' in out
-    assert '1 merged into existing' in out
+    assert 'would merge 1 into existing' in out
 
 
 @pytest.mark.django_db
@@ -130,3 +130,70 @@ def test_non_utf8_bytes_do_not_abort_the_import(tmp_path):
     call_command('import_users', '--file', str(reg), stdout=out)
     assert User.objects.filter(name='Jose Nunez').exists()
     assert UserEmail.objects.filter(email='jose@example.com').exists()
+
+
+# --- the dry run must answer the question you are actually asking -----------
+#
+# It predicted new-vs-merge from the file alone, so against a database that
+# already held the register it reported "Would create 3934" where a real import
+# created 1. Re-running the dry run to check a delta is the only reason to run
+# it twice, and that was exactly the case it got wrong.
+
+@pytest.mark.django_db
+def test_dry_run_against_a_populated_database_counts_merges(tmp_path):
+    run(tmp_path, TWO_GOOD)                          # first, for real
+    out = run(tmp_path, TWO_GOOD, '--dry-run')       # then ask again
+
+    assert 'Would create 0 user(s)' in out
+    assert 'would merge 2 into existing' in out
+    assert 'Would create user: Alice Adams' not in out
+    assert 'Would merge into existing user: Alice Adams' in out
+
+
+@pytest.mark.django_db
+def test_dry_run_reports_only_the_new_record(tmp_path):
+    """The delta case: one name added to a register already imported."""
+    run(tmp_path, TWO_GOOD)
+    out = run(tmp_path, TWO_GOOD + "\n#$ Carol Chen\ncarol@example.org\n", '--dry-run')
+
+    assert 'Would create 1 user(s)' in out
+    assert 'would merge 2 into existing' in out
+    assert 'Would create user: Carol Chen' in out
+
+
+@pytest.mark.django_db
+def test_two_records_with_the_same_name_and_address_predict_a_merge(tmp_path):
+    """No COLLISION is reported (same person), but a merge still happens - and
+    the dry run used to count both records as creations."""
+    text = """\
+#$ Raul Puebla
+raul@example.com
+
+#$ Raul Puebla
+raul@example.com
+other@example.com
+"""
+    out = run(tmp_path, text, '--dry-run')
+    assert 'COLLISION' not in out
+    assert 'Would create 1 user(s)' in out
+    assert 'would merge 1 into existing' in out
+
+
+@pytest.mark.django_db
+def test_dry_run_predictions_match_the_real_import(tmp_path):
+    """The property that matters: predicted counts equal actual counts."""
+    text = TWO_GOOD + """
+#$ Carol Chen
+carol@example.org
+
+#$ Carol C. Chen
+carol@example.org
+"""
+    predicted = run(tmp_path, text, '--dry-run')
+    actual = run(tmp_path, text)
+
+    assert 'Would create 3 user(s)' in predicted
+    assert 'Created 3 user(s)' in actual
+    assert 'would merge 1 into existing' in predicted
+    assert 'merged 1 into existing' in actual
+    assert User.objects.count() == 3
