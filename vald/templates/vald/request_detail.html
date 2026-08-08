@@ -1,5 +1,12 @@
 {% extends "vald/base.html" %}
 
+{% comment %}
+Status first, so it survives the tab truncating the title to a few characters.
+The page reloads itself while the job runs, which rewrites this too - the point
+being that the tab reports the job finishing without being looked at.
+{% endcomment %}
+{% block title %}{% if req.status == 'complete' %}{% if req.results_expired %}Expired{% else %}✓ Done{% endif %}{% elif req.status == 'failed' %}✗ Failed{% elif req.status == 'processing' %}⟳ Running{% else %}⋯ Queued{% endif %} — {{ sitename }} request{% endblock %}
+
 {% block extra_head %}
 {% if req.is_pending %}
 <meta http-equiv="refresh" content="10">

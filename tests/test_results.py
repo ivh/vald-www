@@ -1,6 +1,7 @@
 """Result file resolution, expiry, and download containment."""
 import datetime
 import gzip
+import re
 
 import pytest
 from django.utils import timezone
@@ -167,3 +168,56 @@ def test_download_requires_ownership(approved_user, ftp_dir, db):
     client.post('/login/', {'user': 'other@example.com', 'password': 'pw-for-testing-123'})
 
     assert client.get(f'/request/{req.uuid}/download/').status_code != 200
+
+
+# --- the tab title tracks the job, so a background tab reports it finishing ---
+
+def title_of(html):
+    return re.search(r'<title>(.*?)</title>', html, re.S).group(1).strip()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('status, expected', [
+    ('pending', '⋯ Queued'),
+    ('processing', '⟳ Running'),
+    ('complete', '✓ Done'),
+    ('failed', '✗ Failed'),
+])
+def test_title_reports_the_status_first(logged_in_client, approved_user, status, expected):
+    req = Request.objects.create(user=approved_user, request_type='extractall',
+                                 parameters={}, status=status)
+    title = title_of(logged_in_client.get(f'/request/{req.uuid}/').content.decode())
+    assert title.startswith(expected), \
+        'the status must lead, or a truncated tab title shows only the site name'
+
+
+@pytest.mark.django_db
+def test_expired_results_do_not_claim_to_be_done(logged_in_client, approved_user, ftp_dir,
+                                                 settings):
+    settings.VALD_RESULT_RETENTION_DAYS = 2
+    req = complete_request(approved_user, 'Gone.000001.gz', age_days=30)
+    title = title_of(logged_in_client.get(f'/request/{req.uuid}/').content.decode())
+    assert title.startswith('Expired')
+
+
+@pytest.mark.django_db
+def test_the_title_still_names_the_site(logged_in_client, approved_user, settings):
+    req = Request.objects.create(user=approved_user, request_type='extractall',
+                                 parameters={}, status='processing')
+    title = title_of(logged_in_client.get(f'/request/{req.uuid}/').content.decode())
+    assert settings.SITENAME in title
+
+
+@pytest.mark.django_db
+def test_a_running_request_reloads_itself(logged_in_client, approved_user):
+    """Without the refresh the title would only ever show the status at load."""
+    req = Request.objects.create(user=approved_user, request_type='extractall',
+                                 parameters={}, status='processing')
+    body = logged_in_client.get(f'/request/{req.uuid}/').content.decode()
+    assert 'http-equiv="refresh"' in body
+
+
+@pytest.mark.django_db
+def test_other_pages_keep_the_plain_title(logged_in_client, settings):
+    title = title_of(logged_in_client.get('/').content.decode())
+    assert title == settings.SITENAME
