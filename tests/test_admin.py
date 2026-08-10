@@ -733,3 +733,115 @@ def test_the_index_keeps_its_inline_links_since_it_has_no_sidebar(staff_client):
     body = staff_client.get('/admin/').content.decode()
     assert 'id="nav-sidebar"' not in body
     assert 'href="/admin/stats/"' in body and 'href="/admin/help/"' in body
+
+
+# --- hourly grouping and default windows --------------------------------------
+
+@pytest.mark.django_db
+def test_hourly_buckets_follow_local_time(staff_client):
+    """TruncHour hands back an aware UTC datetime. In June, Stockholm is UTC+2,
+    so 00:30 local is 22:30 the previous day in UTC - comparing the raw value
+    against a local bucket start would file it two buckets away, on the wrong
+    day."""
+    from datetime import datetime
+    user = make_user('Nightowl', is_active=True)
+    make_request(user, local(2026, 6, 15, hour=0, minute=30))
+    make_request(user, local(2026, 6, 15, hour=23, minute=59))
+
+    context = staff_client.get(
+        '/admin/stats/?period=hour&from=2026-06-15&to=2026-06-15').context
+    bars = context['chart']['bars']
+    assert len(bars) == 24, 'an hourly day is 24 buckets'
+    assert [i for i, b in enumerate(bars) if b['value']] == [0, 23]
+    assert bars[0]['title'].startswith('2026-06-15 00:00')
+    assert context['total'] == 2
+
+
+@pytest.mark.django_db
+def test_an_hourly_range_can_span_days(staff_client):
+    user = make_user('Busy', is_active=True)
+    make_request(user, local(2026, 6, 15, hour=9))
+    make_request(user, local(2026, 6, 16, hour=9))
+
+    context = staff_client.get(
+        '/admin/stats/?period=hour&from=2026-06-15&to=2026-06-16').context
+    bars = context['chart']['bars']
+    assert len(bars) == 48
+    assert [i for i, b in enumerate(bars) if b['value']] == [9, 33]
+    # bare clock times would repeat across the two days
+    assert any('Jun' in label['text'] for label in context['chart']['x_labels'])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('period,expected', [
+    ('hour', ('2026-08-10', '2026-08-10')),     # the current day
+    ('day', ('2026-08-01', '2026-08-10')),      # the current month, so far
+    # The current year, so far - but the last bucket is the whole of August, and
+    # the reported range describes the buckets rather than trailing off mid-bar.
+    ('month', ('2026-01-01', '2026-08-31')),
+])
+def test_choosing_a_grouping_selects_the_interval_one_level_up(
+        staff_client, period, expected, monkeypatch):
+    from datetime import date as real_date
+    import vald.admin
+    monkeypatch.setattr(vald.admin.timezone, 'localdate',
+                        lambda *a, **kw: real_date(2026, 8, 10))
+
+    context = staff_client.get(f'/admin/stats/?period={period}').context
+    assert (context['date_from'], context['date_to']) == expected
+
+
+@pytest.mark.django_db
+def test_grouping_by_year_covers_everything_recorded(staff_client):
+    user = make_user('Old', is_active=True)
+    make_request(user, local(2021, 3, 4))
+
+    context = staff_client.get('/admin/stats/?period=year').context
+    assert context['date_from'] == '2021-01-01'
+    assert context['total'] == 1
+
+
+@pytest.mark.django_db
+def test_the_grouping_links_drop_the_dates(staff_client):
+    """Picking a grouping is meant to reset the range, which a <select> inside
+    the form could not do without JS - it would post the old dates back."""
+    body = staff_client.get(
+        '/admin/stats/?period=day&from=2026-01-01&to=2026-01-31').content.decode()
+    for p in ('hour', 'month', 'year'):
+        assert f'href="/admin/stats/?period={p}"' in body, f'{p} link carries state'
+    assert '<select' not in body
+
+
+@pytest.mark.django_db
+def test_dates_are_entered_in_iso_not_a_browser_locale(staff_client):
+    """<input type=date> renders in the browser's locale, which the page cannot
+    override, so an en-US browser would show a leading month."""
+    body = staff_client.get('/admin/stats/').content.decode()
+    assert 'type="date"' not in body
+    assert body.count('placeholder="YYYY-MM-DD"') == 2
+    assert body.count(r'pattern="\d{4}-\d{2}-\d{2}"') == 2
+
+
+@pytest.mark.django_db
+def test_a_month_grouping_reports_the_whole_months_it_actually_covers(staff_client):
+    """The window is derived from the buckets, so a mid-month start shows as the
+    1st rather than the page claiming a range it did not chart."""
+    user = make_user('Mid', is_active=True)
+    make_request(user, local(2026, 3, 2))     # before the requested start
+    make_request(user, local(2026, 3, 20))
+
+    context = staff_client.get(
+        '/admin/stats/?period=month&from=2026-03-15&to=2026-03-31').context
+    assert context['date_from'] == '2026-03-01'
+    assert context['total'] == 2, 'both requests are inside the charted bucket'
+
+
+@pytest.mark.django_db
+def test_an_over_long_hourly_range_stops_on_a_bucket_boundary(staff_client):
+    from vald.admin import STATS_MAX_BUCKETS
+    context = staff_client.get(
+        '/admin/stats/?period=hour&from=2026-01-01&to=2026-12-31').context
+    assert context['truncated']
+    assert len(context['chart']['bars']) == STATS_MAX_BUCKETS
+    # 400 hours from midnight on 1 Jan ends part-way through 17 January
+    assert context['date_to'] == '2026-01-17'

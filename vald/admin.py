@@ -10,9 +10,9 @@ from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
-from django.db.models import (Count, DateField, DurationField, ExpressionWrapper,
-                              F, Min, Q)
-from django.db.models.functions import TruncDay, TruncMonth, TruncYear
+from django.db.models import (Count, DateField, DateTimeField, DurationField,
+                              ExpressionWrapper, F, Min, Q)
+from django.db.models.functions import TruncDay, TruncHour, TruncMonth, TruncYear
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.template.loader import render_to_string
@@ -200,24 +200,50 @@ def admin_help(request):
     return render(request, 'admin/vald/help.html', context)
 
 
-STATS_PERIODS = ('day', 'month', 'year')
+STATS_PERIODS = ('hour', 'day', 'month', 'year')
 
-# A daily view over a decade would be 3600 bars in 950px, i.e. sub-pixel rects
+# An hourly view over a year would be 8700 bars in 950px, i.e. sub-pixel rects
 # and a template loop long enough to notice. Truncate instead, and say so.
 STATS_MAX_BUCKETS = 400
 
-_TRUNC = {'day': TruncDay, 'month': TruncMonth, 'year': TruncYear}
+_TRUNC = {'hour': TruncHour, 'day': TruncDay,
+          'month': TruncMonth, 'year': TruncYear}
 
 # strftime for the bar's hover text and for the axis tick under it. The axis one
 # is short because only every Nth tick is drawn and they must not collide.
 _BUCKET_FORMATS = {
+    'hour': ('%Y-%m-%d %H:%M', '%H:%M'),
     'day': ('%Y-%m-%d', '%d %b'),
     'month': ('%B %Y', '%b %y'),
     'year': ('%Y', '%Y'),
 }
 
+# Hour buckets are naive local datetimes; the coarser ones are plain dates. Both
+# are compared against what the database hands back, so the two have to agree -
+# see _bucket_key.
+_HOUR = 'hour'
+
+
+def _as_datetime(value):
+    return value if isinstance(value, datetime) else datetime.combine(value, time.min)
+
+
+def _bucket_key(value):
+    """Normalise a truncated value from the database into a bucket key.
+
+    TruncHour yields an aware datetime, the coarser Trunc* a date. Converting
+    the datetime to local time first matters: the truncation already happened in
+    Europe/Stockholm, but the value comes back in UTC, so comparing it raw would
+    file 01:00 local under 00:00.
+    """
+    if isinstance(value, datetime):
+        return timezone.localtime(value).replace(tzinfo=None)
+    return value
+
 
 def _floor_to_period(d, period):
+    if period == _HOUR:
+        return _as_datetime(d).replace(minute=0, second=0, microsecond=0)
     if period == 'month':
         return d.replace(day=1)
     if period == 'year':
@@ -227,6 +253,8 @@ def _floor_to_period(d, period):
 
 def _advance(d, period):
     """Next bucket start. Calendar arithmetic, not 30- or 365-day steps."""
+    if period == _HOUR:
+        return d + timedelta(hours=1)
     if period == 'month':
         return date(d.year + d.month // 12, d.month % 12 + 1, 1)
     if period == 'year':
@@ -234,18 +262,22 @@ def _advance(d, period):
     return d + timedelta(days=1)
 
 
-def _bucket_starts(start, end, period):
-    """Every bucket start in [start, end], including the ones with no rows.
+def _bucket_starts(frm, to, period):
+    """Every bucket start covering [frm, to], including the ones with no rows.
 
     SQL only returns buckets that have rows. Plotting those alone would put
     March next to July at the same spacing and quietly misreport the shape.
+
+    `to` is an inclusive date, so the hourly limit is the end of that day rather
+    than its midnight.
     """
-    cur = _floor_to_period(start, period)
+    cur = _floor_to_period(frm, period)
+    limit = datetime.combine(to, time.max) if period == _HOUR else to
     out = []
-    while cur <= end and len(out) < STATS_MAX_BUCKETS:
+    while cur <= limit and len(out) < STATS_MAX_BUCKETS:
         out.append(cur)
         cur = _advance(cur, period)
-    return out, cur <= end
+    return out, cur <= limit
 
 
 def _parse_date(value):
@@ -256,18 +288,18 @@ def _parse_date(value):
 
 
 def _default_window(period, today):
+    """The enclosing interval one level up: hours fill a day, days fill a month,
+    months fill a year. Picking a grouping is nearly always asking "and over
+    what", and this is the answer that needs no second click."""
+    if period == _HOUR:
+        return today, today
     if period == 'day':
-        return today - timedelta(days=89), today
+        return today.replace(day=1), today
     if period == 'month':
-        return _months_back(today, 23), today
+        return date(today.year, 1, 1), today
     earliest = Request.objects.aggregate(first=Min('created_at'))['first']
     first_year = timezone.localtime(earliest).year if earliest else today.year - 4
     return date(first_year, 1, 1), today
-
-
-def _months_back(d, n):
-    total = d.year * 12 + (d.month - 1) - n
-    return date(total // 12, total % 12 + 1, 1)
 
 
 def _parse_stats_period(request):
@@ -359,6 +391,10 @@ def _chart(buckets, values, period, tooltips):
     chart, whereas no request at all is a genuine zero in the count chart.
     """
     tick_fmt = _BUCKET_FORMATS[period][1]
+    if period == _HOUR and buckets[0].date() != buckets[-1].date():
+        # Bare clock times repeat once the window is longer than a day, and only
+        # every Nth tick is drawn, so which day it is stops being inferable.
+        tick_fmt = '%d %b %H'
     plot_w = _SVG_W - _PLOT_L - _PLOT_R
     plot_h = _SVG_H - _PLOT_T - _PLOT_B
     baseline = _PLOT_T + plot_h
@@ -415,13 +451,15 @@ def _turnaround(qs, buckets, period):
     before rewriting this.
     """
     title_fmt = _BUCKET_FORMATS[period][0]
+    output_field = DateTimeField() if period == _HOUR else DateField()
     rows = (qs
             .filter(status='complete', completed_at__isnull=False)
-            .annotate(bucket=_TRUNC[period]('created_at', output_field=DateField()))
+            .annotate(bucket=_TRUNC[period]('created_at', output_field=output_field))
             .values_list('bucket', 'id', 'request_type', 'created_at', 'completed_at'))
 
     per_bucket, slowest = {}, []
     for bucket, pk, request_type, created, completed in rows:
+        bucket = _bucket_key(bucket)
         seconds = (completed - created).total_seconds()
         if seconds < 0:
             # Only reachable via a clock step or a hand-edited row. Counting it
@@ -475,25 +513,27 @@ def admin_stats(request):
     """
     period, frm, to = _parse_stats_period(request)
     buckets, truncated = _bucket_starts(frm, to, period)
-    if truncated:
-        # Shrink the whole page to what the chart can show, so the totals and the
-        # leaderboard describe the same period as the bars rather than a wider one.
-        to = _advance(buckets[-1], period) - timedelta(days=1)
 
-    # localdate boundaries, made aware, so a request at 00:30 Stockholm counts as
-    # that Stockholm day and not the previous UTC one. `to` is inclusive, hence
-    # the exclusive upper bound at the following midnight.
-    start = timezone.make_aware(datetime.combine(_floor_to_period(frm, period), time.min))
-    end = timezone.make_aware(datetime.combine(to + timedelta(days=1), time.min))
+    # The window comes from the buckets rather than the other way round, so that
+    # a period flooring to the start of its month, or a range cut short by
+    # STATS_MAX_BUCKETS, moves the totals and the leaderboard with the bars
+    # instead of leaving them describing a wider span than the chart shows.
+    start = timezone.make_aware(_as_datetime(buckets[0]))
+    end = timezone.make_aware(_as_datetime(_advance(buckets[-1], period)))
+    frm = start.date()
+    to = (end - timedelta(seconds=1)).date()
     qs = Request.objects.filter(created_at__gte=start, created_at__lt=end)
 
-    # output_field=DateField gives back dates, which is what buckets holds; the
-    # truncation itself still happens in the active timezone.
+    # Hour truncation has to stay a datetime; the coarser ones become dates,
+    # which is what buckets holds. Either way the truncation happens in the
+    # active timezone, so a request at 00:30 Stockholm counts as that Stockholm
+    # hour and day rather than the previous UTC one.
+    output_field = DateTimeField() if period == _HOUR else DateField()
     rows = (qs
-            .annotate(bucket=_TRUNC[period]('created_at', output_field=DateField()))
+            .annotate(bucket=_TRUNC[period]('created_at', output_field=output_field))
             .values('bucket')
             .annotate(n=Count('id')))
-    by_bucket = {row['bucket']: row['n'] for row in rows}
+    by_bucket = {_bucket_key(row['bucket']): row['n'] for row in rows}
     counts = [by_bucket.get(b, 0) for b in buckets]
 
     # Carry the window into the changelist links. str() of an aware datetime is

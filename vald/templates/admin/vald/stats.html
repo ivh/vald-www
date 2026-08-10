@@ -29,6 +29,14 @@ follows the light/dark theme.
   .stats-controls label { display: block; font-weight: 600; font-size: .8em;
       text-transform: uppercase; letter-spacing: .04em; color: var(--body-quiet-color);
       margin-bottom: .3em; }
+  .stats-controls .period-links { display: inline-flex; gap: .1em; }
+  .stats-controls .period-links > * { padding: .3em .7em; border: 1px solid var(--border-color);
+      margin-left: -1px; }
+  .stats-controls .period-links > :first-child { border-radius: 4px 0 0 4px; }
+  .stats-controls .period-links > :last-child { border-radius: 0 4px 4px 0; }
+  .stats-controls .period-links .current { background: var(--selected-bg);
+      color: var(--body-fg); font-weight: 600; }
+  .stats-controls input[type=text] { font-variant-numeric: tabular-nums; }
 
   .stats-summary { display: flex; flex-wrap: wrap; gap: 2.4em; margin: 1.4em 0; }
   .stats-summary .figure { font-size: 1.9em; line-height: 1.1; font-variant-numeric: tabular-nums; }
@@ -57,22 +65,41 @@ follows the light/dark theme.
 {# No <h1> here: base.html already renders one from the title in the context. #}
 <div class="stats-page">
 
+{% comment %}
+Grouping is a row of links rather than a select, because picking one is meant to
+reset the range to the interval a level up. A select inside this form would
+submit the old dates along with the new grouping, and the only way round that
+would be JS on the change event.
+
+The dates are text rather than <input type="date">: a native date input renders
+in the browser's locale, which the page cannot override, so it shows 08/10/2026
+to anyone whose browser is en-US. Losing the native calendar is the price of
+always-ISO.
+{% endcomment %}
 <form method="get" class="stats-controls">
   <div>
-    <label for="id_period">Group by</label>
-    <select name="period" id="id_period">
+    <label>Group by</label>
+    <span class="period-links">
       {% for p in periods %}
-        <option value="{{ p }}"{% if p == period %} selected{% endif %}>{{ p|capfirst }}</option>
+        {% if p == period %}<strong class="current">{{ p|capfirst }}</strong>
+        {% else %}<a href="{% url 'admin_stats' %}?period={{ p }}">{{ p|capfirst }}</a>{% endif %}
       {% endfor %}
-    </select>
+    </span>
   </div>
+  <input type="hidden" name="period" value="{{ period }}">
   <div>
     <label for="id_from">From</label>
-    <input type="date" name="from" id="id_from" value="{{ date_from }}">
+    <input type="text" name="from" id="id_from" value="{{ date_from }}"
+           size="10" maxlength="10" placeholder="YYYY-MM-DD"
+           pattern="\d{4}-\d{2}-\d{2}" inputmode="numeric"
+           title="ISO date, e.g. 2026-08-10">
   </div>
   <div>
     <label for="id_to">To</label>
-    <input type="date" name="to" id="id_to" value="{{ date_to }}">
+    <input type="text" name="to" id="id_to" value="{{ date_to }}"
+           size="10" maxlength="10" placeholder="YYYY-MM-DD"
+           pattern="\d{4}-\d{2}-\d{2}" inputmode="numeric"
+           title="ISO date, e.g. 2026-08-10">
   </div>
   <div><input type="submit" value="Show" class="default"></div>
   <div><a href="{% url 'admin_stats' %}?period={{ period }}">Reset dates</a></div>
