@@ -20,6 +20,7 @@ import logging
 
 from .models import Request, User, UserEmail
 from .forms import (
+    AccountDetailsForm,
     PasswordResetRequestForm,
     PasswordResetForm,
     RegistrationForm,
@@ -1039,6 +1040,34 @@ def handle_extract_request(request):
     # Immediately redirect to request detail page
     messages.success(request, 'Your request has been submitted and is being processed.')
     return redirect('vald:request_detail', uuid=req_obj.uuid)
+
+
+@require_login
+def account(request):
+    """Show and edit the account details stored about the logged-in user.
+
+    Until now affiliation was write-once at registration and visible only in the
+    admin, so an imported account had no way to see or correct what
+    clients.register happened to contain.
+    """
+    user = get_current_user(request)
+    context = get_user_context(request)
+
+    if request.method == 'POST':
+        form = AccountDetailsForm(request.POST, instance=user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Your account details have been saved.')
+            return redirect('vald:account')
+        for field, errors in form.errors.items():
+            for error in errors:
+                field_label = form.fields[field].label if field in form.fields else field
+                messages.error(request, f"{field_label}: {error}")
+    else:
+        form = AccountDetailsForm(instance=user)
+
+    context['form'] = form
+    return render(request, 'vald/account.html', context)
 
 
 @require_login

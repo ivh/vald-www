@@ -24,6 +24,9 @@ urlpatterns = [
     # Form submission
     path('submit/', views.submit_request, name='submit_request'),
 
+    # Account details
+    path('account/', views.account, name='account'),
+
     # Unit selection
     path('unitselection/', views.unitselection, name='unitselection'),
     path('save-units/', views.save_units, name='save_units'),

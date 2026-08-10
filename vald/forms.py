@@ -4,7 +4,16 @@ from django.core.exceptions import ValidationError
 import re
 
 from . import abundances
-from .models import UserPreferences
+from .models import User, UserPreferences
+
+
+# The model field is an unbounded TextField holding free text imported from
+# clients.register - multi-line, and up to ~270 characters in the existing data.
+# Both forms that write it share this cap so the edit form cannot reject a value
+# the importer already stored.
+AFFILIATION_MAX_LENGTH = 500
+
+AFFILIATION_HELP = 'Institute, department and your current position'
 
 
 class UserPreferencesForm(forms.ModelForm):
@@ -141,15 +150,9 @@ class RegistrationForm(forms.Form):
     affiliation = forms.CharField(
         label='Affiliation',
         required=True,
-        max_length=200,
-        widget=forms.TextInput(attrs={'size': '50'})
-    )
-    position = forms.CharField(
-        label='Current position',
-        required=False,
-        max_length=100,
-        widget=forms.TextInput(attrs={'size': '50'}),
-        help_text='optional, for statistics only'
+        max_length=AFFILIATION_MAX_LENGTH,
+        widget=forms.Textarea(attrs={'cols': '50', 'rows': '3'}),
+        help_text=AFFILIATION_HELP
     )
     privacy_accepted = forms.BooleanField(
         label='I accept the privacy statement',
@@ -171,6 +174,26 @@ class RegistrationForm(forms.Form):
             raise ValidationError("Your email address should at least contain a '@'!")
 
         return email
+
+
+class AccountDetailsForm(forms.ModelForm):
+    """Lets the account holder correct the affiliation stored about them.
+
+    Affiliation only. `name` feeds User.client_name and therefore the output
+    filenames the Fortran binaries write, and the email address is the delivery
+    target resolved at job completion - neither is safe to change from here.
+    """
+    affiliation = forms.CharField(
+        label='Affiliation',
+        required=True,
+        max_length=AFFILIATION_MAX_LENGTH,
+        widget=forms.Textarea(attrs={'cols': '60', 'rows': '4'}),
+        help_text=AFFILIATION_HELP
+    )
+
+    class Meta:
+        model = User
+        fields = ['affiliation']
 
 
 class ExtractAllForm(forms.Form):

@@ -18,8 +18,7 @@ If you want to use the service on other servers, you will need to register for e
     <tr><td colspan=2>
     <tr><td>{{ registration_form.email.label }} : <td>{{ registration_form.email }}
     <tr><td>{{ registration_form.name.label }} : <td>{{ registration_form.name }}
-    <tr><td>{{ registration_form.affiliation.label }} : <td>{{ registration_form.affiliation }}
-    <tr><td>{{ registration_form.position.label }} : <td>{{ registration_form.position }} {{ registration_form.position.help_text }}
+    <tr><td valign="top">{{ registration_form.affiliation.label }} : <td>{{ registration_form.affiliation }}<br>{{ registration_form.affiliation.help_text }}
     <tr><td colspan=2>
     <tr><td>{{ registration_form.privacy_accepted }}<td>
     By submitting a registration through the form above, you give us permission to process and store<br>
