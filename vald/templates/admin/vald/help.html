@@ -345,6 +345,20 @@ Verify with <code>systemctl list-timers 'vald*'</code>.
 
   <dt>Editing <code>secrets.txt</code> needs a restart, not a reload</dt>
   <dd>systemd reads <code>EnvironmentFile=</code> at process start.</dd>
+
+  <dt>Staff logins are not managed from here</dt>
+  <dd>The two "Users" in this admin were never the same thing: the accounts on
+      this site are <code>vald.models.User</code>, while the login that opened
+      <code>/admin/</code> is <code>django.contrib.auth</code>'s, an unrelated
+      table. There is one shared staff login and no page for it &mdash; the auth
+      models are unregistered in <code>vald_web/urls.py</code>, precisely so the
+      two never sit side by side under the same label again.
+      <strong>Change password</strong> in the header still works. Adding a staff
+      login, or resetting a forgotten one, is a shell job:
+      <code>bin/vald-manage createsuperuser</code> or
+      <code>bin/vald-manage changepassword admin</code>. Nothing on the public
+      site can grant it &mdash; VALD login never touches
+      <code>is_staff</code>.</dd>
 </dl>
 
 </div>

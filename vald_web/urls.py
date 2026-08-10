@@ -16,6 +16,8 @@ Including another URLconf
 """
 
 from django.contrib import admin
+from django.contrib.auth.models import Group
+from django.contrib.auth.models import User as StaffUser
 from django.urls import path, include
 from django_ratelimit.decorators import ratelimit
 
@@ -42,6 +44,22 @@ admin.site.login = ratelimit(
     method='POST',
     block=True,
 )(admin.site.login)
+
+# There is one shared staff login and no plans for per-person accounts, so the
+# "Authentication and Authorization" box managed nothing and cost something: its
+# "Users" is django.contrib.auth's, sitting in the sidebar directly above VALD's
+# own "Users" under the same label, which is the confusion this whole codebase
+# keeps having to warn about.
+#
+# Here rather than in vald/admin.py because vald precedes django.contrib.admin in
+# INSTALLED_APPS, so vald.admin is imported before auth's ModelAdmins exist to be
+# unregistered. By the time URLs load, autodiscovery has finished.
+#
+# Changing the staff password still works - admin:password_change is part of the
+# AdminSite, not of this ModelAdmin. Adding or inspecting a staff account is now
+# a shell job: manage.py createsuperuser / changepassword.
+admin.site.unregister(StaffUser)
+admin.site.unregister(Group)
 
 urlpatterns = [
     # Ahead of admin.site.urls so they resolve; both span models, so they belong

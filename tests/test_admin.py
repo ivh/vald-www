@@ -702,7 +702,7 @@ def test_the_sidebar_copy_still_renders_the_app_list(staff_client):
     body = staff_client.get('/admin/vald/request/').content.decode()
     sidebar = sidebar_of(body)
     assert 'id="nav-filter"' in sidebar
-    for entry in ('Requests', 'User Emails', 'Linelists', 'Groups'):
+    for entry in ('Requests', 'User Emails', 'Linelists', 'Configurations'):
         assert f'>{entry}</a>' in sidebar, f'{entry} dropped out of the sidebar'
 
 
@@ -845,3 +845,49 @@ def test_an_over_long_hourly_range_stops_on_a_bucket_boundary(staff_client):
     assert len(context['chart']['bars']) == STATS_MAX_BUCKETS
     # 400 hours from midnight on 1 Jan ends part-way through 17 January
     assert context['date_to'] == '2026-01-17'
+
+
+@pytest.mark.django_db
+def test_django_auth_models_are_not_in_the_admin(staff_client):
+    """One shared staff login, so the auth box managed nothing - and its "Users"
+    sat directly above VALD's own "Users" under the same label."""
+    body = staff_client.get('/admin/vald/request/').content.decode()
+    assert 'Authentication and Authorization' not in body
+    assert '/admin/auth/user/' not in body and '/admin/auth/group/' not in body
+    assert staff_client.get('/admin/auth/user/').status_code == 404
+    assert staff_client.get('/admin/auth/group/').status_code == 404
+
+
+@pytest.mark.django_db
+def test_the_staff_password_can_still_be_changed(staff_client):
+    """admin:password_change belongs to the AdminSite, not to the UserAdmin that
+    was just unregistered, so removing the box must not take it with it."""
+    assert staff_client.get('/admin/password_change/').status_code == 200
+    assert '/admin/password_change/' in staff_client.get('/admin/').content.decode()
+
+    response = staff_client.post('/admin/password_change/', {
+        'old_password': 'pw-for-testing-123',
+        'new_password1': 'a-different-pw-456',
+        'new_password2': 'a-different-pw-456',
+    })
+    assert response.status_code == 302
+    StaffUser.objects.get(username='admin').check_password('a-different-pw-456')
+
+
+@pytest.mark.django_db
+def test_vald_users_are_still_administrable(staff_client):
+    """The two User models are unrelated; unregistering auth's must not touch
+    the VALD one this admin exists to manage."""
+    user = make_user('Working', is_active=True, password='pw-for-testing-123')
+    assert staff_client.get('/admin/vald/user/').status_code == 200
+    assert staff_client.get(f'/admin/vald/user/{user.pk}/change/').status_code == 200
+
+
+@pytest.mark.django_db
+def test_help_page_says_where_staff_logins_are_managed(staff_client):
+    """Nothing in the admin manages them any more, so the only pointer to the
+    shell commands is this page."""
+    body = staff_client.get('/admin/help/').content.decode()
+    assert 'Staff logins are not managed from here' in body
+    for command in ('createsuperuser', 'changepassword'):
+        assert command in body
