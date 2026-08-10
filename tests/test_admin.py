@@ -28,6 +28,20 @@ def make_user(name, is_active, password=None):
     return user
 
 
+def sidebar_of(body):
+    """The nav sidebar only. The page has an earlier <nav>, so the closing tag
+    has to be searched for from the sidebar's own start."""
+    start = body.index('id="nav-sidebar"')
+    return body[start:body.index('</nav>', start)]
+
+
+def content_of(body):
+    """Everything inside #content, i.e. the page proper without the chrome. The
+    sidebar links to the reports too, so a test about the body of a page has to
+    say so or it passes on the sidebar's copy."""
+    return body[body.index('<div id="content"'):]
+
+
 def run_action(client, action, users):
     return client.post('/admin/vald/user/', {
         'action': action,
@@ -144,13 +158,14 @@ def test_admin_index_links_to_help(staff_client):
 def test_user_changelist_and_change_form_link_to_help(staff_client):
     user = make_user('Suspended', is_active=False, password='pw-for-testing-123')
 
-    changelist = staff_client.get('/admin/vald/user/').content.decode()
+    changelist = content_of(staff_client.get('/admin/vald/user/').content.decode())
     assert '/admin/help/' in changelist
     # .object-tools is floated with margin-top:-48px, so the note has to come
     # after it or the "Add user" button is pulled down on top of the text.
     assert changelist.index('class="object-tools"') < changelist.index('/admin/help/')
 
-    change_form = staff_client.get(f'/admin/vald/user/{user.pk}/change/').content.decode()
+    change_form = content_of(
+        staff_client.get(f'/admin/vald/user/{user.pk}/change/').content.decode())
     assert '/admin/help/' in change_form
     assert 'suspended' in change_form
 
@@ -662,3 +677,59 @@ def test_an_unfinished_request_shows_no_duration(staff_client):
     from vald.admin import RequestAdmin
     from django.contrib.admin.sites import site
     assert RequestAdmin(type(row), site).duration(row) == '—'
+
+
+# --- sidebar -----------------------------------------------------------------
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('page', [
+    '/admin/vald/request/',
+    '/admin/vald/user/',
+    '/admin/stats/',
+    '/admin/help/',
+])
+def test_reports_are_reachable_from_any_admin_page(staff_client, page):
+    body = staff_client.get(page).content.decode()
+    sidebar = sidebar_of(body)
+    assert 'href="/admin/stats/"' in sidebar
+    assert 'href="/admin/help/"' in sidebar
+
+
+@pytest.mark.django_db
+def test_the_sidebar_copy_still_renders_the_app_list(staff_client):
+    """admin/nav_sidebar.html is a copy of Django's, so an upgrade could leave
+    it stale. The app list going missing is how that would show up."""
+    body = staff_client.get('/admin/vald/request/').content.decode()
+    sidebar = sidebar_of(body)
+    assert 'id="nav-filter"' in sidebar
+    for entry in ('Requests', 'User Emails', 'Linelists', 'Groups'):
+        assert f'>{entry}</a>' in sidebar, f'{entry} dropped out of the sidebar'
+
+
+@pytest.mark.django_db
+def test_report_links_are_shaped_so_the_quick_filter_finds_them(staff_client):
+    """nav_sidebar.js collects 'th[scope=row] a' and hides the enclosing <tr>.
+    Links outside that shape stay visible while everything else filters away."""
+    body = staff_client.get('/admin/stats/').content.decode()
+    sidebar = sidebar_of(body)
+    for url in ('/admin/stats/', '/admin/help/'):
+        anchor = sidebar.index(f'href="{url}"')
+        row = sidebar.rindex('<th scope="row">', 0, anchor)
+        assert '</th>' not in sidebar[row:anchor]
+
+
+@pytest.mark.django_db
+def test_the_current_report_is_marked_in_the_sidebar(staff_client):
+    body = staff_client.get('/admin/stats/').content.decode()
+    sidebar = sidebar_of(body)
+    assert 'href="/admin/stats/" aria-current="page"' in sidebar
+    assert 'href="/admin/help/" aria-current="page"' not in sidebar
+
+
+@pytest.mark.django_db
+def test_the_index_keeps_its_inline_links_since_it_has_no_sidebar(staff_client):
+    """Django's index.html blanks the nav-sidebar block - the index is the app
+    list - so the index needs its own links to the reports."""
+    body = staff_client.get('/admin/').content.decode()
+    assert 'id="nav-sidebar"' not in body
+    assert 'href="/admin/stats/"' in body and 'href="/admin/help/"' in body

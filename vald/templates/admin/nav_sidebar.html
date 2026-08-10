@@ -1,0 +1,42 @@
+{% load i18n %}
+
+{% comment %}
+Copied from django/contrib/admin/templates/admin/nav_sidebar.html so the two
+cross-model pages can sit in the sidebar and be reachable from anywhere in the
+admin, not just the index. Django ships no block here to hook into.
+
+Everything above the "Reports" module is verbatim upstream - re-check it on a
+Django upgrade. Django 5.2.17 at the time of writing.
+
+The module mimics app_list.html's markup on purpose: the quick filter above
+collects "th[scope=row] a" and hides the enclosing <tr>, so matching that shape
+is what makes these two links filterable like every other entry.
+{% endcomment %}
+
+<button class="sticky toggle-nav-sidebar" id="toggle-nav-sidebar" aria-label="{% translate 'Toggle navigation' %}"></button>
+<nav class="sticky" id="nav-sidebar" aria-label="{% translate 'Sidebar' %}">
+  <input type="search" id="nav-filter"
+         placeholder="{% translate 'Start typing to filter…' %}"
+         aria-label="{% translate 'Filter navigation items' %}">
+  {% include 'admin/app_list.html' with app_list=available_apps show_changelinks=False %}
+
+  {% url 'admin_stats' as stats_url %}
+  {% url 'admin_help' as help_url %}
+  <div class="module{% if request.path == stats_url or request.path == help_url %} current-app{% endif %}">
+    <table>
+      <caption><span class="section">Reports</span></caption>
+      <tr class="model-stats{% if request.path == stats_url %} current-model{% endif %}">
+        <th scope="row">
+          <a href="{{ stats_url }}"{% if request.path == stats_url %} aria-current="page"{% endif %}>Request statistics</a>
+        </th>
+        <td></td>
+      </tr>
+      <tr class="model-help{% if request.path == help_url %} current-model{% endif %}">
+        <th scope="row">
+          <a href="{{ help_url }}"{% if request.path == help_url %} aria-current="page"{% endif %}>Admin help</a>
+        </th>
+        <td></td>
+      </tr>
+    </table>
+  </div>
+</nav>
