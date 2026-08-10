@@ -1,4 +1,7 @@
+import itertools
+import math
 import os
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from django.contrib import admin
@@ -7,7 +10,9 @@ from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
-from django.db.models import Q
+from django.db.models import (Count, DateField, DurationField, ExpressionWrapper,
+                              F, Min, Q)
+from django.db.models.functions import TruncDay, TruncMonth, TruncYear
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.template.loader import render_to_string
@@ -15,6 +20,7 @@ from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
+from django.utils.http import urlencode
 from django import forms
 from .models import Request, User, UserEmail, UserPreferences, Linelist, Config, ConfigLinelist
 
@@ -194,6 +200,370 @@ def admin_help(request):
     return render(request, 'admin/vald/help.html', context)
 
 
+STATS_PERIODS = ('day', 'month', 'year')
+
+# A daily view over a decade would be 3600 bars in 950px, i.e. sub-pixel rects
+# and a template loop long enough to notice. Truncate instead, and say so.
+STATS_MAX_BUCKETS = 400
+
+_TRUNC = {'day': TruncDay, 'month': TruncMonth, 'year': TruncYear}
+
+# strftime for the bar's hover text and for the axis tick under it. The axis one
+# is short because only every Nth tick is drawn and they must not collide.
+_BUCKET_FORMATS = {
+    'day': ('%Y-%m-%d', '%d %b'),
+    'month': ('%B %Y', '%b %y'),
+    'year': ('%Y', '%Y'),
+}
+
+
+def _floor_to_period(d, period):
+    if period == 'month':
+        return d.replace(day=1)
+    if period == 'year':
+        return date(d.year, 1, 1)
+    return d
+
+
+def _advance(d, period):
+    """Next bucket start. Calendar arithmetic, not 30- or 365-day steps."""
+    if period == 'month':
+        return date(d.year + d.month // 12, d.month % 12 + 1, 1)
+    if period == 'year':
+        return date(d.year + 1, 1, 1)
+    return d + timedelta(days=1)
+
+
+def _bucket_starts(start, end, period):
+    """Every bucket start in [start, end], including the ones with no rows.
+
+    SQL only returns buckets that have rows. Plotting those alone would put
+    March next to July at the same spacing and quietly misreport the shape.
+    """
+    cur = _floor_to_period(start, period)
+    out = []
+    while cur <= end and len(out) < STATS_MAX_BUCKETS:
+        out.append(cur)
+        cur = _advance(cur, period)
+    return out, cur <= end
+
+
+def _parse_date(value):
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _default_window(period, today):
+    if period == 'day':
+        return today - timedelta(days=89), today
+    if period == 'month':
+        return _months_back(today, 23), today
+    earliest = Request.objects.aggregate(first=Min('created_at'))['first']
+    first_year = timezone.localtime(earliest).year if earliest else today.year - 4
+    return date(first_year, 1, 1), today
+
+
+def _months_back(d, n):
+    total = d.year * 12 + (d.month - 1) - n
+    return date(total // 12, total % 12 + 1, 1)
+
+
+def _parse_stats_period(request):
+    """(period, from_date, to_date) from the querystring, never raising.
+
+    A hand-edited or stale URL must render the default window rather than a 500,
+    so every unparseable part falls back independently.
+    """
+    period = request.GET.get('period', 'month')
+    if period not in STATS_PERIODS:
+        period = 'month'
+
+    today = timezone.localdate()
+    frm = _parse_date(request.GET.get('from'))
+    to = _parse_date(request.GET.get('to'))
+    if frm is None or to is None:
+        default_from, default_to = _default_window(period, today)
+        frm = frm if frm is not None else default_from
+        to = to if to is not None else default_to
+    if frm > to:
+        frm, to = to, frm
+    return period, frm, to
+
+
+def _y_ticks(vmax):
+    """Gridline values 0..top in a 1/2/5 step, so every label is a whole number."""
+    vmax = max(1, math.ceil(vmax))
+    for mag in itertools.count(0):
+        for m in (1, 2, 5):
+            step = m * 10 ** mag
+            if vmax <= step * 5:
+                top = step * math.ceil(vmax / step)
+                return top, [step * i for i in range(top // step + 1)]
+
+
+# Turnaround is completed_at - created_at, so it includes queue wait. Plotting it
+# in raw seconds gives axis labels like 0/2000/4000; picking one unit for the
+# whole chart keeps the ticks readable.
+_DURATION_UNITS = ((3600, 'hours'), (60, 'minutes'), (1, 'seconds'))
+
+
+def _duration_unit(vmax):
+    for divisor, name in _DURATION_UNITS:
+        if vmax >= divisor * 2:
+            return divisor, name
+    return 1, 'seconds'
+
+
+def _format_duration(seconds):
+    sign, seconds = ('-', -seconds) if seconds < 0 else ('', seconds)
+    return sign + _format_positive_duration(seconds)
+
+
+def _format_positive_duration(seconds):
+    if seconds < 1:
+        return f'{seconds * 1000:.0f} ms'
+    if seconds < 60:
+        return f'{seconds:.1f} s'
+    if seconds < 3600:
+        return f'{int(seconds // 60)}m {int(seconds % 60):02d}s'
+    return f'{int(seconds // 3600)}h {int(seconds % 3600 // 60):02d}m'
+
+
+def _percentile(values, q):
+    """Nearest-rank percentile of an already-sorted list.
+
+    statistics.quantiles needs at least two points and interpolates; these
+    samples are small enough that an interpolated p90 between two runs would be
+    a number no request ever took.
+    """
+    if not values:
+        return None
+    rank = max(1, math.ceil(q / 100 * len(values)))
+    return values[rank - 1]
+
+
+# Canvas geometry. Everything is computed here rather than in the template:
+# arithmetic in template tags is where this kind of page becomes unreadable.
+_SVG_W, _SVG_H = 1000, 280
+_PLOT_L, _PLOT_R, _PLOT_T, _PLOT_B = 46, 8, 12, 34
+_MAX_X_LABELS = 15
+
+
+def _chart(buckets, values, period, tooltips):
+    """Bar geometry for one series.
+
+    `values` may hold None for a bucket with nothing to say, which is not the
+    same as zero: no completed request in a month is a gap in the turnaround
+    chart, whereas no request at all is a genuine zero in the count chart.
+    """
+    tick_fmt = _BUCKET_FORMATS[period][1]
+    plot_w = _SVG_W - _PLOT_L - _PLOT_R
+    plot_h = _SVG_H - _PLOT_T - _PLOT_B
+    baseline = _PLOT_T + plot_h
+
+    present = [v for v in values if v is not None]
+    top, ticks = _y_ticks(max(present) if present else 0)
+    step = plot_w / len(buckets)
+    bar_w = min(step * 0.8, 60)
+    label_every = math.ceil(len(buckets) / _MAX_X_LABELS)
+
+    bars, labels = [], []
+    for i, (bucket, value, tooltip) in enumerate(zip(buckets, values, tooltips)):
+        centre = _PLOT_L + i * step + step / 2
+        height = plot_h * (value or 0) / top
+        bars.append({
+            'x': round(centre - bar_w / 2, 2),
+            'y': round(baseline - height, 2),
+            'w': round(bar_w, 2),
+            'h': round(height, 2),
+            'value': value,
+            'title': tooltip,
+            'empty': not value,
+        })
+        if i % label_every == 0:
+            labels.append({'x': round(centre, 2), 'text': bucket.strftime(tick_fmt)})
+
+    return {
+        'width': _SVG_W,
+        'height': _SVG_H,
+        'baseline': baseline,
+        'plot_left': _PLOT_L,
+        'plot_right': _SVG_W - _PLOT_R,
+        'label_y': baseline + 18,
+        'bars': bars,
+        'x_labels': labels,
+        'y_ticks': [
+            {'value': v, 'y': round(baseline - plot_h * v / top, 2)}
+            for v in ticks
+        ],
+    }
+
+
+def _turnaround(qs, buckets, period):
+    """Turnaround stats for the completed requests in the window.
+
+    Only status='complete' counts. A failed request either died immediately or
+    sat until VALD_JOB_TIMEOUT and was killed, and a pile of identical
+    timeout-length rows would drag the median towards the timeout and describe
+    nothing anyone can act on. Failures are counted on the page separately.
+
+    The rows are pulled into Python rather than aggregated in SQL: SQLite has no
+    median, and two datetime columns over one window is cheap at VALD's volume.
+    If the table ever gets big enough for that to hurt, cache the whole page
+    before rewriting this.
+    """
+    title_fmt = _BUCKET_FORMATS[period][0]
+    rows = (qs
+            .filter(status='complete', completed_at__isnull=False)
+            .annotate(bucket=_TRUNC[period]('created_at', output_field=DateField()))
+            .values_list('bucket', 'id', 'request_type', 'created_at', 'completed_at'))
+
+    per_bucket, slowest = {}, []
+    for bucket, pk, request_type, created, completed in rows:
+        seconds = (completed - created).total_seconds()
+        if seconds < 0:
+            # Only reachable via a clock step or a hand-edited row. Counting it
+            # would pull the median down for a request that took real time.
+            continue
+        per_bucket.setdefault(bucket, []).append(seconds)
+        slowest.append({'pk': pk, 'type': request_type, 'seconds': seconds,
+                        'when': created})
+
+    everything = sorted(s for values in per_bucket.values() for s in values)
+    if not everything:
+        return None
+
+    medians = []
+    for bucket in buckets:
+        values = sorted(per_bucket.get(bucket, []))
+        medians.append(_percentile(values, 50) if values else None)
+
+    divisor, unit = _duration_unit(max((m for m in medians if m is not None), default=0))
+    tooltips = [
+        f'{b.strftime(title_fmt)}: median {_format_duration(m)} '
+        f'over {len(per_bucket.get(b, []))}'
+        if m is not None else f'{b.strftime(title_fmt)}: nothing completed'
+        for b, m in zip(buckets, medians)
+    ]
+
+    slowest.sort(key=lambda row: row['seconds'], reverse=True)
+    for row in slowest[:10]:
+        row['duration'] = _format_duration(row['seconds'])
+        row['url'] = reverse('admin:vald_request_change', args=[row['pk']])
+
+    return {
+        'count': len(everything),
+        'median': _format_duration(_percentile(everything, 50)),
+        'p90': _format_duration(_percentile(everything, 90)),
+        'worst': _format_duration(everything[-1]),
+        'unit': unit,
+        'chart': _chart(buckets, [None if m is None else m / divisor for m in medians],
+                        period, tooltips),
+        'slowest': slowest[:10],
+    }
+
+
+@staff_member_required
+def admin_stats(request):
+    """Request activity over time, plus who is generating it.
+
+    Wired into vald_web/urls.py next to admin_help for the same reason: it is a
+    report over Request, User and time rather than a view of one model, and the
+    period lives in the querystring so a particular window can be linked to.
+    """
+    period, frm, to = _parse_stats_period(request)
+    buckets, truncated = _bucket_starts(frm, to, period)
+    if truncated:
+        # Shrink the whole page to what the chart can show, so the totals and the
+        # leaderboard describe the same period as the bars rather than a wider one.
+        to = _advance(buckets[-1], period) - timedelta(days=1)
+
+    # localdate boundaries, made aware, so a request at 00:30 Stockholm counts as
+    # that Stockholm day and not the previous UTC one. `to` is inclusive, hence
+    # the exclusive upper bound at the following midnight.
+    start = timezone.make_aware(datetime.combine(_floor_to_period(frm, period), time.min))
+    end = timezone.make_aware(datetime.combine(to + timedelta(days=1), time.min))
+    qs = Request.objects.filter(created_at__gte=start, created_at__lt=end)
+
+    # output_field=DateField gives back dates, which is what buckets holds; the
+    # truncation itself still happens in the active timezone.
+    rows = (qs
+            .annotate(bucket=_TRUNC[period]('created_at', output_field=DateField()))
+            .values('bucket')
+            .annotate(n=Count('id')))
+    by_bucket = {row['bucket']: row['n'] for row in rows}
+    counts = [by_bucket.get(b, 0) for b in buckets]
+
+    # Carry the window into the changelist links. str() of an aware datetime is
+    # the same form Django's own DateFieldListFilter emits, so the filter sidebar
+    # shows the range as selected instead of ignoring it.
+    request_changelist = reverse('admin:vald_request_changelist')
+    period_filter = {'created_at__gte': str(start), 'created_at__lt': str(end)}
+
+    def changelist(**extra):
+        return f'{request_changelist}?{urlencode({**period_filter, **extra})}'
+
+    leaders = []
+    for row in (qs.values('user_id', 'user__name')
+                  .annotate(n=Count('id'))
+                  .order_by('-n', 'user__name')[:20]):
+        leaders.append({
+            'name': row['user__name'] or 'Unknown',
+            'count': row['n'],
+            # Request.user is nullable. An empty user__id__exact makes the
+            # changelist bail out to ?e=1, so the orphan row gets no links.
+            'user_url': (reverse('admin:vald_user_change', args=[row['user_id']])
+                         if row['user_id'] else None),
+            'requests_url': (changelist(user__id__exact=row['user_id'])
+                             if row['user_id'] else None),
+        })
+
+    by_type = [
+        {'type': row['request_type'],
+         'count': row['n'],
+         'url': changelist(request_type=row['request_type'])}
+        for row in qs.values('request_type').annotate(n=Count('id')).order_by('-n')
+    ]
+
+    counts_by_status = {
+        row['status']: row['n']
+        for row in qs.values('status').annotate(n=Count('id'))
+    }
+    busiest = max(zip(counts, buckets), default=(0, None))
+
+    turnaround = _turnaround(qs, buckets, period)
+
+    context = {
+        **admin.site.each_context(request),
+        'title': 'Request statistics',
+        'period': period,
+        'periods': STATS_PERIODS,
+        'date_from': frm.isoformat(),
+        'date_to': to.isoformat(),
+        'truncated': truncated,
+        'max_buckets': STATS_MAX_BUCKETS,
+        'chart': (_chart(buckets, counts, period,
+                         [f'{b.strftime(_BUCKET_FORMATS[period][0])}: {n}'
+                          for b, n in zip(buckets, counts)])
+                  if buckets else None),
+        'turnaround': turnaround,
+        'leaders': leaders,
+        'by_type': by_type,
+        'total': sum(counts_by_status.values()),
+        'user_count': qs.values('user_id').distinct().count(),
+        'complete_count': counts_by_status.get('complete', 0),
+        'failed_count': counts_by_status.get('failed', 0),
+        'busiest_count': busiest[0],
+        'busiest_label': (busiest[1].strftime(_BUCKET_FORMATS[period][0])
+                          if busiest[1] and busiest[0] else None),
+        'all_requests_url': changelist(),
+        'help_url': reverse('admin_help'),
+    }
+    return render(request, 'admin/vald/stats.html', context)
+
+
 class HasPasswordFilter(admin.SimpleListFilter):
     title = 'has password'
     parameter_name = 'has_password'
@@ -246,7 +616,8 @@ class UserChangeForm(forms.ModelForm):
 
 @admin.register(Request)
 class RequestAdmin(admin.ModelAdmin):
-    list_display = ('uuid', 'request_type', 'get_user_email', 'status', 'created_at', 'has_output')
+    list_display = ('uuid', 'request_type', 'get_user_email', 'status', 'created_at',
+                    'duration', 'has_output')
     list_filter = ('status', 'request_type', 'created_at')
     search_fields = ('uuid', 'user__name', 'user__emails__email')
     readonly_fields = ('uuid', 'created_at', 'updated_at')
@@ -271,6 +642,21 @@ class RequestAdmin(admin.ModelAdmin):
         extra_context = extra_context or {}
         extra_context['queue_stats'] = get_queue_stats()
         return super().changelist_view(request, extra_context=extra_context)
+
+    def get_queryset(self, request):
+        # Annotated rather than computed per row so the column can be sorted on:
+        # admin_order_field needs something the database can ORDER BY. Unfinished
+        # requests get NULL, which SQLite sorts first ascending, last descending.
+        return super().get_queryset(request).annotate(
+            _duration=ExpressionWrapper(F('completed_at') - F('created_at'),
+                                        output_field=DurationField()))
+
+    @admin.display(description='Duration', ordering='_duration')
+    def duration(self, obj):
+        """Submission to completion, so queue wait is in here too."""
+        if obj._duration is None:
+            return '—'
+        return _format_duration(obj._duration.total_seconds())
 
     def get_user_email(self, obj):
         """Display user's primary email"""

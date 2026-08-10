@@ -348,3 +348,317 @@ def test_help_page_lists_the_rate_limits_that_exist(staff_client):
     listed = {name for name, _, _ in staff_client.get('/admin/help/').context['limits']}
     for setting in ['VALD_SUBMIT_RATE', 'VALD_ADMIN_LOGIN_RATE', 'SESSION_COOKIE_AGE']:
         assert setting in listed, f'{setting} is configurable but undocumented'
+
+
+# --- Request statistics page ----------------------------------------------
+#
+# The gap filling and the timezone handling are the two parts with no visible
+# symptom when they break: the chart still renders, it just misreports.
+
+def make_request(user, when, request_type='extractall', status='complete'):
+    """A Request at a given local time. created_at is auto_now_add, so it has to
+    be overwritten afterwards with a queryset update."""
+    from vald.models import Request
+    req = Request.objects.create(user=user, request_type=request_type,
+                                 status=status, parameters={})
+    Request.objects.filter(pk=req.pk).update(created_at=when)
+    return req
+
+
+def local(year, month, day, hour=12, minute=0):
+    from django.utils import timezone
+    from datetime import datetime
+    return timezone.make_aware(datetime(year, month, day, hour, minute))
+
+
+@pytest.mark.django_db
+def test_stats_page_requires_staff():
+    response = Client().get('/admin/stats/')
+    assert response.status_code == 302
+    assert '/admin/login/' in response['Location']
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('query', [
+    '',
+    '?period=day',
+    '?period=month',
+    '?period=year',
+    '?period=weekly',                       # not a granularity we offer
+    '?from=notadate&to=2026-13-45',         # unparseable
+    '?period=day&from=2026-06-01&to=2026-01-01',   # backwards
+    '?period=day&from=1990-01-01',          # more buckets than we will draw
+])
+def test_stats_page_renders_whatever_the_querystring_says(staff_client, query):
+    """A hand-edited or stale URL must fall back, not 500."""
+    assert staff_client.get(f'/admin/stats/{query}').status_code == 200
+
+
+@pytest.mark.django_db
+def test_empty_months_are_plotted_as_gaps(staff_client):
+    """SQL returns only non-empty buckets. Plotting those alone would put March
+    next to May at the same spacing and misreport the shape."""
+    user = make_user('Busy', is_active=True)
+    make_request(user, local(2026, 3, 10))
+    make_request(user, local(2026, 3, 11))
+    make_request(user, local(2026, 5, 4))
+
+    context = staff_client.get(
+        '/admin/stats/?period=month&from=2026-03-01&to=2026-05-31').context
+    bars = context['chart']['bars']
+    assert [b['value'] for b in bars] == [2, 0, 1]
+    assert bars[1]['empty'] and bars[1]['h'] == 0
+    assert context['total'] == 3
+
+
+@pytest.mark.django_db
+def test_a_day_is_a_local_day_not_a_utc_one(staff_client):
+    """00:30 in Europe/Stockholm is 23:30 UTC the day before. Truncating in UTC
+    would file it under the wrong day and drop it out of a range starting then."""
+    user = make_user('Nightowl', is_active=True)
+    make_request(user, local(2026, 6, 15, hour=0, minute=30))
+
+    context = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-15&to=2026-06-15').context
+    assert context['total'] == 1
+    assert [b['value'] for b in context['chart']['bars']] == [1]
+
+
+@pytest.mark.django_db
+def test_the_range_bounds_are_both_inclusive(staff_client):
+    """An exclusive `to` silently drops the last day, which looks like a quiet day."""
+    user = make_user('Edge', is_active=True)
+    make_request(user, local(2026, 6, 1, hour=0, minute=1))
+    make_request(user, local(2026, 6, 3, hour=23, minute=59))
+    make_request(user, local(2026, 6, 4))
+
+    context = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-03').context
+    assert context['total'] == 2
+
+
+@pytest.mark.django_db
+def test_leaderboard_ranks_by_count_and_links_carry_the_period(staff_client):
+    quiet = make_user('Quiet', is_active=True)
+    loud = make_user('Loud', is_active=True)
+    make_request(quiet, local(2026, 6, 2))
+    for day in (2, 3, 4):
+        make_request(loud, local(2026, 6, day))
+    make_request(loud, local(2026, 9, 1))   # outside the window
+
+    context = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context
+    assert [(r['name'], r['count']) for r in context['leaders']] == [
+        ('Loud', 3), ('Quiet', 1)]
+
+    link = context['leaders'][0]['requests_url']
+    assert f'user__id__exact={loud.pk}' in link
+    assert 'created_at__gte' in link and 'created_at__lt' in link
+    # the link must actually filter the changelist to those three
+    assert staff_client.get(link).context['cl'].result_count == 3
+
+
+@pytest.mark.django_db
+def test_request_types_are_broken_down_for_the_period(staff_client):
+    user = make_user('Mixed', is_active=True)
+    make_request(user, local(2026, 6, 2), request_type='showline')
+    make_request(user, local(2026, 6, 3), request_type='extractall')
+    make_request(user, local(2026, 6, 4), request_type='extractall')
+
+    context = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context
+    assert [(r['type'], r['count']) for r in context['by_type']] == [
+        ('extractall', 2), ('showline', 1)]
+
+
+@pytest.mark.django_db
+def test_an_over_long_range_shrinks_everything_not_just_the_chart(staff_client):
+    """If only the bars were capped, the totals would describe a wider period
+    than the chart and the two would disagree on the page."""
+    from vald.admin import STATS_MAX_BUCKETS
+    user = make_user('Old', is_active=True)
+    make_request(user, local(2020, 1, 5))
+
+    context = staff_client.get(
+        '/admin/stats/?period=day&from=2020-01-01&to=2026-12-31').context
+    assert context['truncated']
+    assert len(context['chart']['bars']) == STATS_MAX_BUCKETS
+    assert context['date_to'] < '2026-12-31'
+    assert context['total'] == 1
+
+
+@pytest.mark.django_db
+def test_an_empty_period_says_so_instead_of_drawing_an_empty_axis(staff_client):
+    body = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').content.decode()
+    assert 'No requests between 2026-06-01 and 2026-06-30' in body
+    assert '<svg class="stats-chart"' not in body, 'drew an axis with nothing on it'
+
+
+@pytest.mark.django_db
+def test_a_request_with_no_user_does_not_get_a_broken_link(staff_client):
+    """Request.user is nullable. An empty user__id__exact bounces the changelist
+    to ?e=1, so the orphan row is listed but not linked."""
+    make_request(None, local(2026, 6, 2))
+
+    context = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context
+    row = context['leaders'][0]
+    assert (row['name'], row['count']) == ('Unknown', 1)
+    assert row['user_url'] is None and row['requests_url'] is None
+
+
+# --- turnaround ---------------------------------------------------------------
+
+def finish(req, seconds):
+    """Give a request a completion time, the way the job thread does."""
+    from datetime import timedelta
+    from vald.models import Request
+    req.refresh_from_db()
+    Request.objects.filter(pk=req.pk).update(
+        completed_at=req.created_at + timedelta(seconds=seconds))
+    return req
+
+
+@pytest.mark.django_db
+def test_turnaround_reports_median_p90_and_worst(staff_client):
+    user = make_user('Timed', is_active=True)
+    for seconds in (10, 20, 30, 40, 900):
+        finish(make_request(user, local(2026, 6, 2)), seconds)
+
+    t = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context['turnaround']
+    assert t['count'] == 5
+    assert t['median'] == '30.0 s'      # nearest-rank, not interpolated
+    assert t['p90'] == '15m 00s'
+    assert t['worst'] == '15m 00s'
+
+
+@pytest.mark.django_db
+def test_failed_requests_are_left_out_of_turnaround(staff_client):
+    """A request killed at VALD_JOB_TIMEOUT would drag the median to the timeout
+    and describe the timeout rather than the work."""
+    user = make_user('Timed', is_active=True)
+    finish(make_request(user, local(2026, 6, 2)), 10)
+    finish(make_request(user, local(2026, 6, 2), status='failed'), 3600)
+
+    context = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context
+    assert context['turnaround']['count'] == 1
+    assert context['turnaround']['worst'] == '10.0 s'
+    assert context['failed_count'] == 1, 'failure still counted on the page'
+
+
+@pytest.mark.django_db
+def test_requests_still_running_do_not_count_as_instant(staff_client):
+    """completed_at is null until the job thread sets it. Treating that as zero
+    would make a busy period look fast."""
+    user = make_user('Timed', is_active=True)
+    finish(make_request(user, local(2026, 6, 2)), 12)
+    make_request(user, local(2026, 6, 2), status='pending')
+
+    t = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context['turnaround']
+    assert t['count'] == 1
+
+
+@pytest.mark.django_db
+def test_a_month_with_nothing_completed_is_a_gap_not_a_zero(staff_client):
+    """Zero turnaround would read as instant. There is simply no measurement."""
+    user = make_user('Timed', is_active=True)
+    finish(make_request(user, local(2026, 3, 5)), 60)
+    make_request(user, local(2026, 4, 5), status='pending')
+    finish(make_request(user, local(2026, 5, 5)), 120)
+
+    context = staff_client.get(
+        '/admin/stats/?period=month&from=2026-03-01&to=2026-05-31').context
+    bars = context['turnaround']['chart']['bars']
+    assert [b['value'] for b in bars] == [1.0, None, 2.0]   # minutes
+    assert context['turnaround']['unit'] == 'minutes'
+    assert bars[1]['empty'] and 'nothing completed' in bars[1]['title']
+    # the count chart still shows a real request that month
+    assert [b['value'] for b in context['chart']['bars']] == [1, 1, 1]
+
+
+@pytest.mark.django_db
+def test_turnaround_is_absent_when_nothing_has_ever_completed(staff_client):
+    """The dev database is entirely pre-completed_at rows, so this is the state
+    the page renders in until real traffic arrives."""
+    user = make_user('Timed', is_active=True)
+    make_request(user, local(2026, 6, 2), status='pending')
+
+    context = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context
+    assert context['turnaround'] is None
+    body = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').content.decode()
+    assert '<h2>Turnaround</h2>' not in body
+
+
+@pytest.mark.django_db
+def test_slowest_requests_are_listed_worst_first_and_link_to_the_row(staff_client):
+    user = make_user('Timed', is_active=True)
+    quick = finish(make_request(user, local(2026, 6, 2)), 5)
+    slow = finish(make_request(user, local(2026, 6, 3)), 500)
+
+    t = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context['turnaround']
+    assert [r['pk'] for r in t['slowest']] == [slow.pk, quick.pk]
+    assert t['slowest'][0]['duration'] == '8m 20s'
+    assert staff_client.get(t['slowest'][0]['url']).status_code == 200
+
+
+@pytest.mark.django_db
+def test_a_backwards_completed_at_is_ignored_rather_than_counted(staff_client):
+    """Only reachable via a clock step, but a negative would pull the median
+    below anything that actually happened."""
+    from datetime import timedelta
+    from vald.models import Request
+    user = make_user('Timed', is_active=True)
+    finish(make_request(user, local(2026, 6, 2)), 100)
+    bad = make_request(user, local(2026, 6, 3))
+    Request.objects.filter(pk=bad.pk).update(
+        completed_at=local(2026, 6, 3) - timedelta(seconds=90))
+
+    t = staff_client.get(
+        '/admin/stats/?period=day&from=2026-06-01&to=2026-06-30').context['turnaround']
+    assert t['count'] == 1
+    assert t['median'] == '1m 40s'
+
+
+@pytest.mark.django_db
+def test_request_list_shows_and_sorts_by_duration(staff_client):
+    """admin_order_field needs something the database can ORDER BY, so the
+    column is an annotation rather than a per-row calculation."""
+    user = make_user('Timed', is_active=True)
+    quick = finish(make_request(user, local(2026, 6, 2)), 5)
+    slow = finish(make_request(user, local(2026, 6, 3)), 500)
+    running = make_request(user, local(2026, 6, 4), status='pending')
+
+    changelist = staff_client.get('/admin/vald/request/').context['cl']
+    assert '8m 20s' in staff_client.get('/admin/vald/request/').content.decode()
+
+    # The ?o= index counts action_checkbox, which the admin prepends to
+    # list_display whenever actions are enabled, so it is not the list_display
+    # position. Derive it rather than hard-coding an off-by-one.
+    column = changelist.list_display.index('duration')
+    ordered = staff_client.get(
+        f'/admin/vald/request/?o=-{column}').context['cl'].result_list
+    assert [r.pk for r in ordered] == [slow.pk, quick.pk, running.pk], \
+        'slowest first, and the unfinished request last'
+
+    ascending = staff_client.get(
+        f'/admin/vald/request/?o={column}').context['cl'].result_list
+    assert [r.pk for r in ascending] == [running.pk, quick.pk, slow.pk], \
+        'SQLite sorts NULL below every duration, so unfinished leads ascending'
+
+
+@pytest.mark.django_db
+def test_an_unfinished_request_shows_no_duration(staff_client):
+    user = make_user('Timed', is_active=True)
+    make_request(user, local(2026, 6, 2), status='pending')
+
+    row = staff_client.get('/admin/vald/request/').context['cl'].result_list[0]
+    from vald.admin import RequestAdmin
+    from django.contrib.admin.sites import site
+    assert RequestAdmin(type(row), site).duration(row) == '—'

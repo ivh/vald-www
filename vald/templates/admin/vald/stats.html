@@ -1,0 +1,273 @@
+{% extends "admin/base_site.html" %}
+
+{% comment %}
+Request activity report. The chart is a plain inline <svg> built from geometry the
+view already computed - the admin loads no JS and no CSS framework, and this page
+does not change that. Colours come from the admin's own CSS variables so the page
+follows the light/dark theme.
+{% endcomment %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .stats-page { max-width: 60em; }
+  .stats-page h2 { margin-top: 1.6em; border-bottom: 1px solid var(--hairline-color); padding-bottom: .2em; }
+  .stats-page h3 { margin-top: 1.4em; font-size: 1em; color: var(--body-quiet-color); }
+  .stats-page table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+  .stats-page th, .stats-page td { text-align: left; vertical-align: top; padding: .5em .7em;
+      border-bottom: 1px solid var(--hairline-color); }
+  .stats-page th { background: var(--darkened-bg); font-weight: 600; }
+  .stats-page th.count, .stats-page td.count { text-align: right; white-space: nowrap;
+      font-variant-numeric: tabular-nums; }
+  .stats-page code { background: var(--darkened-bg); padding: .1em .35em; border-radius: 3px; }
+  .stats-page .note { border-left: 3px solid var(--border-color); padding: .4em 0 .4em 1em;
+      margin: 1em 0; color: var(--body-quiet-color); }
+  .stats-page .rank { color: var(--body-quiet-color); width: 3em; }
+
+  .stats-controls { display: flex; flex-wrap: wrap; gap: 1em; align-items: flex-end;
+      background: var(--darkened-bg); border: 1px solid var(--hairline-color);
+      border-radius: 4px; padding: .8em 1em; margin: 1em 0; }
+  .stats-controls label { display: block; font-weight: 600; font-size: .8em;
+      text-transform: uppercase; letter-spacing: .04em; color: var(--body-quiet-color);
+      margin-bottom: .3em; }
+
+  .stats-summary { display: flex; flex-wrap: wrap; gap: 2.4em; margin: 1.4em 0; }
+  .stats-summary .figure { font-size: 1.9em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stats-summary .lbl { font-size: .8em; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--body-quiet-color); }
+
+  .stats-chart { width: 100%; height: auto; margin: 1em 0 .5em; overflow: visible; }
+  .stats-chart .bar { fill: var(--primary); }
+  .stats-chart .bar:hover { fill: var(--secondary); }
+  .stats-chart .grid { stroke: var(--hairline-color); stroke-width: 1; }
+  .stats-chart .axis { stroke: var(--border-color); stroke-width: 1; }
+  .stats-chart text { fill: var(--body-quiet-color); font-size: 11px;
+      font-family: var(--font-family-primary, sans-serif); }
+  .stats-chart .ylabel { text-anchor: end; }
+  .stats-chart .xlabel { text-anchor: middle; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+{# No <h1> here: base.html already renders one from the title in the context. #}
+<div class="stats-page">
+
+<form method="get" class="stats-controls">
+  <div>
+    <label for="id_period">Group by</label>
+    <select name="period" id="id_period">
+      {% for p in periods %}
+        <option value="{{ p }}"{% if p == period %} selected{% endif %}>{{ p|capfirst }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label for="id_from">From</label>
+    <input type="date" name="from" id="id_from" value="{{ date_from }}">
+  </div>
+  <div>
+    <label for="id_to">To</label>
+    <input type="date" name="to" id="id_to" value="{{ date_to }}">
+  </div>
+  <div><input type="submit" value="Show" class="default"></div>
+  <div><a href="{% url 'admin_stats' %}?period={{ period }}">Reset dates</a></div>
+</form>
+
+{% if truncated %}
+<p class="note">
+  That range needs more than {{ max_buckets }} {{ period }} buckets, so everything
+  below stops at <strong>{{ date_to }}</strong>. Pick a coarser grouping to cover
+  the whole span.
+</p>
+{% endif %}
+
+<div class="stats-summary">
+  <div>
+    <div class="figure">{{ total }}</div>
+    <div class="lbl">Requests</div>
+  </div>
+  <div>
+    <div class="figure">{{ user_count }}</div>
+    <div class="lbl">Distinct users</div>
+  </div>
+  <div>
+    <div class="figure">{{ complete_count }}</div>
+    <div class="lbl">Complete</div>
+  </div>
+  <div>
+    <div class="figure">{{ failed_count }}</div>
+    <div class="lbl">Failed</div>
+  </div>
+  {% if busiest_label %}
+  <div>
+    <div class="figure">{{ busiest_count }}</div>
+    <div class="lbl">Busiest: {{ busiest_label }}</div>
+  </div>
+  {% endif %}
+</div>
+
+<h2>Requests per {{ period }}</h2>
+
+{% if total %}
+<svg class="stats-chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}"
+     role="img" aria-label="Requests per {{ period }} from {{ date_from }} to {{ date_to }}">
+  {% for tick in chart.y_ticks %}
+    <line class="grid" x1="{{ chart.plot_left }}" y1="{{ tick.y }}"
+          x2="{{ chart.plot_right }}" y2="{{ tick.y }}"/>
+    <text class="ylabel" x="{{ chart.plot_left|add:"-8" }}" y="{{ tick.y }}"
+          dominant-baseline="middle">{{ tick.value }}</text>
+  {% endfor %}
+  <line class="axis" x1="{{ chart.plot_left }}" y1="{{ chart.baseline }}"
+        x2="{{ chart.plot_right }}" y2="{{ chart.baseline }}"/>
+  {% for bar in chart.bars %}
+    {% if not bar.empty %}
+      <rect class="bar" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.w }}" height="{{ bar.h }}">
+        <title>{{ bar.title }}</title>
+      </rect>
+    {% endif %}
+  {% endfor %}
+  {% for label in chart.x_labels %}
+    <text class="xlabel" x="{{ label.x }}" y="{{ chart.label_y }}">{{ label.text }}</text>
+  {% endfor %}
+</svg>
+<p class="note">
+  Hover a bar for its exact count.
+  <a href="{{ all_requests_url }}">Open all {{ total }} requests in this period</a>.
+</p>
+{% else %}
+<p class="note">
+  No requests between {{ date_from }} and {{ date_to }}. Widen the range, or see
+  the <a href="{{ help_url }}">admin help page</a> for what is counted here.
+</p>
+{% endif %}
+
+{% if turnaround %}
+<h2>Turnaround</h2>
+
+<p>Time from submission to completion, over the {{ turnaround.count }} request{{ turnaround.count|pluralize }}
+that finished in this period. This is queue wait <em>plus</em> run time &mdash; nothing
+records when a job actually started &mdash; so a rise here can mean a busy queue rather
+than slower extractions. Failed requests are excluded: one that sat until the
+timeout and was killed says more about the timeout than about the work.</p>
+
+<div class="stats-summary">
+  <div>
+    <div class="figure">{{ turnaround.median }}</div>
+    <div class="lbl">Median</div>
+  </div>
+  <div>
+    <div class="figure">{{ turnaround.p90 }}</div>
+    <div class="lbl">90th percentile</div>
+  </div>
+  <div>
+    <div class="figure">{{ turnaround.worst }}</div>
+    <div class="lbl">Slowest</div>
+  </div>
+</div>
+
+<h3>Median per {{ period }} ({{ turnaround.unit }})</h3>
+
+<svg class="stats-chart" viewBox="0 0 {{ turnaround.chart.width }} {{ turnaround.chart.height }}"
+     role="img" aria-label="Median turnaround in {{ turnaround.unit }} per {{ period }}">
+  {% for tick in turnaround.chart.y_ticks %}
+    <line class="grid" x1="{{ turnaround.chart.plot_left }}" y1="{{ tick.y }}"
+          x2="{{ turnaround.chart.plot_right }}" y2="{{ tick.y }}"/>
+    <text class="ylabel" x="{{ turnaround.chart.plot_left|add:"-8" }}" y="{{ tick.y }}"
+          dominant-baseline="middle">{{ tick.value }}</text>
+  {% endfor %}
+  <line class="axis" x1="{{ turnaround.chart.plot_left }}" y1="{{ turnaround.chart.baseline }}"
+        x2="{{ turnaround.chart.plot_right }}" y2="{{ turnaround.chart.baseline }}"/>
+  {% for bar in turnaround.chart.bars %}
+    {% if not bar.empty %}
+      <rect class="bar" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.w }}" height="{{ bar.h }}">
+        <title>{{ bar.title }}</title>
+      </rect>
+    {% endif %}
+  {% endfor %}
+  {% for label in turnaround.chart.x_labels %}
+    <text class="xlabel" x="{{ label.x }}" y="{{ turnaround.chart.label_y }}">{{ label.text }}</text>
+  {% endfor %}
+</svg>
+<p class="note">A gap means nothing completed in that {{ period }}, which is not the
+same as a fast one.</p>
+
+<h3>Slowest requests</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Submitted</th>
+      <th>Type</th>
+      <th class="count">Turnaround</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in turnaround.slowest %}
+    <tr>
+      <td><a href="{{ row.url }}">{{ row.when|date:"Y-m-d H:i" }}</a></td>
+      <td><code>{{ row.type }}</code></td>
+      <td class="count">{{ row.duration }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if total %}
+<h2>Most active users</h2>
+
+<p>Ranked by request count over the period shown above, top 20 only. The count
+links to those requests; the name links to the account.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th class="rank">#</th>
+      <th>User</th>
+      <th class="count">Requests</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in leaders %}
+    <tr>
+      <td class="rank">{{ forloop.counter }}</td>
+      <td>
+        {% if row.user_url %}<a href="{{ row.user_url }}">{{ row.name }}</a>
+        {% else %}{{ row.name }}{% endif %}
+      </td>
+      <td class="count">
+        {% if row.requests_url %}<a href="{{ row.requests_url }}">{{ row.count }}</a>
+        {% else %}{{ row.count }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Request types</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th class="count">Requests</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in by_type %}
+    <tr>
+      <td><code>{{ row.type }}</code></td>
+      <td class="count"><a href="{{ row.url }}">{{ row.count }}</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+</div>
+{% endblock %}

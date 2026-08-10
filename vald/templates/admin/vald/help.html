@@ -148,6 +148,17 @@ try to log in again, which issues another.</p>
   its results as expired, which is why an old completed request can show no
   download.</p>
 
+<p>That is the queue as it stands. For volume over time &mdash; requests per day,
+month or year, who submits most, the split by request type, and how long requests
+take &mdash; see the
+<a href="{% url 'admin_stats' %}"><strong>request statistics</strong></a> page.</p>
+
+<p>The timings there are <em>turnaround</em>: <code>completed_at</code> minus
+<code>created_at</code>, which is queue wait plus run time. Nothing records when a
+job actually started, so during a busy spell turnaround rises even though the
+Fortran is no slower. Read a jump in it as pressure on the queue, not as
+extractions getting more expensive.</p>
+
 <h2>Personal linelist configurations</h2>
 
 <p>Every user is in one of two states, and the difference decides what their

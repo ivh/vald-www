@@ -19,7 +19,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django_ratelimit.decorators import ratelimit
 
-from vald.admin import admin_help
+from vald.admin import admin_help, admin_stats
 
 # Customize admin site
 admin.site.site_header = "VALD admin"
@@ -44,9 +44,10 @@ admin.site.login = ratelimit(
 )(admin.site.login)
 
 urlpatterns = [
-    # Ahead of admin.site.urls so it resolves; it spans models, so it belongs to
-    # no single ModelAdmin.
+    # Ahead of admin.site.urls so they resolve; both span models, so they belong
+    # to no single ModelAdmin.
     path("admin/help/", admin_help, name="admin_help"),
+    path("admin/stats/", admin_stats, name="admin_stats"),
     path("admin/", admin.site.urls),
     path("", include("vald.urls")),
 ]
