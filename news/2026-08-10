@@ -1,17 +1,19 @@
-<h3>New VALD front-end</h3>
+<h3>Welcome to the new VALD!</h3>
 
-<p>Welcome to the new VALD! The website was put on new technical underpinnings. Everything should feel familiar but
+<p>This website is the new interface to VALD. We hope everything feels familiar, but
 please note that</p>
 
 <p>
 <ul>
 <li>You do not need to register anew, but you do need to set a password. Enter your registered
  email address in the login form and we will send you a one-time activation link, which lets you
- set the password you then use for future logins.</li>
+ set the password for future logins.</li>
+<li>Your unit preferences and custom line-list configuation has been imported from the old system.</li>
 <li>Under "My Requests" you can now see the status and download links of your queries.</li>
 <li>The "Modify"-link allows to re-fill the fields with the values from an earlier query, then edit and re-submit.</li>
 <li>Requests are now handled immediately and in parallel, so results should appear quicker. Some queries can
  however still take minutes to finish.</li>
+<li>The data and extraction methods are unchanged, you get the same results as from the old site.</li>
 </ul>
 </p>
 <p>
