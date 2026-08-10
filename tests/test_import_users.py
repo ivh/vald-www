@@ -78,9 +78,10 @@ shared@tls.de
     assert 'COLLISION' in out
     assert 'shared@tls.de' in out
     assert '1 email(s) shared between differently-named records' in out
-    # dry-run predicts the merge, so counts reflect a real import
+    # dry-run predicts the pooling, so counts reflect a real import
     assert 'Would create 1 user(s)' in out
-    assert 'would merge 1 into existing' in out
+    # the second record carries nothing the first did not, so nothing is added
+    assert '1 already up to date' in out
 
 
 @pytest.mark.django_db
@@ -97,7 +98,7 @@ raul2@example.com
 
 
 @pytest.mark.django_db
-def test_real_run_merges_shared_email_and_says_so(tmp_path):
+def test_real_run_pools_shared_email_and_says_so(tmp_path):
     text = """\
 #$ First Name
 shared@example.com
@@ -107,13 +108,134 @@ shared@example.com
 extra@example.com
 """
     out = run(tmp_path, text)
-    assert User.objects.count() == 1                 # merged, not two users
-    assert 'Merged into existing user' in out
+    assert User.objects.count() == 1                 # pooled, not two users
+    assert 'Added 1 email(s) to existing user: First Name' in out
     user = User.objects.get()
-    assert user.name == 'Second Name'                # last name wins
-    assert 'First Name' in user.affiliation          # earlier name preserved
+    assert user.name == 'First Name'                 # the account keeps its name
+    assert user.affiliation == ''                    # and the old name is not stashed here
     assert set(user.emails.values_list('email', flat=True)) == {
         'shared@example.com', 'extra@example.com'}
+
+
+# --- identity is the database's, not the register's -------------------------
+#
+# A register is by definition an older snapshot of the database, and both fields
+# are now visible to the account holder on /account/, so a re-import must not
+# rewrite them. This also removes the old dependence on the order registers were
+# imported in, where the last record to mention an address won the name.
+
+@pytest.mark.django_db
+def test_reimport_does_not_rename_an_existing_account(tmp_path):
+    run(tmp_path, "#$ Ada Lovelace\nada@example.com\n")
+    run(tmp_path, "#$ A. A. Lovelace\nada@example.com\n")
+
+    assert User.objects.get().name == 'Ada Lovelace'
+
+
+@pytest.mark.django_db
+def test_reimport_does_not_overwrite_an_affiliation(tmp_path):
+    run(tmp_path, "#$ Ada Lovelace\n#  Uppsala University\nada@example.com\n")
+    run(tmp_path, "#$ Ada Lovelace\n#  Somewhere Else\nada@example.com\n")
+
+    assert User.objects.get().affiliation == 'Uppsala University'
+
+
+@pytest.mark.django_db
+def test_a_user_edit_survives_a_later_import(tmp_path):
+    """The case the account page created: the register must not undo an edit."""
+    run(tmp_path, "#$ Ada Lovelace\n#  Uppsala University\nada@example.com\n")
+    user = User.objects.get()
+    user.affiliation = 'ESO, Garching\nStaff astronomer'
+    user.save()
+
+    run(tmp_path, "#$ Ada Lovelace\n#  Uppsala University\nada@example.com\n")
+
+    user.refresh_from_db()
+    assert user.affiliation == 'ESO, Garching\nStaff astronomer'
+
+
+@pytest.mark.django_db
+def test_a_blank_affiliation_is_still_filled_in(tmp_path):
+    """The one case with nothing to overwrite - 323 of the imported accounts."""
+    run(tmp_path, "#$ Ada Lovelace\nada@example.com\n")
+    assert User.objects.get().affiliation == ''
+
+    run(tmp_path, "#$ Ada Lovelace\n#  Uppsala University\nada@example.com\n")
+    assert User.objects.get().affiliation == 'Uppsala University'
+
+
+@pytest.mark.django_db
+def test_pooling_still_adds_new_addresses(tmp_path):
+    """Not a blanket skip: pooling addresses is why a second register is imported."""
+    run(tmp_path, "#$ Ada Lovelace\nada@example.com\n")
+    run(tmp_path, "#$ Ada Lovelace\nada@example.com\nada@other.example.com\n")
+
+    assert User.objects.count() == 1
+    assert set(User.objects.get().emails.values_list('email', flat=True)) == {
+        'ada@example.com', 'ada@other.example.com'}
+
+
+# --- and it must not claim to have done anything when it did not ------------
+
+@pytest.mark.django_db
+def test_reimporting_an_unchanged_register_reports_no_changes(tmp_path):
+    """Now that identity is never rewritten, a second run of the same file is a
+    no-op - and used to announce an addition for every one of its records."""
+    run(tmp_path, TWO_GOOD)
+    out = run(tmp_path, TWO_GOOD)
+
+    assert 'Created 0 user(s)' in out
+    assert 'added to 0 existing account(s)' in out
+    assert '2 already up to date' in out
+    assert 'Already up to date: Alice Adams' in out
+    assert 'Added' not in out
+
+
+@pytest.mark.django_db
+def test_an_address_already_known_is_marked_as_such(tmp_path):
+    run(tmp_path, "#$ Ada Lovelace\nada@example.com\n")
+    out = run(tmp_path, "#$ Ada Lovelace\nada@example.com\nada@other.example.com\n",
+              '--dry-run')
+
+    assert '- ada@example.com (already known)' in out
+    assert '- ada@other.example.com\n' in out          # no marker: this one is new
+
+
+@pytest.mark.django_db
+def test_filling_a_blank_affiliation_alone_is_reported_as_such(tmp_path):
+    """The record adds no address, so the affiliation is the only change."""
+    run(tmp_path, "#$ Ada Lovelace\nada@example.com\n")
+    out = run(tmp_path, "#$ Ada Lovelace\n#  Uppsala University\nada@example.com\n")
+
+    assert 'Added an affiliation to existing user: Ada Lovelace' in out
+    assert 'added to 1 existing account(s)' in out
+    assert 'email(s) to existing' not in out
+
+
+@pytest.mark.django_db
+def test_both_changes_are_reported_together(tmp_path):
+    run(tmp_path, "#$ Ada Lovelace\nada@example.com\n")
+    out = run(tmp_path, "#$ Ada Lovelace\n#  Uppsala University\n"
+                        "ada@example.com\nada@other.example.com\n")
+
+    assert 'Added 1 email(s) and an affiliation to existing user: Ada Lovelace' in out
+
+
+@pytest.mark.django_db
+def test_dry_run_says_when_an_affiliation_would_not_be_applied(tmp_path):
+    run(tmp_path, "#$ Ada Lovelace\n#  Uppsala University\nada@example.com\n")
+    out = run(tmp_path, "#$ Ada Lovelace\n#  Somewhere Else\nada@example.com\n", '--dry-run')
+
+    assert 'Affiliation: Somewhere Else (not applied - the account already has one)' in out
+
+
+@pytest.mark.django_db
+def test_dry_run_does_not_warn_when_the_affiliation_would_be_applied(tmp_path):
+    run(tmp_path, "#$ Ada Lovelace\nada@example.com\n")
+    out = run(tmp_path, "#$ Ada Lovelace\n#  Uppsala University\nada@example.com\n", '--dry-run')
+
+    assert 'Affiliation: Uppsala University' in out
+    assert 'not applied' not in out
 
 
 @pytest.mark.django_db
@@ -134,20 +256,21 @@ def test_non_utf8_bytes_do_not_abort_the_import(tmp_path):
 
 # --- the dry run must answer the question you are actually asking -----------
 #
-# It predicted new-vs-merge from the file alone, so against a database that
+# It predicted new-vs-pooled from the file alone, so against a database that
 # already held the register it reported "Would create 3934" where a real import
 # created 1. Re-running the dry run to check a delta is the only reason to run
 # it twice, and that was exactly the case it got wrong.
 
 @pytest.mark.django_db
-def test_dry_run_against_a_populated_database_counts_merges(tmp_path):
+def test_dry_run_against_a_populated_database_counts_pooled_records(tmp_path):
     run(tmp_path, TWO_GOOD)                          # first, for real
     out = run(tmp_path, TWO_GOOD, '--dry-run')       # then ask again
 
     assert 'Would create 0 user(s)' in out
-    assert 'would merge 2 into existing' in out
+    assert 'would add to 0 existing account(s)' in out
+    assert '2 already up to date' in out
     assert 'Would create user: Alice Adams' not in out
-    assert 'Would merge into existing user: Alice Adams' in out
+    assert 'Already up to date: Alice Adams' in out
 
 
 @pytest.mark.django_db
@@ -157,13 +280,13 @@ def test_dry_run_reports_only_the_new_record(tmp_path):
     out = run(tmp_path, TWO_GOOD + "\n#$ Carol Chen\ncarol@example.org\n", '--dry-run')
 
     assert 'Would create 1 user(s)' in out
-    assert 'would merge 2 into existing' in out
+    assert '2 already up to date' in out
     assert 'Would create user: Carol Chen' in out
 
 
 @pytest.mark.django_db
-def test_two_records_with_the_same_name_and_address_predict_a_merge(tmp_path):
-    """No COLLISION is reported (same person), but a merge still happens - and
+def test_two_records_with_the_same_name_and_address_predict_pooling(tmp_path):
+    """No COLLISION is reported (same person), but pooling still happens - and
     the dry run used to count both records as creations."""
     text = """\
 #$ Raul Puebla
@@ -176,7 +299,8 @@ other@example.com
     out = run(tmp_path, text, '--dry-run')
     assert 'COLLISION' not in out
     assert 'Would create 1 user(s)' in out
-    assert 'would merge 1 into existing' in out
+    assert 'would add to 1 existing account(s)' in out
+    assert 'Would add 1 email(s) to existing user' in out
 
 
 @pytest.mark.django_db
@@ -194,6 +318,8 @@ carol@example.org
 
     assert 'Would create 3 user(s)' in predicted
     assert 'Created 3 user(s)' in actual
-    assert 'would merge 1 into existing' in predicted
-    assert 'merged 1 into existing' in actual
+    assert 'would add to 0 existing account(s)' in predicted
+    assert 'added to 0 existing account(s)' in actual
+    assert '1 already up to date' in predicted
+    assert '1 already up to date' in actual
     assert User.objects.count() == 3
