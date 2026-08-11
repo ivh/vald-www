@@ -945,8 +945,18 @@ def handle_extract_request(request):
                 if viaftp == 'email':
                     # Build URLs for email
                     request_path = reverse('vald:request_detail', kwargs={'uuid': req_obj.uuid})
-                    download_path = reverse('vald:download_request', kwargs={'uuid': req_obj.uuid})
-                    bib_download_path = reverse('vald:download_bib_request', kwargs={'uuid': req_obj.uuid})
+                    # Filename in the URL, so wget/curl save the result under
+                    # its own name instead of index.html.
+                    download_path = reverse('vald:download_request',
+                                            kwargs={'uuid': req_obj.uuid,
+                                                    'filename': req_obj.output_filename})
+                    # No bib companion for showline results, and reverse() has
+                    # no filename to build from in that case.
+                    bib_download_path = reverse(
+                        'vald:download_bib_request',
+                        kwargs={'uuid': req_obj.uuid,
+                                'filename': req_obj.bib_output_filename}
+                    ) if req_obj.bib_output_exists() else None
                     my_requests_path = reverse('vald:my_requests')
 
                     # Use SITE_URL as base for email links (no request object in background)
@@ -959,7 +969,8 @@ def handle_extract_request(request):
                     script_name = getattr(settings, 'FORCE_SCRIPT_NAME', '') or ''
                     request_url = f"{base_url}{script_name}{request_path}"
                     download_url = f"{base_url}{script_name}{download_path}"
-                    bib_download_url = f"{base_url}{script_name}{bib_download_path}"
+                    bib_download_url = (f"{base_url}{script_name}{bib_download_path}"
+                                        if bib_download_path else None)
                     my_requests_url = f"{base_url}{script_name}{my_requests_path}"
 
                     # Send email
@@ -1418,7 +1429,7 @@ def request_detail(request, uuid):
         return redirect('vald:my_requests')
 
 
-def _serve_result(request, uuid, which):
+def _serve_result(request, uuid, which, filename):
     """Serve a result file by request UUID, to whoever holds the URL.
 
     Deliberately unauthenticated: the uuid4 *is* the capability, so a link
@@ -1429,8 +1440,12 @@ def _serve_result(request, uuid, which):
     vhost serves $VALD_HOME/WWW/public_html/FTP directly, where the same files
     sit under a guessable 6-digit name (R37).
 
-    Every failure is a status code with a plain-text body, never a redirect to a
-    page: a redirect is what made a failed wget look like a successful one.
+    A URL without the trailing filename redirects to the one with it, so those
+    same clients save the result under its own name rather than index.html.
+
+    Every other failure is a status code with a plain-text body, never a
+    redirect to a page: a redirect is what made a failed wget look like a
+    successful one.
     """
     from django.http import FileResponse, HttpResponseNotFound
     import mimetypes
@@ -1453,6 +1468,12 @@ def _serve_result(request, uuid, which):
                 content_type='text/plain')
         return HttpResponseNotFound('Result file not found.\n', content_type='text/plain')
 
+    view = 'vald:download_request' if which == 'output' else 'vald:download_bib_request'
+    if filename is None:
+        return redirect(view, uuid=uuid, filename=file_path.name)
+    if filename != file_path.name:
+        return HttpResponseNotFound('Result file not found.\n', content_type='text/plain')
+
     content_type, _ = mimetypes.guess_type(file_path.name)
     try:
         return FileResponse(
@@ -1467,11 +1488,11 @@ def _serve_result(request, uuid, which):
                             content_type='text/plain', status=500)
 
 
-def download_request(request, uuid):
+def download_request(request, uuid, filename=None):
     """Download the output file for a completed request"""
-    return _serve_result(request, uuid, 'output')
+    return _serve_result(request, uuid, 'output', filename)
 
 
-def download_bib_request(request, uuid):
+def download_bib_request(request, uuid, filename=None):
     """Download the .bib.gz output file for a completed request"""
-    return _serve_result(request, uuid, 'bib')
+    return _serve_result(request, uuid, 'bib', filename)

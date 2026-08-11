@@ -136,8 +136,10 @@ def test_retention_description_follows_the_setting(settings):
 def test_download_serves_a_normal_result(logged_in_client, approved_user, ftp_dir):
     make_result(ftp_dir)
     req = complete_request(approved_user, 'Result.000001.gz')
-    assert logged_in_client.get(f'/request/{req.uuid}/download/').status_code == 200
-    assert logged_in_client.get(f'/request/{req.uuid}/download-bib/').status_code == 200
+    assert logged_in_client.get(f'/request/{req.uuid}/download/',
+                                follow=True).status_code == 200
+    assert logged_in_client.get(f'/request/{req.uuid}/download-bib/',
+                                follow=True).status_code == 200
 
 
 @pytest.mark.django_db
@@ -160,9 +162,31 @@ def test_download_needs_no_session(approved_user, ftp_dir):
     make_result(ftp_dir)
     req = complete_request(approved_user, 'Result.000001.gz')
 
-    response = Client().get(f'/request/{req.uuid}/download/')
+    response = Client().get(f'/request/{req.uuid}/download/Result.000001.gz')
     assert response.status_code == 200
     assert 'Result.000001.gz' in response['Content-Disposition']
+
+
+@pytest.mark.django_db
+def test_download_url_ends_in_the_filename(approved_user, ftp_dir):
+    """wget names the file after the last URL segment, not Content-Disposition."""
+    from django.test import Client
+
+    make_result(ftp_dir)
+    req = complete_request(approved_user, 'Result.000001.gz')
+    client = Client()
+
+    # The bare form redirects, so links already mailed out end up correct too:
+    # wget takes the name from the final URL.
+    response = client.get(f'/request/{req.uuid}/download/')
+    assert response.status_code == 302
+    assert response['Location'].endswith('/download/Result.000001.gz')
+
+    bib = client.get(f'/request/{req.uuid}/download-bib/')
+    assert bib['Location'].endswith('/download-bib/Result.000001.bib.gz')
+
+    # A filename that is not this request's result is not a way in.
+    assert client.get(f'/request/{req.uuid}/download/other.gz').status_code == 404
 
 
 @pytest.mark.django_db

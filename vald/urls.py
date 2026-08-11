@@ -37,8 +37,15 @@ urlpatterns = [
     # Request tracking
     path('my-requests/', views.my_requests, name='my_requests'),
     path('request/<uuid:uuid>/', views.request_detail, name='request_detail'),
+    # The filename forms are the canonical ones: wget names the saved file after
+    # the last URL segment, so a link ending in "/download/" lands as
+    # index.html. The bare forms redirect to them, which keeps links already
+    # sent out by email working - and working correctly, since wget takes the
+    # name from the final URL after redirects.
     path('request/<uuid:uuid>/download/', views.download_request, name='download_request'),
+    path('request/<uuid:uuid>/download/<str:filename>', views.download_request, name='download_request'),
     path('request/<uuid:uuid>/download-bib/', views.download_bib_request, name='download_bib_request'),
+    path('request/<uuid:uuid>/download-bib/<str:filename>', views.download_bib_request, name='download_bib_request'),
 
     # Documentation and news
     path('doc/<str:docpage>', views.documentation, name='documentation'),

@@ -152,6 +152,22 @@ class Request(models.Model):
             return None
         return main.with_suffix('.bib.gz')
 
+    @property
+    def output_filename(self):
+        """Basename of the result file, or None.
+
+        Download URLs end in it so wget saves the result under its own name
+        rather than index.html.
+        """
+        path = self.output_path
+        return path.name if path else None
+
+    @property
+    def bib_output_filename(self):
+        """Basename of the .bib.gz companion file, or None."""
+        path = self.bib_output_path
+        return path.name if path else None
+
     @staticmethod
     def _format_size(size_bytes):
         for unit in ['B', 'KB', 'MB', 'GB']:
