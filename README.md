@@ -278,7 +278,7 @@ reappears in a later `default.cfg` is reactivated.
 
 Set in `vald_web/settings.py` (development) or `vald_web/settings_deploy.py` (production):
 ```python
-VALD_MAX_WORKERS = 5      # Parallel job limit
+VALD_MAX_THREADS = 5      # Parallel job limit (threads, not processes)
 VALD_MAX_QUEUE_SIZE = 10  # Pending jobs before new requests are rejected
 ```
 
@@ -331,7 +331,8 @@ copy sitting in the repo cannot silently become the source for a real import.
 - **Job working directory**: Binaries run FROM the job subdirectory, for correct `pres_in.NNNNNN` naming and to keep concurrent jobs isolated
 - **Showline requests**: No bib files, output is `result.NNNNNN` → moved to FTP as `.txt`
 - **Extract requests**: Create `.gz` and `.bib.gz` files
-- **Job queue**: Thread pool limits parallel execution (`VALD_MAX_WORKERS`, 5 in production)
+- **Job queue**: Thread pool limits parallel execution (`VALD_MAX_THREADS`, 5 in production).
+  Threads, not processes: gunicorn runs one process so the in-process queue is a real ceiling
 
 ## Troubleshooting
 

@@ -338,7 +338,7 @@ abundance table in the output reflects it. Correct the quoting if not.
 **Where:** `vald/backend.py:99-116` (`get_job_queue`), `:142-160`
 (`check_queue_capacity`), `:36`
 
-`_job_queue` is a **per-process** singleton, so 4 gunicorn workers × `VALD_MAX_WORKERS=5`
+`_job_queue` is a **per-process** singleton, so 4 gunicorn workers × `VALD_MAX_THREADS=5`
 gives up to **20** concurrent Fortran pipelines, not 5. Separately,
 `check_queue_capacity()` counts DB rows in a 30-minute window against
 `VALD_MAX_QUEUE_SIZE`, which is a different mechanism from the real

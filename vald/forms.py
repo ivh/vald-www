@@ -40,6 +40,78 @@ class UserPreferencesForm(forms.ModelForm):
 ELEMENT_ION_RE = re.compile(r'^\d{0,3}[A-Za-z][A-Za-z0-9]{0,5}(?: \d{1,2})?$')
 
 
+class ChoiceDisablingRadioSelect(forms.RadioSelect):
+    """RadioSelect that renders the choices named in `disabled_values` disabled.
+
+    Set the attribute on the bound field's widget, not on the class: Django
+    deep-copies base_fields per form instance, so a per-instance assignment
+    cannot leak into another request.
+    """
+    disabled_values = ()
+
+    def create_option(self, name, value, *args, **kwargs):
+        option = super().create_option(name, value, *args, **kwargs)
+        if str(value) in self.disabled_values:
+            option['attrs']['disabled'] = True
+        return option
+
+
+class PersonalConfigChoiceMixin:
+    """Grays out the 'Custom' linelist configuration for users without one.
+
+    Choosing it used to do nothing observable: Config.get_user_config() falls
+    back to the system default, so the job ran with the default config and the
+    request said it had used a custom one. Most accounts are in that state, so
+    most users were offered a choice that could not take effect.
+
+    Without a user the choice is treated as unavailable, so a call site that
+    forgets to pass one loses the option rather than the check. No HTTP path
+    gets here without one anyway: require_login guards the form views and
+    submit_request refuses an anonymous extraction.
+
+    clean_pconf is what actually enforces this - a disabled input is simply not
+    submitted, so the widget alone stops nobody.
+    """
+
+    PCONF_UNAVAILABLE_LABEL = 'Custom (no personal configuration saved)'
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Not `_has_personal_config(user)` with a None user: filter(user=None) is
+        # filter(user__isnull=True), which matches the *system* config and would
+        # report a personal one for nobody in particular.
+        self.personal_config_available = user is not None and _has_personal_config(user)
+        if self.personal_config_available:
+            return
+
+        field = self.fields['pconf']
+        field.choices = [
+            (value, self.PCONF_UNAVAILABLE_LABEL if value == 'personal' else label)
+            for value, label in field.choices
+        ]
+        field.widget.disabled_values = ('personal',)
+        # A radio that is both checked and disabled cannot be changed, and
+        # ?modify= of a request made before the config was deleted prefills
+        # exactly that. Fall back to the default instead.
+        if self.initial.get('pconf') == 'personal':
+            self.initial['pconf'] = 'default'
+
+    def clean_pconf(self):
+        value = self.cleaned_data['pconf']
+        if value == 'personal' and not self.personal_config_available:
+            raise ValidationError(
+                'You have no personal linelist configuration saved. Create one '
+                'on the Linelist configuration page, or choose Default.'
+            )
+        return value
+
+
+def _has_personal_config(user):
+    """Whether this user's requests would really use a config of their own."""
+    from .persconfig import get_user_config
+    return get_user_config(user) is not None
+
+
 def clean_element_ionization(value, field_label='Element'):
     """Normalise and validate an "element [ionization]" value."""
     collapsed = ' '.join(value.split())
@@ -196,7 +268,7 @@ class AccountDetailsForm(forms.ModelForm):
         fields = ['affiliation']
 
 
-class ExtractAllForm(forms.Form):
+class ExtractAllForm(PersonalConfigChoiceMixin, forms.Form):
     """Extract All form"""
     stwvl = forms.FloatField(
         label='Starting wavelength',
@@ -250,7 +322,7 @@ class ExtractAllForm(forms.Form):
         label='Linelist configuration',
         choices=[('default', 'Default'), ('personal', 'Custom')],
         initial='default',
-        widget=forms.RadioSelect
+        widget=ChoiceDisablingRadioSelect
     )
     subject = forms.CharField(
         label='Optional comment for request',
@@ -273,7 +345,7 @@ class ExtractAllForm(forms.Form):
         return cleaned_data
 
 
-class ExtractElementForm(forms.Form):
+class ExtractElementForm(PersonalConfigChoiceMixin, forms.Form):
     """Extract Element form"""
     stwvl = forms.FloatField(
         label='Starting wavelength',
@@ -333,7 +405,7 @@ class ExtractElementForm(forms.Form):
         label='Linelist configuration',
         choices=[('default', 'Default'), ('personal', 'Custom')],
         initial='default',
-        widget=forms.RadioSelect
+        widget=ChoiceDisablingRadioSelect
     )
     subject = forms.CharField(
         label='Optional comment for request',
@@ -361,7 +433,7 @@ class ExtractElementForm(forms.Form):
         return cleaned_data
 
 
-class ExtractStellarForm(forms.Form):
+class ExtractStellarForm(PersonalConfigChoiceMixin, forms.Form):
     """Extract Stellar form"""
     stwvl = forms.FloatField(
         label='Starting wavelength',
@@ -449,7 +521,7 @@ class ExtractStellarForm(forms.Form):
         label='Linelist configuration',
         choices=[('default', 'Default'), ('personal', 'Custom')],
         initial='default',
-        widget=forms.RadioSelect
+        widget=ChoiceDisablingRadioSelect
     )
     subject = forms.CharField(
         label='Optional comment for request',
@@ -475,7 +547,7 @@ class ExtractStellarForm(forms.Form):
         return cleaned_data
 
 
-class ShowLineForm(forms.Form):
+class ShowLineForm(PersonalConfigChoiceMixin, forms.Form):
     """Show Line form - 5 sets of wavelength/window/element fields"""
     # Set 0
     wvl0 = forms.FloatField(label='Approximate wavelength', required=False, min_value=0.01, widget=forms.TextInput(attrs={'size': '10'}))
@@ -512,7 +584,7 @@ class ShowLineForm(forms.Form):
         label='Linelist configuration',
         choices=[('default', 'Default'), ('personal', 'Custom')],
         initial='default',
-        widget=forms.RadioSelect
+        widget=ChoiceDisablingRadioSelect
     )
     isotopic_scaling = forms.ChoiceField(
         label='Isotopic scaling of oscillator strength',
@@ -609,7 +681,7 @@ the world."""
         return email
 
 
-class ShowLineOnlineForm(forms.Form):
+class ShowLineOnlineForm(PersonalConfigChoiceMixin, forms.Form):
     """Show Line form - single wavelength/window/element set"""
     wvl0 = forms.FloatField(
         label='Approximate wavelength',
@@ -640,7 +712,7 @@ class ShowLineOnlineForm(forms.Form):
         label='Linelist configuration',
         choices=[('default', 'Default'), ('personal', 'Custom')],
         initial='default',
-        widget=forms.RadioSelect
+        widget=ChoiceDisablingRadioSelect
     )
     isotopic_scaling = forms.ChoiceField(
         label='Isotopic scaling of oscillator strength',

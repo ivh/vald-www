@@ -16,9 +16,10 @@ Environment="PATH=/home/vald/vald-www.git/.venv/bin:/usr/local/bin:/usr/bin:/bin
 
 # Gunicorn command.
 # One process, many threads - deliberately, not for lack of cores. Job
-# concurrency is governed by the in-process JobQueue (VALD_MAX_WORKERS), which is
-# only a real limit if there is a single process; with multiple workers each got
-# its own queue and the true ceiling was workers x VALD_MAX_WORKERS. Threads are
+# concurrency is governed by the in-process JobQueue (VALD_MAX_THREADS), which is
+# only a real limit if there is a single process; with multiple gunicorn worker
+# processes each got its own queue and the true ceiling was processes x
+# VALD_MAX_THREADS. These are the two separate knobs. Threads are
 # cheap here because request handlers just spawn a background thread and return,
 # and the actual work is in subprocesses that release the GIL.
 # --timeout bounds HTTP handling only (fast); extraction runs in a daemon thread

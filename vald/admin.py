@@ -37,11 +37,11 @@ def get_queue_stats():
         created_at__gte=cutoff
     ).count()
     max_queue_size = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
-    max_workers = getattr(settings, 'VALD_MAX_WORKERS', 2)
+    max_threads = getattr(settings, 'VALD_MAX_THREADS', 2)
     return {
         'queue_size': pending_count,
         'max_queue_size': max_queue_size,
-        'max_workers': max_workers,
+        'max_threads': max_threads,
     }
 
 
@@ -122,8 +122,9 @@ def admin_help(request):
         ('VALD_RESULT_RETENTION_DAYS', settings.VALD_RESULT_RETENTION_DAYS,
          'How long result files survive before the cleanup timer removes them. '
          'The Request row stays, and reports the results as expired.'),
-        ('VALD_MAX_WORKERS', settings.VALD_MAX_WORKERS,
-         'Jobs run in parallel. Everything else queues.'),
+        ('VALD_MAX_THREADS', settings.VALD_MAX_THREADS,
+         'Jobs run in parallel, as threads inside the single gunicorn process. '
+         'Everything else queues.'),
         ('VALD_MAX_QUEUE_SIZE', settings.VALD_MAX_QUEUE_SIZE,
          'Queued jobs before new submissions are refused site-wide.'),
         ('VALD_MAX_REQUESTS_PER_USER', settings.VALD_MAX_REQUESTS_PER_USER,

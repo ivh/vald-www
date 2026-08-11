@@ -30,23 +30,23 @@ class JobQueue:
     Jobs submitted while workers are busy will wait in queue.
     """
 
-    def __init__(self, max_workers=2, max_queue_size=10):
+    def __init__(self, max_threads=2, max_queue_size=10):
         """
         Initialize job queue with worker threads.
 
         Args:
-            max_workers: Maximum number of jobs to run in parallel (default: 2)
+            max_threads: Maximum number of jobs to run in parallel (default: 2)
             max_queue_size: Maximum number of jobs waiting in queue (default: 10)
         """
         self.job_queue = queue.Queue(maxsize=max_queue_size)
-        self.max_workers = max_workers
+        self.max_threads = max_threads
         self.max_queue_size = max_queue_size
         self.workers = []
         self._start_workers()
 
     def _start_workers(self):
         """Start worker threads that process jobs from the queue."""
-        for i in range(self.max_workers):
+        for i in range(self.max_threads):
             worker = threading.Thread(
                 target=self._worker,
                 name=f"VALDJobWorker-{i}",
@@ -114,9 +114,9 @@ def get_job_queue():
         with _queue_lock:
             # Double-check locking pattern
             if _job_queue is None:
-                max_workers = getattr(settings, 'VALD_MAX_WORKERS', 2)
+                max_threads = getattr(settings, 'VALD_MAX_THREADS', 2)
                 max_queue_size = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
-                _job_queue = JobQueue(max_workers, max_queue_size)
+                _job_queue = JobQueue(max_threads, max_queue_size)
 
     return _job_queue
 
@@ -150,7 +150,7 @@ def notify_queue_full():
             subject='[VALD] Job queue full - requests being rejected',
             message=render_to_string('vald/email/queue_full.txt', {
                 'max_queue_size': getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10),
-                'max_workers': getattr(settings, 'VALD_MAX_WORKERS', 2),
+                'max_threads': getattr(settings, 'VALD_MAX_THREADS', 2),
             }),
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[webmaster_email],

@@ -159,9 +159,16 @@ SITE_URL = 'http://localhost:8000'  # Base URL for email links (update for produ
 VALD_BIN = VALD_HOME / 'bin'
 VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request processing
 # Results must live OUTSIDE any STATICFILES_DIRS tree, or collectstatic would
-# publish them (R19). Kept out of public_html for that reason.
-VALD_FTP_DIR = BASE_DIR / 'ftp_results'  # Output directory for results
-VALD_MAX_WORKERS = 2  # Maximum parallel job executions (FIFO queue)
+# publish them (R19). Here that is public_html/FTP, matching the layout the
+# server serves, and it is safe only because dev's STATICFILES_DIRS is just
+# style/ - unlike settings_deploy, which adds public_html and therefore keeps
+# results under VALD_HOME instead. Adding public_html here would re-open R19.
+VALD_FTP_DIR = BASE_DIR / 'public_html' / 'FTP'  # Output directory for results
+# Extractions running at once: the size of the JobQueue thread pool in
+# backend.py. NOT a process count - gunicorn deliberately runs a single worker
+# process (vald.service), because the queue lives in that process's memory and
+# N processes would each get their own, making the real ceiling N x this.
+VALD_MAX_THREADS = 1  # Parallel job executions (FIFO queue). Prod uses 5.
 VALD_MAX_QUEUE_SIZE = 10  # Maximum pending jobs in queue before rejecting new requests
 # Maximum output lines per request, written as pres_in line 2 (R29).
 # Was previously only a getattr() fallback in job_runner, defined nowhere.

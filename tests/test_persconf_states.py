@@ -348,3 +348,73 @@ def test_the_page_shows_the_source_file_date(logged_in_client, vald_default, tmp
 
     body = logged_in_client.get('/persconf/').content.decode()
     assert '3 May 2019' in body, 'the page still shows the import date'
+
+
+# --- the "Custom" linelist choice, which only means something in state 2 -----
+#
+# Choosing it in state 1 used to do nothing observable: Config.get_user_config()
+# falls back to the system default, so the job ran with the default config while
+# the stored request claimed a custom one.
+
+import re
+
+from vald.forms import ExtractAllForm
+from vald.persconfig import get_or_create_user_config
+
+FORM_PAGES = ['/extractall/', '/extractelement/', '/extractstellar/',
+              '/showline/', '/showline-online/']
+
+EXTRACT_BASE = {'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5002',
+                'format': 'short', 'viaftp': 'via ftp'}
+
+
+def personal_radio(body):
+    return re.search(r'<input[^>]*value="personal"[^>]*>', body).group(0)
+
+
+@pytest.mark.parametrize('page', FORM_PAGES)
+def test_custom_config_is_greyed_out_without_a_personal_config(
+        logged_in_client, vald_default, page):
+    body = logged_in_client.get(page).content.decode()
+    assert 'disabled' in personal_radio(body)
+    assert 'Custom (no personal configuration saved)' in body
+
+
+@pytest.mark.parametrize('page', FORM_PAGES)
+def test_custom_config_is_offered_once_a_personal_config_exists(
+        logged_in_client, approved_user, vald_default, page):
+    get_or_create_user_config(approved_user)
+    body = logged_in_client.get(page).content.decode()
+    assert 'disabled' not in personal_radio(body)
+
+
+def test_personal_choice_is_refused_when_the_user_has_none(approved_user, vald_default):
+    """The disabled input is not submitted, so this is the gate that matters."""
+    form = ExtractAllForm({**EXTRACT_BASE, 'pconf': 'personal'}, user=approved_user)
+    assert not form.is_valid()
+    assert 'pconf' in form.errors
+
+
+def test_personal_choice_is_accepted_when_the_user_has_one(approved_user, vald_default):
+    get_or_create_user_config(approved_user)
+    form = ExtractAllForm({**EXTRACT_BASE, 'pconf': 'personal'}, user=approved_user)
+    assert form.is_valid(), form.errors
+
+
+def test_default_choice_still_works_without_a_personal_config(approved_user, vald_default):
+    form = ExtractAllForm({**EXTRACT_BASE, 'pconf': 'default'}, user=approved_user)
+    assert form.is_valid(), form.errors
+
+
+def test_a_missing_user_fails_closed():
+    """No HTTP path reaches this - require_login guards every form view - so a
+    call site without a user should lose the option, not the check."""
+    form = ExtractAllForm({**EXTRACT_BASE, 'pconf': 'personal'})
+    assert not form.is_valid()
+    assert 'pconf' in form.errors
+
+
+def test_a_personal_prefill_falls_back_when_the_config_is_gone(approved_user, vald_default):
+    """?modify= of a request made before the config was deleted (R47 state 1)."""
+    form = ExtractAllForm(initial={'pconf': 'personal'}, user=approved_user)
+    assert form.initial['pconf'] == 'default'

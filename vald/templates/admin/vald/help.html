@@ -138,7 +138,7 @@ try to log in again, which issues another.</p>
 
 <p>Queue right now:
   <strong>{{ queue_stats.queue_size }} / {{ queue_stats.max_queue_size }}</strong>
-  pending, {{ queue_stats.max_workers }} worker{{ queue_stats.max_workers|pluralize }}.</p>
+  pending, {{ queue_stats.max_threads }} job thread{{ queue_stats.max_threads|pluralize }}.</p>
 
 <p>A request goes <code>pending</code> &rarr; <code>processing</code> &rarr;
   <code>complete</code>, or to <code>failed</code> if the job errored or hit the

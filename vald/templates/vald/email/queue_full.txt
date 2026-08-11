@@ -2,5 +2,5 @@
 
 This may indicate high load or stuck jobs. Please check the server.
 
-Queue settings: VALD_MAX_QUEUE_SIZE={{ max_queue_size }}, VALD_MAX_WORKERS={{ max_workers }}
+Queue settings: VALD_MAX_QUEUE_SIZE={{ max_queue_size }}, VALD_MAX_THREADS={{ max_threads }}
 {% endautoescape %}

@@ -230,7 +230,11 @@ SITE_URL = os.environ.get('VALD_SITE_URL', 'https://vald.astro.uu.se')
 VALD_BIN = VALD_HOME / 'bin'
 VALD_WORKING_DIR = BASE_DIR / 'working'  # Working directory for request processing
 VALD_FTP_DIR = VALD_HOME / 'WWW' / 'public_html' / 'FTP'  # Output directory for results
-VALD_MAX_WORKERS = 5  # Maximum parallel job executions (FIFO queue)
+# Extractions running at once: the size of the JobQueue thread pool in
+# backend.py. NOT a process count - gunicorn deliberately runs a single worker
+# process (vald.service), because the queue lives in that process's memory and
+# N processes would each get their own, making the real ceiling N x this.
+VALD_MAX_THREADS = 5  # Parallel job executions (FIFO queue)
 VALD_MAX_QUEUE_SIZE = 10  # Maximum pending jobs in queue before rejecting new requests
 # Maximum output lines per request, written as pres_in line 2 (R29).
 # Was previously only a getattr() fallback in job_runner, defined nowhere.

@@ -571,8 +571,9 @@ def extract_form_view(name, form_class, template):
     @require_login
     def view(request):
         context = get_user_context(request)
-        initial = modify_initial_data(request, get_current_user(request))
-        context['form'] = form_class(initial=initial)
+        user = get_current_user(request)
+        initial = modify_initial_data(request, user)
+        context['form'] = form_class(initial=initial, user=user)
         return render(request, template, context)
     view.__name__ = name
     return view
@@ -783,7 +784,7 @@ def handle_extract_request(request):
         messages.error(request, 'Invalid request type.')
         return redirect('vald:index')
 
-    form = form_class(request.POST)
+    form = form_class(request.POST, user=user)
 
     if not form.is_valid():
         add_form_errors(request, form)

@@ -174,7 +174,7 @@ class JobRunner:
     # Two things matter here and both used to be wrong:
     #
     #  * Only the last process had a timeout. The upstream .wait() calls could
-    #    block forever, permanently consuming one of VALD_MAX_WORKERS threads,
+    #    block forever, permanently consuming one of VALD_MAX_THREADS threads,
     #    and on TimeoutExpired nothing killed the children - they were left
     #    running as orphans.
     #  * Every stage was created with stderr=PIPE and nothing ever read those
