@@ -145,13 +145,36 @@ def test_state_counts_agree_with_the_changelist_filters(staff_client):
 
 
 @pytest.mark.django_db
-def test_admin_index_links_to_help(staff_client):
-    """The index template self-extends; a loader mistake would strip the app list."""
+def test_admin_root_lands_on_the_user_list(staff_client):
+    """The index was an app list the sidebar already shows, and the one admin
+    page with no sidebar of its own."""
     response = staff_client.get('/admin/')
+    assert response.status_code == 302
+    assert response['Location'] == '/admin/vald/user/'
+    assert not response.get('Cache-Control', '').startswith('max-age')
+    assert staff_client.get('/admin/', follow=True).status_code == 200
+
+
+@pytest.mark.django_db
+def test_the_redirect_only_shadows_the_index(staff_client):
+    """An exact "admin/" match, so everything under it still reaches the site."""
+    for page in ('/admin/vald/user/', '/admin/stats/', '/admin/help/',
+                 '/admin/password_change/'):
+        assert staff_client.get(page).status_code == 200, page
+
+
+@pytest.mark.django_db
+def test_signing_in_arrives_at_the_user_list():
+    """Django sends a fresh login to the index, which now forwards on rather
+    than dead-ending on the page this redirect exists to skip."""
+    StaffUser.objects.create_superuser('admin', 'admin@example.com', 'pw-for-testing-123')
+    client = Client()
+    response = client.post('/admin/login/', {
+        'username': 'admin', 'password': 'pw-for-testing-123',
+        'next': '/admin/',
+    }, follow=True)
     assert response.status_code == 200
-    body = response.content.decode()
-    assert '/admin/help/' in body
-    assert 'VALD administration' in body, 'stock index content was lost'
+    assert response.redirect_chain[-1][0] == '/admin/vald/user/'
 
 
 @pytest.mark.django_db
@@ -727,12 +750,13 @@ def test_the_current_report_is_marked_in_the_sidebar(staff_client):
 
 
 @pytest.mark.django_db
-def test_the_index_keeps_its_inline_links_since_it_has_no_sidebar(staff_client):
-    """Django's index.html blanks the nav-sidebar block - the index is the app
-    list - so the index needs its own links to the reports."""
-    body = staff_client.get('/admin/').content.decode()
-    assert 'id="nav-sidebar"' not in body
-    assert 'href="/admin/stats/"' in body and 'href="/admin/help/"' in body
+def test_the_landing_page_carries_the_report_links(staff_client):
+    """The index used to need its own copies of these, because Django blanks the
+    sidebar block there. Landing on a page that has a sidebar is what retired
+    them, so the sidebar had better be on the page we land on."""
+    body = staff_client.get('/admin/', follow=True).content.decode()
+    sidebar = sidebar_of(body)
+    assert 'href="/admin/stats/"' in sidebar and 'href="/admin/help/"' in sidebar
 
 
 # --- hourly grouping and default windows --------------------------------------
@@ -863,7 +887,8 @@ def test_the_staff_password_can_still_be_changed(staff_client):
     """admin:password_change belongs to the AdminSite, not to the UserAdmin that
     was just unregistered, so removing the box must not take it with it."""
     assert staff_client.get('/admin/password_change/').status_code == 200
-    assert '/admin/password_change/' in staff_client.get('/admin/').content.decode()
+    assert '/admin/password_change/' in staff_client.get(
+        '/admin/vald/user/').content.decode()
 
     response = staff_client.post('/admin/password_change/', {
         'old_password': 'pw-for-testing-123',
@@ -891,3 +916,24 @@ def test_help_page_says_where_staff_logins_are_managed(staff_client):
     assert 'Staff logins are not managed from here' in body
     for command in ('createsuperuser', 'changepassword'):
         assert command in body
+
+
+def test_the_landing_redirect_survives_a_url_prefix():
+    """Deployment sets FORCE_SCRIPT_NAME, so in production the admin is not at
+    /admin/. A literal redirect target would send people outside the app; going
+    through pattern_name means reverse() picks the prefix up per request.
+
+    Driven directly rather than through the test client, which never calls
+    set_script_prefix and so cannot see FORCE_SCRIPT_NAME at all.
+    """
+    from django.test import RequestFactory
+    from django.urls import get_script_prefix, resolve, set_script_prefix
+
+    view = resolve('/admin/').func
+    previous = get_script_prefix()
+    try:
+        set_script_prefix('/new/')
+        response = view(RequestFactory().get('/admin/'))
+    finally:
+        set_script_prefix(previous)
+    assert response['Location'] == '/new/admin/vald/user/'

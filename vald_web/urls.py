@@ -19,6 +19,7 @@ from django.contrib import admin
 from django.contrib.auth.models import Group
 from django.contrib.auth.models import User as StaffUser
 from django.urls import path, include
+from django.views.generic import RedirectView
 from django_ratelimit.decorators import ratelimit
 
 from vald.admin import admin_help, admin_stats
@@ -66,6 +67,21 @@ urlpatterns = [
     # to no single ModelAdmin.
     path("admin/help/", admin_help, name="admin_help"),
     path("admin/stats/", admin_stats, name="admin_stats"),
+
+    # The index is an app list and nothing else, which the sidebar already shows
+    # on every other page - and it is the one admin page with no sidebar at all,
+    # because Django blanks that block there. Land on the user list instead,
+    # which is what the admin is opened for.
+    #
+    # An exact "admin/" match, so only the index is shadowed and everything below
+    # it still falls through to the include. pattern_name rather than a literal
+    # URL because deployment sets FORCE_SCRIPT_NAME, so the admin is not at
+    # /admin/ in production; reverse() picks the prefix up, a hardcoded path
+    # would not. Temporary on purpose - a 301 would be cached by every browser
+    # that ever hit it and outlive the decision.
+    path("admin/", RedirectView.as_view(
+        pattern_name="admin:vald_user_changelist", permanent=False)),
+
     path("admin/", admin.site.urls),
     path("", include("vald.urls")),
 ]
