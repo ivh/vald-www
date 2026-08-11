@@ -502,6 +502,10 @@ the user gets no notification at all despite the files being ready.
 
 **Fix:** restore the email line cap (R29), or drop the attachment and rely on the links.
 
+**Done:** the attachment is now conditional on `VALD_MAX_EMAIL_ATTACH_BYTES`; over that
+the mail carries the links only. The 50 Å form check was removed as redundant once the
+size guard existed — it was rejecting requests the backend handles fine.
+
 ### R34. `safe`-tagged messages render unescaped
 `base.html:85` renders `{{ message|safe }}` when `'safe' in message.tags`. Currently only
 used for the "Forgot your password?" link with a `build_absolute_uri` value, so it is not
@@ -581,8 +585,8 @@ template read it. Flipping it on cutover day would have appeared to work.
 looked available.
 
 ### R43. No upper bound on the extraction wavelength range — accepted
-`ExtractAllForm` accepts `stwvl=0.01, endwvl=1e30`; the only range check is the
-50 Å email cap. `VALD_MAX_LINES_PER_REQUEST` and `VALD_JOB_TIMEOUT` bound the
+`ExtractAllForm` accepts `stwvl=0.01, endwvl=1e30`; there is no range check at all
+now that the 50 Å email cap is gone. `VALD_MAX_LINES_PER_REQUEST` and `VALD_JOB_TIMEOUT` bound the
 work, so the cost ceiling is 5 in-flight jobs × 1 h per user.
 **Decided (Tom):** leave it. The existing caps do their job.
 

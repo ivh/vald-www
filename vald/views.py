@@ -32,6 +32,7 @@ from .forms import (
     ShowLineOnlineForm,
 )
 from .utils import (
+    add_form_errors,
     spam_check,
     render_request_template,
 )
@@ -402,10 +403,7 @@ def request_password_reset(request):
         form = PasswordResetRequestForm(request.POST)
 
         if not form.is_valid():
-            for field, errors in form.errors.items():
-                for error in errors:
-                    field_label = form.fields[field].label if field in form.fields else field
-                    messages.error(request, f"{field_label}: {error}")
+            add_form_errors(request, form)
             context['form'] = form
             return render(request, 'vald/request_password_reset.html', context)
 
@@ -488,9 +486,7 @@ def reset_password(request, token):
         form = PasswordResetForm(request.POST)
 
         if not form.is_valid():
-            for field, errors in form.errors.items():
-                for error in errors:
-                    messages.error(request, error)
+            add_form_errors(request, form)
             context['form'] = form
             context['token'] = token
             return render(request, 'vald/reset_password.html', context)
@@ -642,11 +638,7 @@ def handle_contact_request(request):
     form = ContactForm(request.POST)
 
     if not form.is_valid():
-        # Show form errors with field names
-        for field, errors in form.errors.items():
-            for error in errors:
-                field_label = form.fields[field].label if field in form.fields else field
-                messages.error(request, f"{field_label}: {error}")
+        add_form_errors(request, form)
         context['form'] = form
         context['registration_form'] = RegistrationForm()
         return render(request, 'vald/contact.html', context)
@@ -709,11 +701,7 @@ def handle_registration_request(request):
     form = RegistrationForm(request.POST)
 
     if not form.is_valid():
-        # Show form errors with field names
-        for field, errors in form.errors.items():
-            for error in errors:
-                field_label = form.fields[field].label if field in form.fields else field
-                messages.error(request, f"{field_label}: {error}")
+        add_form_errors(request, form)
         context['registration_form'] = form
         context['form'] = ContactForm()
         return render(request, 'vald/contact.html', context)
@@ -798,11 +786,7 @@ def handle_extract_request(request):
     form = form_class(request.POST)
 
     if not form.is_valid():
-        # Show form errors with field names
-        for field, errors in form.errors.items():
-            for error in errors:
-                field_label = form.fields[field].label if field in form.fields else field
-                messages.error(request, f"{field_label}: {error}")
+        add_form_errors(request, form)
         context['form'] = form
         # Redirect to the appropriate form page
         template_map = {
@@ -1070,10 +1054,7 @@ def account(request):
             form.save()
             messages.success(request, 'Your account details have been saved.')
             return redirect('vald:account')
-        for field, errors in form.errors.items():
-            for error in errors:
-                field_label = form.fields[field].label if field in form.fields else field
-                messages.error(request, f"{field_label}: {error}")
+        add_form_errors(request, form)
     else:
         form = AccountDetailsForm(instance=user)
 

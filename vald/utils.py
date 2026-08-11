@@ -3,6 +3,7 @@ Utility functions for VALD web interface
 """
 import re
 from django.conf import settings
+from django.contrib import messages
 
 
 def spam_check(message):
@@ -31,6 +32,21 @@ def spam_check(message):
         return False
 
     return True
+
+
+def add_form_errors(request, form):
+    """
+    Surface form validation errors as user messages.
+
+    Errors raised in clean() are keyed by NON_FIELD_ERRORS ('__all__'), which
+    is Django internals and means nothing to the person reading the message, so
+    those are shown unprefixed.
+    """
+    for field, errors in form.errors.items():
+        field_obj = form.fields.get(field)
+        label = field_obj.label if field_obj is not None else None
+        for error in errors:
+            messages.error(request, f"{label}: {error}" if label else error)
 
 
 def get_request_template_path(reqtype):

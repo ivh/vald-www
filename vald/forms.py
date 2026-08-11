@@ -263,18 +263,11 @@ class ExtractAllForm(forms.Form):
         cleaned_data = super().clean()
         stwvl = cleaned_data.get('stwvl')
         endwvl = cleaned_data.get('endwvl')
-        viaftp = cleaned_data.get('viaftp')
 
         if stwvl and endwvl:
             if endwvl <= stwvl:
                 raise ValidationError(
                     "The 'Ending wavelength' cannot be smaller than or equal to the 'Starting wavelength'"
-                )
-
-            # Check wavelength range limit for email delivery
-            if (endwvl - stwvl) > 50 and viaftp != 'via ftp':
-                raise ValidationError(
-                    "The maximum wavelength range that can be requested by email is 50 Å. Select Download method!"
                 )
 
         return cleaned_data
@@ -358,18 +351,11 @@ class ExtractElementForm(forms.Form):
         cleaned_data = super().clean()
         stwvl = cleaned_data.get('stwvl')
         endwvl = cleaned_data.get('endwvl')
-        viaftp = cleaned_data.get('viaftp')
 
         if stwvl and endwvl:
             if endwvl <= stwvl:
                 raise ValidationError(
                     "The 'Ending wavelength' cannot be smaller than or equal to the 'Starting wavelength'"
-                )
-
-            # Check wavelength range limit for email delivery
-            if (endwvl - stwvl) > 50 and viaftp != 'via ftp':
-                raise ValidationError(
-                    "The maximum wavelength range that can be requested by email is 50 Å. Select Download method!"
                 )
 
         return cleaned_data
@@ -479,18 +465,11 @@ class ExtractStellarForm(forms.Form):
         cleaned_data = super().clean()
         stwvl = cleaned_data.get('stwvl')
         endwvl = cleaned_data.get('endwvl')
-        viaftp = cleaned_data.get('viaftp')
 
         if stwvl and endwvl:
             if endwvl <= stwvl:
                 raise ValidationError(
                     "The 'Ending wavelength' cannot be smaller than or equal to the 'Starting wavelength'"
-                )
-
-            # Check wavelength range limit for email delivery
-            if (endwvl - stwvl) > 50 and viaftp != 'via ftp':
-                raise ValidationError(
-                    "The maximum wavelength range that can be requested by email is 50 Å. Select Download method!"
                 )
 
         return cleaned_data
