@@ -312,6 +312,14 @@ the in-app download button, not the raw URL — result files are reachable by an
 who knows the filename (`{ClientName}.{6-digit}.gz`, the 6-digit a SHA256-derived
 hash of the request UUID). Accepted.
 
+**Follow-up:** since the raw path is public anyway, `download_request` /
+`download_bib_request` no longer require a session or check ownership — the uuid4
+is the capability. A link copied off the results page or out of the completion
+email now works with `wget`/`curl` on another machine; before, those clients had
+no session cookie, followed the login redirect and saved the landing page HTML as
+the "download". Failures on those two views are status codes with a plain-text
+body, never redirects, so a failed fetch fails loudly.
+
 ### R28. `chemcomp` may be written in the wrong format — needs checking
 **Where:** `vald/job_runner.py:479-499` (`_write_select_input`)
 

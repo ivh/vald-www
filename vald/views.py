@@ -1418,105 +1418,60 @@ def request_detail(request, uuid):
         return redirect('vald:my_requests')
 
 
-@require_login
+def _serve_result(request, uuid, which):
+    """Serve a result file by request UUID, to whoever holds the URL.
+
+    Deliberately unauthenticated: the uuid4 *is* the capability, so a link
+    copied out of the results page or the completion email can be fed straight
+    to wget/curl on another machine. Requiring the session cookie meant those
+    clients followed the login redirect and silently saved an HTML page instead
+    of the data. This grants no more than the deployment already does - the
+    vhost serves $VALD_HOME/WWW/public_html/FTP directly, where the same files
+    sit under a guessable 6-digit name (R37).
+
+    Every failure is a status code with a plain-text body, never a redirect to a
+    page: a redirect is what made a failed wget look like a successful one.
+    """
+    from django.http import FileResponse, HttpResponseNotFound
+    import mimetypes
+
+    try:
+        req_obj = Request.objects.get(uuid=uuid)
+    except Request.DoesNotExist:
+        return HttpResponseNotFound('No such request.\n', content_type='text/plain')
+
+    path = req_obj.output_path if which == 'output' else req_obj.bib_output_path
+
+    # Confirm the file really is inside the results directory before opening it
+    # (defence in depth - the value is server-generated, but nothing else
+    # checks it).
+    file_path = serve_path_or_none(path)
+    if file_path is None:
+        if req_obj.results_expired():
+            return HttpResponseNotFound(
+                f'Results have expired - they are kept {req_obj.retention_description()}.\n',
+                content_type='text/plain')
+        return HttpResponseNotFound('Result file not found.\n', content_type='text/plain')
+
+    content_type, _ = mimetypes.guess_type(file_path.name)
+    try:
+        return FileResponse(
+            open(file_path, 'rb'),
+            content_type=content_type or 'application/octet-stream',
+            as_attachment=True,
+            filename=file_path.name
+        )
+    except OSError as e:
+        logger.error("Failed to open %s for request %s: %s", file_path, uuid, e)
+        return HttpResponse('Result file could not be read.\n',
+                            content_type='text/plain', status=500)
+
+
 def download_request(request, uuid):
     """Download the output file for a completed request"""
-    from django.http import FileResponse, Http404
-    import mimetypes
-
-    user = get_current_user(request)
-
-    try:
-        req_obj = Request.objects.get(uuid=uuid)
-
-        # Security: only allow user to download their own requests
-        if req_obj.user_id != user.id:
-            messages.error(request, 'You do not have permission to download this file.')
-            return redirect('vald:my_requests')
-
-        # Check that output file exists
-        if not req_obj.output_exists():
-            messages.error(request, 'Output file not found.')
-            return redirect('vald:request_detail', uuid=uuid)
-
-        # Serve the file, confirming it really is inside the results
-        # directory before opening it (defence in depth - the value is
-        # server-generated, but nothing else checks it).
-        file_path = serve_path_or_none(req_obj.output_path)
-        if file_path is None:
-            messages.error(request, 'Output file not found.')
-            return redirect('vald:request_detail', uuid=uuid)
-
-        # Determine content type
-        content_type, _ = mimetypes.guess_type(file_path.name)
-        if not content_type:
-            content_type = 'application/octet-stream'
-
-        # Open and serve the file
-        response = FileResponse(
-            open(file_path, 'rb'),
-            content_type=content_type,
-            as_attachment=True,
-            filename=file_path.name
-        )
-
-        return response
-
-    except Request.DoesNotExist:
-        messages.error(request, 'Request not found.')
-        return redirect('vald:my_requests')
-    except Exception as e:
-        messages.error(request, f'Error downloading file: {e}')
-        return redirect('vald:request_detail', uuid=uuid)
+    return _serve_result(request, uuid, 'output')
 
 
-@require_login
 def download_bib_request(request, uuid):
     """Download the .bib.gz output file for a completed request"""
-    from django.http import FileResponse, Http404
-    import mimetypes
-
-    user = get_current_user(request)
-
-    try:
-        req_obj = Request.objects.get(uuid=uuid)
-
-        # Security: only allow user to download their own requests
-        if req_obj.user_id != user.id:
-            messages.error(request, 'You do not have permission to download this file.')
-            return redirect('vald:my_requests')
-
-        # Check that bib output file exists
-        if not req_obj.bib_output_exists():
-            messages.error(request, 'Bibliography file not found.')
-            return redirect('vald:request_detail', uuid=uuid)
-
-        # Serve the file, confirming it really is inside the results
-        # directory before opening it (defence in depth - the value is
-        # server-generated, but nothing else checks it).
-        file_path = serve_path_or_none(req_obj.bib_output_path)
-        if file_path is None:
-            messages.error(request, 'Bibliography file not found.')
-            return redirect('vald:request_detail', uuid=uuid)
-
-        # Determine content type
-        content_type, _ = mimetypes.guess_type(file_path.name)
-        if not content_type:
-            content_type = 'application/octet-stream'
-
-        # Open and serve the file
-        response = FileResponse(
-            open(file_path, 'rb'),
-            content_type=content_type,
-            as_attachment=True,
-            filename=file_path.name
-        )
-
-        return response
-
-    except Request.DoesNotExist:
-        messages.error(request, 'Request not found.')
-        return redirect('vald:my_requests')
-    except Exception as e:
-        messages.error(request, f'Error downloading file: {e}')
-        return redirect('vald:request_detail', uuid=uuid)
+    return _serve_result(request, uuid, 'bib')

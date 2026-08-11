@@ -153,21 +153,31 @@ def test_download_refuses_a_path_outside_the_ftp_dir(logged_in_client, approved_
 
 
 @pytest.mark.django_db
-def test_download_requires_ownership(approved_user, ftp_dir, db):
+def test_download_needs_no_session(approved_user, ftp_dir):
+    """The uuid is the capability, so wget on another machine works."""
     from django.test import Client
-    from vald.models import User, UserEmail
 
     make_result(ftp_dir)
     req = complete_request(approved_user, 'Result.000001.gz')
 
-    other = User.objects.create(name='Other', is_active=True)
-    other.set_password('pw-for-testing-123')
-    other.save()
-    UserEmail.objects.create(user=other, email='other@example.com', is_primary=True)
-    client = Client()
-    client.post('/login/', {'user': 'other@example.com', 'password': 'pw-for-testing-123'})
+    response = Client().get(f'/request/{req.uuid}/download/')
+    assert response.status_code == 200
+    assert 'Result.000001.gz' in response['Content-Disposition']
 
-    assert client.get(f'/request/{req.uuid}/download/').status_code != 200
+
+@pytest.mark.django_db
+def test_download_failures_are_status_codes_not_html(approved_user, ftp_dir):
+    """A redirect to the login/detail page made a failed wget look successful."""
+    from django.test import Client
+    import uuid as uuid_mod
+
+    client = Client()
+    assert client.get(f'/request/{uuid_mod.uuid4()}/download/').status_code == 404
+
+    req = complete_request(approved_user, 'Gone.000002.gz', age_days=30)
+    response = client.get(f'/request/{req.uuid}/download/')
+    assert response.status_code == 404
+    assert b'expired' in response.content
 
 
 # --- the tab title tracks the job, so a background tab reports it finishing ---
