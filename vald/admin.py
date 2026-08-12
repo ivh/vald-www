@@ -17,7 +17,7 @@ from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.conf import settings
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.http import urlencode
@@ -661,10 +661,10 @@ class RequestAdmin(admin.ModelAdmin):
                     'duration', 'has_output')
     list_filter = ('status', 'request_type', 'created_at')
     search_fields = ('uuid', 'user__name', 'user__emails__email')
-    readonly_fields = ('uuid', 'created_at', 'updated_at')
+    readonly_fields = ('uuid', 'created_at', 'updated_at', 'rerun_link')
     fieldsets = (
         ('Request Information', {
-            'fields': ('uuid', 'request_type', 'user')
+            'fields': ('uuid', 'request_type', 'user', 'rerun_link')
         }),
         ('Parameters', {
             'fields': ('parameters',),
@@ -709,6 +709,28 @@ class RequestAdmin(admin.ModelAdmin):
         return obj.output_exists()
     has_output.boolean = True
     has_output.short_description = 'Output File'
+
+    @admin.display(description='Rerun')
+    def rerun_link(self, obj):
+        """Open the front-end form for this request type, pre-filled from it.
+
+        Submitting it is a new request owned by whoever the browser is logged in
+        as on the front end, not an edit of this one. request_type is free text in
+        the database, so a row from an older or mistyped type must not take the
+        whole change page down with a NoReverseMatch.
+        """
+        if obj is None or not obj.pk:
+            return '—'
+        try:
+            url = reverse(f'vald:{obj.request_type}')
+        except NoReverseMatch:
+            return format_html('<span>No form for request type “{}”.</span>', obj.request_type)
+        return format_html(
+            '<a class="button" href="{}?{}" target="_blank" rel="noopener">Rerun this request</a>'
+            '<p class="help">Opens the {} form pre-filled with these parameters, in a new tab. '
+            'Requires a front-end login in this browser; the new request will be owned by that '
+            'account.</p>',
+            url, urlencode({'modify': str(obj.uuid)}), obj.request_type)
 
 
 class UserEmailInline(admin.TabularInline):

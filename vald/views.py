@@ -557,12 +557,23 @@ def modify_initial_data(request, user):
         messages.error(request, 'Request not found.')
         return {}
 
-    # Only the owner may see a previous request's parameters
-    if req_obj.user_id != user.id:
+    # Only the owner may see a previous request's parameters, plus a staff member
+    # logged into the admin in the same browser - which is what the rerun link on
+    # the admin request page relies on. `request.user` is the django.contrib.auth
+    # user of the admin session, unrelated to the front-end `user`, and
+    # AnonymousUser.is_staff is False for everyone else.
+    is_owner = req_obj.user_id == user.id
+    if not is_owner and not request.user.is_staff:
         messages.error(request, 'You do not have permission to modify this request.')
         return {}
 
-    messages.info(request, 'Form pre-filled with previous request values.')
+    if is_owner:
+        messages.info(request, 'Form pre-filled with previous request values.')
+    else:
+        owner = req_obj.user.name if req_obj.user else 'an unknown user'
+        messages.info(request, f'Form pre-filled from a request by {owner}. Submitting it '
+                               f'creates a new request owned by you, using your own units '
+                               f'and linelist configuration.')
     return req_obj.parameters or {}
 
 

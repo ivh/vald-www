@@ -98,6 +98,50 @@ def test_rejecting_a_registration_is_recorded(staff_client):
 
 
 @pytest.mark.django_db
+def test_suspending_switches_the_account_off_and_is_recorded(staff_client):
+    """Suspension keeps the password, so it reads as suspended rather than
+    pending - the two inactive states the admin distinguishes."""
+    user = make_user('Working', is_active=True, password='pw-for-testing-123')
+    before = user.updated_at
+
+    run_action(staff_client, 'suspend_users', [user])
+
+    user.refresh_from_db()
+    assert not user.is_active and user.password
+    assert user.is_suspended() and not user.is_pending_approval()
+    assert user.updated_at > before, 'updated_at left stale by queryset.update()'
+    assert 'Suspended' in LogEntry.objects.get().get_change_message()
+
+
+@pytest.mark.django_db
+def test_suspending_leaves_accounts_that_never_activated_alone(staff_client):
+    """Clearing is_active on these two would misfile them, not suspend them: a
+    pending row is already inactive, and an approved-but-not-activated one has no
+    password, so it would fall back into the pending-approval bucket."""
+    pending = make_user('Pending', is_active=False)
+    approved = make_user('Approved', is_active=True)
+
+    run_action(staff_client, 'suspend_users', [pending, approved])
+
+    approved.refresh_from_db()
+    assert approved.is_active, 'approved user pushed back into pending approval'
+    assert User.objects.get(pk=pending.pk).is_pending_approval()
+    assert LogEntry.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_a_suspended_user_cannot_log_in(staff_client):
+    """The point of the action, and the reason it is not just a db edit."""
+    user = make_user('Working', is_active=True, password='pw-for-testing-123')
+    run_action(staff_client, 'suspend_users', [user])
+
+    client = Client()
+    client.post('/login/', {'user': 'working@example.com',
+                            'password': 'pw-for-testing-123'})
+    assert 'user_id' not in client.session
+
+
+@pytest.mark.django_db
 def test_help_page_requires_staff():
     response = Client().get('/admin/help/')
     assert response.status_code == 302
@@ -937,3 +981,49 @@ def test_the_landing_redirect_survives_a_url_prefix():
     finally:
         set_script_prefix(previous)
     assert response['Location'] == '/new/admin/vald/user/'
+
+
+# --- Rerun link on the request change page --------------------------------
+
+@pytest.fixture
+def a_request(approved_user):
+    from vald.models import Request
+    return Request.objects.create(
+        user=approved_user, request_type='extractstellar', status='complete',
+        parameters={'stwvl': 5000.0, 'endwvl': 5010.0, 'teff': 5777})
+
+
+def change_url(req):
+    return f'/admin/vald/request/{req.pk}/change/'
+
+
+@pytest.mark.django_db
+def test_request_change_page_offers_a_rerun_link(staff_client, a_request):
+    body = content_of(staff_client.get(change_url(a_request)).content.decode())
+    assert f'/extractstellar/?modify={a_request.uuid}' in body
+    assert 'target="_blank"' in body
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('request_type', ['extractall', 'extractelement',
+                                          'extractstellar', 'showline'])
+def test_the_rerun_link_resolves_for_every_live_request_type(staff_client, a_request,
+                                                            request_type):
+    """request_type doubles as a URL name, which is only true by convention."""
+    a_request.request_type = request_type
+    a_request.save()
+    body = content_of(staff_client.get(change_url(a_request)).content.decode())
+    assert f'/{request_type}/?modify={a_request.uuid}' in body
+
+
+@pytest.mark.django_db
+def test_an_unknown_request_type_does_not_break_the_change_page(staff_client, a_request):
+    """request_type is free text, so a row from a retired or mistyped type must
+    not take the whole page down with a NoReverseMatch."""
+    a_request.request_type = 'legacytype'
+    a_request.save()
+
+    response = staff_client.get(change_url(a_request))
+
+    assert response.status_code == 200
+    assert 'No form for request type' in content_of(response.content.decode())

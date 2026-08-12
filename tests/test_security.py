@@ -441,6 +441,47 @@ def test_modify_does_not_leak_another_users_request(logged_in_client):
     assert '1234.5' not in body
 
 
+@pytest.mark.django_db
+def test_a_staff_session_may_prefill_another_users_request(logged_in_client):
+    """The carve-out the admin rerun link needs. Staffness comes from the
+    django.contrib.auth user of the admin session, which shares the session
+    cookie with the front end - not from the VALD account being logged in as.
+    """
+    from django.contrib.auth.models import User as StaffUser
+    from vald.models import Request
+
+    other = User.objects.create(name='Other', is_active=True)
+    req = Request.objects.create(
+        user=other, request_type='extractall', status='complete',
+        parameters={'stwvl': 1234.5, 'endwvl': 1240.0})
+
+    StaffUser.objects.create_superuser('admin', 'admin@example.com', 'pw-for-testing-123')
+    assert logged_in_client.login(username='admin', password='pw-for-testing-123')
+
+    body = logged_in_client.get(f'/extractall/?modify={req.uuid}').content.decode()
+    assert '1234.5' in body
+    assert 'from a request by Other' in body, 'no warning that this is a copy, not an edit'
+
+
+@pytest.mark.django_db
+def test_a_plain_staff_account_without_the_admin_flag_is_not_enough(logged_in_client):
+    """is_staff, not merely authenticated: django.contrib.auth users can exist
+    without admin access."""
+    from django.contrib.auth.models import User as StaffUser
+    from vald.models import Request
+
+    other = User.objects.create(name='Other', is_active=True)
+    req = Request.objects.create(
+        user=other, request_type='extractall', status='complete',
+        parameters={'stwvl': 1234.5, 'endwvl': 1240.0})
+
+    StaffUser.objects.create_user('nobody', 'nobody@example.com', 'pw-for-testing-123')
+    logged_in_client.force_login(StaffUser.objects.get(username='nobody'))
+
+    body = logged_in_client.get(f'/extractall/?modify={req.uuid}').content.decode()
+    assert '1234.5' not in body
+
+
 # --- R30/R40: rank weights reach both sqlite and the Fortran config parser --
 
 @pytest.mark.django_db
