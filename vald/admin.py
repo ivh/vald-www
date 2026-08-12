@@ -731,7 +731,8 @@ class UserAdmin(admin.ModelAdmin):
     search_fields = ('name', 'affiliation', 'emails__email')
     readonly_fields = ('created_at', 'updated_at', 'activation_token')
     inlines = [UserEmailInline, UserPreferencesInline]
-    actions = ['approve_and_send_activation', 'approve_without_email', 'clear_password', 'reject_registration']
+    actions = ['approve_and_send_activation', 'approve_without_email', 'clear_password',
+               'suspend_users', 'reject_registration']
     fieldsets = (
         ('User Information', {
             'fields': ('name', 'affiliation', 'is_active')
@@ -975,6 +976,22 @@ class UserAdmin(admin.ModelAdmin):
             f'activation link on their next login attempt.'
         )
     clear_password.short_description = 'Clear password (force re-activation)'
+
+    def suspend_users(self, request, queryset):
+        """Switch off activated accounts, leaving the password in place
+
+        Restricted to users that have activated: clearing is_active on an
+        already-pending registration would be a no-op, and on an approved but
+        not-yet-activated one it would silently push the account back into the
+        pending-approval bucket.
+        """
+        suspendable = [user for user in queryset if user.is_active and user.password]
+        User.objects.filter(pk__in=[u.pk for u in suspendable]).update(
+            is_active=False, updated_at=timezone.now())
+        for user in suspendable:
+            self.log_change(request, user, 'Suspended.')
+        self.message_user(request, f'{len(suspendable)} user(s) suspended.')
+    suspend_users.short_description = 'Suspend (deactivate) selected users'
 
     def reject_registration(self, request, queryset):
         """Delete/reject selected pending users"""

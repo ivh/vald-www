@@ -39,7 +39,7 @@ if (("{{ waveunit }}" == "1/cm")                               ) {wavelabel1 = "
 
 <tr><td>log g :
 <td>{{ form.logg }}  g in cgs units
-<tr><td>Chemical composition : <td>{{ form.chemcomp }}<td>For example : Sr: -4.67, Cr: -3.37. You can also set metallicity: M/H: -0.5
+<tr><td>Chemical composition : <td colspan=2>{{ form.chemcomp }}<br>For example : Sr: -4.67, Cr: -3.37. You can also set metallicity: M/H: -0.5
 
 <tr><td>Extraction format :
 <td>{% for radio in form.format %}<div>{{ radio }}</div>{% endfor %}
