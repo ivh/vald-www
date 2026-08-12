@@ -232,3 +232,81 @@ def test_stellar_help_text_does_not_share_a_row_with_the_units(logged_in_client)
     start = body.index('id="id_chemcomp"')
     cell = body[start:body.index('<tr', start)]
     assert 'For example' in cell, 'help text no longer sits under the chemcomp box'
+
+
+# --- "also save as my defaults" --------------------------------------------
+
+@pytest.mark.django_db
+def test_ticking_the_box_saves_the_units_as_defaults(logged_in_client, approved_user):
+    set_prefs(approved_user, waveunit='angstrom', medium='air', energyunit='eV')
+
+    submitted(logged_in_client, save_as_default='on', **NM_VACUUM)
+
+    prefs = approved_user.get_preferences()
+    prefs.refresh_from_db()
+    assert prefs.as_dict() == NM_VACUUM
+
+
+@pytest.mark.django_db
+def test_not_ticking_it_leaves_the_defaults_alone(logged_in_client, approved_user):
+    """The whole point of per-request units: submitting in other units is not a
+    statement about what you usually want."""
+    before = set_prefs(approved_user, waveunit='angstrom', medium='air').as_dict()
+
+    submitted(logged_in_client, **NM_VACUUM)
+
+    prefs = approved_user.get_preferences()
+    prefs.refresh_from_db()
+    assert prefs.as_dict() == before
+
+
+@pytest.mark.django_db
+def test_the_instruction_is_not_stored_on_the_request(logged_in_client, approved_user):
+    """It is an instruction, not a job parameter. Stored, it would come back
+    pre-ticked through ?modify= and re-save on every rerun."""
+    params = submitted(logged_in_client, save_as_default='on', **NM_VACUUM)
+
+    assert 'save_as_default' not in params
+
+
+@pytest.mark.django_db
+def test_saving_defaults_normalises_the_medium_under_wavenumbers(logged_in_client,
+                                                                approved_user):
+    set_prefs(approved_user, medium='air')
+
+    submitted(logged_in_client, save_as_default='on', waveunit='1/cm', medium='air')
+
+    prefs = approved_user.get_preferences()
+    prefs.refresh_from_db()
+    assert prefs.waveunit == '1/cm' and prefs.medium == 'vacuum'
+
+
+@pytest.mark.django_db
+def test_show_line_has_no_box_and_still_submits(logged_in_client, approved_user):
+    """ShowLineOnlineForm does not carry the unit fields, so the pop must be a
+    no-op there rather than a KeyError."""
+    before = set_prefs(approved_user, waveunit='nm').as_dict()
+
+    response = logged_in_client.post('/submit/', {
+        'reqtype': 'showline', 'wvl0': '5000', 'win0': '0.5', 'el0': 'Fe 1',
+        'viaftp': 'via ftp', 'pconf': 'default', 'isotopic_scaling': 'on'})
+
+    assert response.status_code in (200, 302)
+    assert Request.objects.filter(request_type='showline').exists()
+    prefs = approved_user.get_preferences()
+    prefs.refresh_from_db()
+    assert prefs.as_dict() == before
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('page', ['/extractall/', '/extractelement/', '/extractstellar/'])
+def test_the_box_renders_unticked_with_its_explanation(logged_in_client, page):
+    body = logged_in_client.get(page).content.decode()
+    assert 'name="save_as_default"' in body
+    assert 'checked' not in body[body.index('name="save_as_default"'):
+                                 body.index('name="save_as_default"') + 120]
+    # collapsed: the wording wraps across source lines, and where it wraps is not
+    # something a test should pin
+    text = ' '.join(body.split())
+    assert 'unless you check this box' in text
+    assert 'save as default units' in text

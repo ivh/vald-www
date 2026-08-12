@@ -838,6 +838,19 @@ def handle_extract_request(request):
         }
         return render(request, template_map[reqtype], context)
 
+    # Only on an explicit tick. An automatic writeback on every submission would
+    # let the profile drift with nothing to show who changed it or when, and the
+    # units a request was made with are already recorded on the request itself.
+    # Popped rather than read: it is an instruction, not a parameter of the job,
+    # so it must not reach Request.parameters and come back pre-ticked through
+    # ?modify=.
+    if form.cleaned_data.pop('save_as_default', False):
+        for key in UNIT_KEYS:
+            if key in form.cleaned_data:
+                setattr(prefs, key, form.cleaned_data[key])
+        prefs.save()
+        messages.success(request, 'These units are now your saved defaults.')
+
     # Build email context from validated form data
     email_context = {
         'reqtype': reqtype,

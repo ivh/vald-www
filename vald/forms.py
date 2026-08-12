@@ -94,6 +94,11 @@ class UnitFieldsMixin(forms.Form):
         label='Isotopic scaling', choices=UserPreferences.ISOTOPIC_CHOICES,
         required=False, initial=_pref_default('isotopic_scaling'),
         widget=forms.RadioSelect)
+    # Rides along with the submission rather than being its own button: the page
+    # is one form posting to /submit/, so a second target would navigate away and
+    # lose the half-filled form this panel exists to stop losing.
+    save_as_default = forms.BooleanField(
+        label='Save as default units', required=False)
 
     def clean(self):
         """Fill in omitted units, then normalise the medium under cm^-1.

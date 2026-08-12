@@ -22,7 +22,10 @@ request that silently means something else.
 <tr><td>Isotopic scaling :<td>{% for radio in form.isotopic_scaling %}<div>{{ radio }}</div>{% endfor %}
 <tr><td colspan=2><hr>
 <tr><td colspan=2 class="unitnote"><i>Applies to this request only. Your
-<a href="{% url 'vald:unitselection' %}">saved defaults</a> are unchanged.</i>
+<a href="{% url 'vald:unitselection' %}">saved defaults</a> are unchanged, unless
+you check this box.</i>
+<br>{{ form.save_as_default }} <label for="{{ form.save_as_default.auto_id }}">save
+as default units</label>
 </table>
 
 <script>
