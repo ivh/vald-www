@@ -125,6 +125,41 @@ def get_default_config():
     return Config.objects.filter(user__isnull=True, is_default=True).first()
 
 
+# What a request stores in parameters['pconf']. 'default' and 'personal' predate
+# the other system configs and every request ever made uses one of them, so they
+# keep their meaning: whatever is the system default now, and the user's own
+# snapshot. Anything else is a system config's slug.
+PCONF_DEFAULT = 'default'
+PCONF_PERSONAL = 'personal'
+
+
+def get_alternative_configs():
+    """Selectable system configs other than the default, in display order.
+
+    A system config without a slug is not offered: nothing could name it in a
+    request, and the ones that exist are archived copies rather than choices.
+    """
+    return list(Config.objects.filter(user__isnull=True, is_default=False)
+                .exclude(slug='').exclude(slug=PCONF_DEFAULT)
+                .order_by('name'))
+
+
+def resolve_pconf(user, pconf):
+    """The Config a request with this parameters['pconf'] must run with.
+
+    Returns None when the choice names nothing that exists - a config deleted
+    after the request was stored. The caller has to fail rather than substitute
+    the default: running the default while the request says otherwise is exactly
+    the mismatch the disabled-'Custom' change went after.
+    """
+    if pconf == PCONF_PERSONAL:
+        return get_user_config(user)
+    if pconf == PCONF_DEFAULT or not pconf:
+        return get_default_config()
+    return Config.objects.filter(
+        user__isnull=True, is_default=False, slug=pconf).first()
+
+
 def remove_user_config(user):
     """Delete the personal config, so the user tracks the VALD default again."""
     Config.objects.filter(user=user).delete()

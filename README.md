@@ -172,6 +172,7 @@ One-off, in this order — each step is the comparison baseline for the next:
 
 ```bash
 bin/vald-manage import_default_config $VALD_HOME/CONFIG/default.cfg
+# ...and the alternatives offered beside it, see "Alternative configurations"
 bin/vald-manage import_users --file /path/to/clients.register --dry-run
 bin/vald-manage import_users --file /path/to/clients.register
 cp /path/to/legacy/*.cfg config/personal_configs/
@@ -267,10 +268,44 @@ Changing an existing linelist's *element range* is the exception: that field
 lives on the shared `Linelist` row, so it reaches everyone either way.
 
 **Removing a linelist** is handled by leaving it out of `default.cfg` and
-re-importing: the importer deactivates any linelist absent from the file, and
-generated `.cfg` files skip inactive linelists. That is what stops an old
-snapshot from naming a data file that has left the SVN tree. A list that
-reappears in a later `default.cfg` is reactivated.
+re-importing: the importer deactivates any linelist that is then in *no* system
+configuration, and generated `.cfg` files skip inactive linelists. That is what
+stops an old snapshot from naming a data file that has left the SVN tree. A list
+that reappears in a later import is reactivated. Note the scope: a list dropped
+from `default.cfg` but still present in one of the alternatives below stays
+active, so remove it from all of them.
+
+## Alternative configurations
+
+`$VALD_HOME/CONFIG` holds several `.cfg` files that differ only in which entries
+are commented out. Import each one as a system configuration; the request forms
+offer them as a menu, and a request records the `--slug` of the one it used.
+
+```bash
+bin/vald-manage import_default_config $VALD_HOME/CONFIG/default.cfg \
+  --config-name 'Default (observed, atoms and molecules)'
+bin/vald-manage import_default_config $VALD_HOME/CONFIG/VALD3_all.cfg \
+  --slug vald3_all --config-name 'All (observed and predicted, atoms and molecules)'
+bin/vald-manage import_default_config $VALD_HOME/CONFIG/VALD3_all_atoms.cfg \
+  --slug vald3_all_atoms --config-name 'All atoms (observed and predicted, atoms only)'
+bin/vald-manage import_default_config $VALD_HOME/CONFIG/VALD3_default_atoms.cfg \
+  --slug vald3_default_atoms --config-name 'Default atoms (observed, atoms only)'
+```
+
+Without `--slug` the import replaces the system **default** — the configuration
+a request gets when it names no other, what a personal configuration is
+snapshotted from, and what the Personal Configuration page compares against.
+There is exactly one of those. With `--slug` it maintains an alternative under
+that identifier, re-importing in place.
+
+`--config-name` is the label the menu shows, so make it say what the file is;
+the slug is what a submitted request stores, so renaming a configuration is
+safe but changing its slug orphans requests that already chose it. `default` and
+`personal` are reserved: a request has always used those two words for the
+system default and for the user's own snapshot.
+
+A personal configuration is still a snapshot of the system **default** only —
+choosing an alternative is per request and does not interact with it.
 
 ## Configuration
 

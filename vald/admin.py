@@ -1094,14 +1094,18 @@ class LinelistAdmin(admin.ModelAdmin):
 
 @admin.register(Config)
 class ConfigAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'is_default', 'linelist_count', 'updated_at')
+    list_display = ('name', 'slug', 'user', 'is_default', 'linelist_count', 'updated_at')
     list_filter = ('is_default', 'user')
-    search_fields = ('name', 'user__name', 'description')
+    search_fields = ('name', 'slug', 'user__name', 'description')
     readonly_fields = ('created_at', 'updated_at')
     inlines = [ConfigLinelistInline]
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'user', 'is_default', 'description')
+            'fields': ('name', 'slug', 'user', 'is_default', 'description'),
+            'description': 'The name is what the request forms show in the '
+                           'linelist configuration menu. The slug is what a '
+                           'submitted request stores, so changing it orphans '
+                           'requests that already chose this config.',
         }),
         ('Global Parameters', {
             'fields': (

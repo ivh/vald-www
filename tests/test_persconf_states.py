@@ -368,15 +368,15 @@ EXTRACT_BASE = {'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5002',
                 'format': 'short', 'viaftp': 'via ftp'}
 
 
-def personal_radio(body):
-    return re.search(r'<input[^>]*value="personal"[^>]*>', body).group(0)
+def personal_option(body):
+    return re.search(r'<option[^>]*value="personal"[^>]*>', body).group(0)
 
 
 @pytest.mark.parametrize('page', FORM_PAGES)
 def test_custom_config_is_greyed_out_without_a_personal_config(
         logged_in_client, vald_default, page):
     body = logged_in_client.get(page).content.decode()
-    assert 'disabled' in personal_radio(body)
+    assert 'disabled' in personal_option(body)
     assert 'Custom (no personal configuration saved)' in body
 
 
@@ -385,7 +385,7 @@ def test_custom_config_is_offered_once_a_personal_config_exists(
         logged_in_client, approved_user, vald_default, page):
     get_or_create_user_config(approved_user)
     body = logged_in_client.get(page).content.decode()
-    assert 'disabled' not in personal_radio(body)
+    assert 'disabled' not in personal_option(body)
 
 
 def test_personal_choice_is_refused_when_the_user_has_none(approved_user, vald_default):
@@ -406,7 +406,7 @@ def test_default_choice_still_works_without_a_personal_config(approved_user, val
     assert form.is_valid(), form.errors
 
 
-def test_a_missing_user_fails_closed():
+def test_a_missing_user_fails_closed(vald_default):
     """No HTTP path reaches this - require_login guards every form view - so a
     call site without a user should lose the option, not the check."""
     form = ExtractAllForm({**EXTRACT_BASE, 'pconf': 'personal'})

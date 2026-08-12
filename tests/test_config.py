@@ -327,3 +327,139 @@ def test_one_bad_file_does_not_abort_the_whole_run(tmp_path, settings, capsys):
     call_command('import_persconf', '--all', verbosity=0)
     assert Config.objects.filter(user__name='Zzz Zzz').exists(), \
         'a later file was skipped because an earlier one failed'
+
+
+# --- alternative system configs (VALD3_all.cfg and friends) ------------------
+#
+# Four .cfg files ship beside each other in $VALD_HOME/CONFIG, differing only in
+# which entries are commented out - observed vs predicted lines, atoms vs atoms
+# and molecules. They are imported as system configs alongside default.cfg and
+# offered as a menu on the request forms.
+
+HEADER = "0.05,5000.,9,150.\n"
+KEEP = "'/CVALD3/ATOMS/keep', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'Keeper'\n"
+EXTRA = "'/CVALD3/ATOMS/pred', 20, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'Predicted'\n"
+
+
+@pytest.fixture
+def default_and_variant(tmp_path, db):
+    """A system default, plus one variant carrying an extra linelist."""
+    from django.core.management import call_command
+
+    (tmp_path / 'default.cfg').write_text(HEADER + KEEP)
+    (tmp_path / 'variant.cfg').write_text(HEADER + KEEP + EXTRA)
+    call_command('import_default_config', str(tmp_path / 'default.cfg'), verbosity=0)
+    call_command('import_default_config', str(tmp_path / 'variant.cfg'),
+                 '--slug', 'vald3_all', '--config-name', 'All (with predicted)',
+                 verbosity=0)
+    return tmp_path
+
+
+@pytest.mark.django_db
+def test_a_variant_is_a_second_system_config(default_and_variant):
+    from vald.models import Config
+    from vald.persconfig import get_alternative_configs, get_default_config
+
+    assert get_default_config().slug == 'default'
+    assert [c.slug for c in get_alternative_configs()] == ['vald3_all']
+    variant = Config.objects.get(slug='vald3_all')
+    assert variant.user is None and variant.is_default is False
+    assert 'ATOMS/pred' in variant.generate_cfg_content()
+    assert 'ATOMS/pred' not in get_default_config().generate_cfg_content()
+
+
+@pytest.mark.django_db
+def test_reimporting_the_default_keeps_a_variants_own_linelists(default_and_variant):
+    """Retirement judged one file at a time had each import deactivate whatever
+    the previous one had added - VALD3_all.cfg carries two predicted-line lists
+    default.cfg does not."""
+    from django.core.management import call_command
+    from vald.models import Config, Linelist
+
+    call_command('import_default_config',
+                 str(default_and_variant / 'default.cfg'), verbosity=0)
+
+    assert Linelist.objects.get(path='/CVALD3/ATOMS/pred').is_active
+    assert 'ATOMS/pred' in Config.objects.get(slug='vald3_all').generate_cfg_content()
+
+
+@pytest.mark.django_db
+def test_reimporting_a_variant_updates_it_in_place(default_and_variant):
+    from django.core.management import call_command
+    from vald.models import Config
+
+    (default_and_variant / 'variant.cfg').write_text(HEADER + KEEP)
+    call_command('import_default_config', str(default_and_variant / 'variant.cfg'),
+                 '--slug', 'vald3_all', verbosity=0)
+
+    assert Config.objects.filter(user__isnull=True).count() == 2
+    assert 'ATOMS/pred' not in Config.objects.get(slug='vald3_all').generate_cfg_content()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('slug', ['default', 'personal'])
+def test_reserved_slugs_are_refused(tmp_path, slug):
+    """Both are what a stored request already means by something else."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    (tmp_path / 'v.cfg').write_text(HEADER + KEEP)
+    with pytest.raises(CommandError):
+        call_command('import_default_config', str(tmp_path / 'v.cfg'),
+                     '--slug', slug, verbosity=0)
+
+
+@pytest.mark.django_db
+def test_the_variant_is_offered_on_the_request_forms(default_and_variant,
+                                                     logged_in_client):
+    body = logged_in_client.get('/extractall/').content.decode()
+    assert '<option value="vald3_all">All (with predicted)</option>' in body
+    assert 'value="default"' in body
+
+
+@pytest.mark.django_db
+def test_a_request_runs_with_the_config_it_named(default_and_variant, approved_user,
+                                                 tmp_path):
+    """The point of the whole exercise: pconf must pick the linelists."""
+    from vald.job_runner import get_config_path_for_request
+
+    job_dir = tmp_path / 'job'
+    job_dir.mkdir()
+
+    written = Path(get_config_path_for_request(approved_user, job_dir, 'vald3_all'))
+    assert 'ATOMS/pred' in written.read_text()
+
+    written = Path(get_config_path_for_request(approved_user, job_dir, 'default'))
+    assert 'ATOMS/pred' not in written.read_text()
+
+
+@pytest.mark.django_db
+def test_a_vanished_config_fails_the_job_rather_than_substituting_the_default(
+        default_and_variant, approved_user, tmp_path):
+    """Running the default while the stored request names something else is the
+    silent mismatch this whole area exists to prevent."""
+    from vald.job_runner import get_config_path_for_request
+    from vald.models import Config
+
+    Config.objects.filter(slug='vald3_all').delete()
+    job_dir = tmp_path / 'job'
+    job_dir.mkdir()
+
+    with pytest.raises(ValueError, match='vald3_all'):
+        get_config_path_for_request(approved_user, job_dir, 'vald3_all')
+
+
+@pytest.mark.django_db
+def test_a_reimport_keeps_the_name_the_menu_shows(default_and_variant):
+    """--config-name is the label in the request forms; picking up new linelists
+    should not silently retitle it."""
+    from django.core.management import call_command
+    from vald.models import Config
+
+    call_command('import_default_config', str(default_and_variant / 'variant.cfg'),
+                 '--slug', 'vald3_all', verbosity=0)
+    assert Config.objects.get(slug='vald3_all').name == 'All (with predicted)'
+
+    call_command('import_default_config', str(default_and_variant / 'variant.cfg'),
+                 '--slug', 'vald3_all', '--config-name', 'Renamed', verbosity=0)
+    assert Config.objects.get(slug='vald3_all').name == 'Renamed'

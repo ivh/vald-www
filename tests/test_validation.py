@@ -11,6 +11,11 @@ from vald.forms import (
     ExtractElementForm, ExtractStellarForm, ShowLineForm, ShowLineOnlineForm,
 )
 
+# The 'Linelist configuration' menu is built from the system configs in the
+# database, so constructing any of these forms is a query - even though nothing
+# below is about that field.
+pytestmark = pytest.mark.django_db
+
 ELEMENT_BASE = {'stwvl': '5700', 'endwvl': '5720', 'format': 'short',
                 'viaftp': 'via ftp', 'pconf': 'default'}
 STELLAR_BASE = {'stwvl': '5700', 'endwvl': '5703', 'dlimit': '0.05', 'micturb': '2',
