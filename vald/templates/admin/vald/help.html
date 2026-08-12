@@ -272,7 +272,7 @@ service restart.</p>
 <h2>Deploying a new version</h2>
 
 <p>All of this runs on the server as the <code>vald</code> user, from
-<code>{{ base_dir }}</code>. Steps 4&ndash;5 are only needed when the unit files
+<code>{{ base_dir }}</code>. Steps 5&ndash;6 are only needed when the unit files
 themselves changed; the rest apply to every deploy.
 
 <ol class="steps">
@@ -302,6 +302,15 @@ uv sync</pre>
     <code>secrets.txt</code> and sets
     <code>DJANGO_SETTINGS_MODULE=vald_web.settings_deploy</code>. This instance is
     running <code>{{ settings_module }}</code>.</span></li>
+
+  <li><b>Collect the static files.</b>
+    <pre>bin/vald-manage collectstatic --noinput</pre>
+    <span class="note">Easy to skip, and it fails quietly: the browser keeps
+    serving the old stylesheet, so a CSS change looks like it had no effect while
+    a template change in the same commit appears immediately. Nothing is served
+    from <code>style/</code> at runtime &mdash; the web server serves the
+    <code>staticfiles/</code> snapshot this command writes, and only this command
+    updates it.</span></li>
 
   <li><b>If any unit file changed</b>, copy it into place:
     <pre>sudo cp {% for name in unit_files %}{{ name }} {% endfor %}/etc/systemd/system/</pre></li>

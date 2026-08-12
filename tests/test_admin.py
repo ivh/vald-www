@@ -244,8 +244,24 @@ def test_help_page_documents_deployment(staff_client):
     body = staff_client.get('/admin/help/').content.decode()
     assert 'Deploying a new version' in body
     for command in ['git pull', 'uv sync', 'bin/vald-manage migrate',
+                    'bin/vald-manage collectstatic',
                     'systemctl daemon-reload', 'systemctl restart vald']:
         assert command in body, f'deployment section does not mention {command!r}'
+
+
+@pytest.mark.django_db
+def test_deployment_section_says_which_step_numbers_are_conditional(staff_client):
+    """The prose names the unit-file steps by number, so inserting a step above
+    them silently makes it point at the wrong ones."""
+    import re
+    body = content_of(staff_client.get('/admin/help/').content.decode())
+    steps = re.findall(r'<li><b>(.*?)</b>', body, re.S)
+    claimed = re.search(r'Steps (\d+)&ndash;(\d+) are only needed', body)
+    assert claimed, 'deployment section no longer says which steps are conditional'
+    first, last = int(claimed.group(1)), int(claimed.group(2))
+    conditional = [steps[i - 1] for i in range(first, last + 1)]
+    assert 'unit file' in ' '.join(conditional), (
+        f'steps {first}-{last} are not the unit-file ones: {conditional}')
 
 
 @pytest.mark.django_db
