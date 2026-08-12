@@ -1061,14 +1061,6 @@ class UserPreferencesAdmin(admin.ModelAdmin):
 # Linelist Configuration Admin
 # ============================================================================
 
-class ConfigLinelistInline(admin.TabularInline):
-    model = ConfigLinelist
-    extra = 0
-    fields = ('linelist', 'priority', 'is_enabled', 'mergeable')
-    autocomplete_fields = ['linelist']
-    ordering = ['priority']
-
-
 @admin.register(Linelist)
 class LinelistAdmin(admin.ModelAdmin):
     list_display = ('name', 'path', 'element_range', 'default_priority', 'is_molecular', 'is_active')
@@ -1113,11 +1105,17 @@ class ConfigAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'user', 'is_default', 'linelist_count', 'updated_at')
     list_filter = ('is_default', 'user')
     search_fields = ('name', 'slug', 'user__name', 'description')
-    readonly_fields = ('created_at', 'updated_at')
-    inlines = [ConfigLinelistInline]
+    readonly_fields = ('created_at', 'updated_at', 'linelist_rows')
+    # No ConfigLinelist inline here deliberately. A config holds a few hundred
+    # linelists - 377 in the system default - and each inline row posts six
+    # fields, so merely pressing Save submitted ~2650 parameters and tripped
+    # DATA_UPLOAD_MAX_NUMBER_FIELDS (1000 by default): TooManyFieldsSent, which
+    # Django answers with a bare 400. The rows have their own paginated admin,
+    # which cannot hit that limit; linelist_rows links to it filtered.
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'slug', 'user', 'is_default', 'description'),
+            'fields': ('name', 'slug', 'user', 'is_default', 'description',
+                       'linelist_rows'),
             'description': 'The name is what the request forms show in the '
                            'linelist configuration menu. The slug is what a '
                            'submitted request stores, so changing it orphans '
@@ -1137,6 +1135,23 @@ class ConfigAdmin(admin.ModelAdmin):
     def linelist_count(self, obj):
         return obj.configlinelist_set.count()
     linelist_count.short_description = 'Linelists'
+
+    @admin.display(description='Linelists')
+    def linelist_rows(self, obj):
+        """Counts plus the way through to the rows, which are edited elsewhere."""
+        if obj is None or not obj.pk:
+            return '—'
+        rows = obj.configlinelist_set.all()
+        total = rows.count()
+        enabled = rows.filter(is_enabled=True).count()
+        url = (reverse('admin:vald_configlinelist_changelist') + '?'
+               + urlencode({'config__id__exact': obj.pk}))
+        return format_html(
+            '{} linelists, {} enabled &mdash; <a href="{}">edit them</a>'
+            '<p class="help">Edited one page at a time rather than inline: a few '
+            'hundred inline rows exceed the POST field limit, and saving this page '
+            'would rewrite every row.</p>',
+            total, enabled, url)
 
 
 @admin.register(ConfigLinelist)

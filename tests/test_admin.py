@@ -1065,3 +1065,89 @@ def test_help_page_lists_the_system_configs(staff_client, tmp_path):
     assert rows['default']['is_default'] and rows['default']['enabled'] == 1
     assert not rows['vald3_all']['is_default'] and rows['vald3_all']['enabled'] == 2
     assert 'All the lines' in staff_client.get('/admin/help/').content.decode()
+
+
+# --- Config change page: no inline, so a big config can be saved -------------
+#
+# The system default holds 377 linelists. As a TabularInline that is ~2650 POST
+# fields, over DATA_UPLOAD_MAX_NUMBER_FIELDS, and Django answers TooManyFieldsSent
+# with a bare 400 - so the page could be opened but never saved.
+
+BIG_CONFIG_ROWS = 377
+
+
+@pytest.fixture
+def big_config(db):
+    from vald.models import Config, ConfigLinelist, Linelist
+    config = Config.objects.create(name='Default', slug='default', user=None,
+                                   is_default=True)
+    for i in range(BIG_CONFIG_ROWS):
+        linelist = Linelist.objects.create(
+            path=f'/CVALD3/ATOMS/l{i}', name=f'L{i}', element_min=1,
+            element_max=99, default_priority=i)
+        ConfigLinelist.objects.create(config=config, linelist=linelist,
+                                      priority=i, is_enabled=i % 2 == 0)
+    return config
+
+
+def repost_change_form(client, url):
+    """GET a change page and post its own controls straight back, as Save does."""
+    import re
+    body = client.get(url).content.decode()
+    data = {}
+    for name, value in re.findall(
+            r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', body):
+        data[name] = value
+    for name in re.findall(r'<select[^>]*name="([^"]+)"', body):
+        data.setdefault(name, '')
+    for name in re.findall(r'<input[^>]*type="checkbox"[^>]*name="([^"]+)"', body):
+        data[name] = 'on'
+    data['_save'] = 'Save'
+    return client.post(url, data), len(data)
+
+
+@pytest.mark.django_db
+def test_a_config_with_hundreds_of_linelists_can_be_saved(staff_client, big_config):
+    url = f'/admin/vald/config/{big_config.pk}/change/'
+
+    response, field_count = repost_change_form(staff_client, url)
+
+    assert field_count < 1000, (
+        f'{field_count} POST fields; over the limit this page 400s outright')
+    assert response.status_code == 302, f'save returned {response.status_code}'
+
+
+@pytest.mark.django_db
+def test_the_config_page_has_no_linelist_inline(staff_client, big_config):
+    """What made the page unsaveable. An inline would announce itself with a
+    management form, so this catches one being added back."""
+    body = staff_client.get(f'/admin/vald/config/{big_config.pk}/change/').content.decode()
+    assert 'configlinelist_set-TOTAL_FORMS' not in body
+
+
+@pytest.mark.django_db
+def test_the_config_page_links_to_the_rows_with_counts(staff_client, big_config):
+    """Dropping the inline must not hide the rows: they are still reachable."""
+    body = content_of(staff_client.get(
+        f'/admin/vald/config/{big_config.pk}/change/').content.decode())
+    assert f'{BIG_CONFIG_ROWS} linelists' in body
+    assert f'{BIG_CONFIG_ROWS // 2 + 1} enabled' in body
+    assert f'/admin/vald/configlinelist/?config__id__exact={big_config.pk}' in body
+
+
+@pytest.mark.django_db
+def test_the_linked_row_list_filters_to_that_config(staff_client, big_config):
+    """The link has to actually select this config's rows, paginated."""
+    from vald.models import Config, ConfigLinelist, Linelist
+    other = Config.objects.create(name='Other', slug='other', user=None,
+                                  is_default=False)
+    ConfigLinelist.objects.create(
+        config=other, priority=1,
+        linelist=Linelist.objects.create(path='/elsewhere', name='E',
+                                         element_min=1, element_max=99))
+
+    response = staff_client.get(
+        f'/admin/vald/configlinelist/?config__id__exact={big_config.pk}')
+
+    assert response.status_code == 200
+    assert response.context['cl'].result_count == BIG_CONFIG_ROWS
