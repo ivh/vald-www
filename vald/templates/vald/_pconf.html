@@ -8,8 +8,8 @@ data-description attribute the widget puts on the option, so there is a single
 copy of the text and the template escapes it.
 {% endcomment %}
 {{ form.pconf }}
-<a id="pconf_contents" href="{% url 'vald:persconf' %}">see its linelists</a>
-<div class="pconfdesc" id="pconf_description"></div>
+<div class="pconfdesc"><span id="pconf_description"></span><a id="pconf_contents"
+   href="{% url 'vald:persconf' %}">see its linelists</a></div>
 <script>
 (function () {
   var select = document.getElementById("{{ form.pconf.auto_id }}");
@@ -24,8 +24,10 @@ copy of the text and the template escapes it.
   function showDescription() {
     var option = select.options[select.selectedIndex];
     var text = option ? option.getAttribute("data-description") : null;
-    // textContent, not innerHTML: this is admin-entered prose, not markup.
-    target.textContent = text || "";
+    // textContent, not innerHTML: this is admin-entered prose, not markup. The
+    // separator goes in here rather than the template so it disappears with the
+    // description, leaving the link alone on the line.
+    target.textContent = text ? text + " \u2014 " : "";
     if (link && option) {
       // 'personal' has no page of its own here - that is the persconf editor.
       link.href = option.value === "personal"

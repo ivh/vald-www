@@ -213,12 +213,18 @@ input[type="submit"]:hover, input[type="button"]:hover {
   max-width: 46em;
 }
 
-/* The selected linelist configuration's description. The same text is the
-   option's hover title, which desktop users may never hover over. */
+/* The selected linelist configuration's description, with the link to its
+   contents on the end of it. The same text is the option's hover title, which
+   desktop users may never hover over. */
 .pconfdesc {
   font-size: 12px;
   font-style: italic;
   color: #404050;
-  max-width: 30em;
+  max-width: 34em;
   margin-top: 2px;
+}
+/* Inherits the size and the italic, but not a:visited's weight - the link is an
+   aside on the description, not a heading for it. */
+.pconfdesc a {
+  font-weight: 400;
 }
