@@ -158,17 +158,35 @@ input[type="submit"]:hover, input[type="button"]:hover {
   border: 1px solid #bee5eb;
 }
 
-/* Per-request unit selection, in a column beside the extract form. Boxed so it
-   reads as a panel about the request rather than another group of form rows. */
+/* Labels sit next to their inputs rather than a column-width apart. The label
+   column is sized by <colgroup> rather than by CSS: two cells in a full-width
+   table split it in half, and every CSS way of collapsing one column (width:1%,
+   or width:100% on its sibling) undershoots far enough that the nowrap label
+   overflows and paints over the inputs. An explicit column width cannot. */
+.requestform td:first-child:not([colspan]) {
+  padding-right: 14px;
+}
+
+/* Per-request unit selection, in a column beside the extract form. A rule and a
+   wide gutter separate it instead of a box: it is a different question about the
+   request, not a subsection of the form. */
+.unitcell {
+  border-left: 1px solid #9a9ab0;
+  padding-left: 30px;
+}
 .unitpanel {
-  border: 1px solid #b0b0c0;
-  background-color: #e8e8f0;
-  padding: 8px;
   font-size: 13px;
 }
 .unitpanel td {
-  padding: 1px 6px 1px 0;
+  padding: 1px 8px 1px 0;
   vertical-align: top;
+  white-space: nowrap;      /* keeps a choice off two lines */
+}
+/* ...except the footnote, which is a sentence: nowrap there widens the whole
+   panel until the page scrolls sideways. */
+.unitpanel td.unitnote {
+  white-space: normal;
+  padding-top: 4px;
 }
 .unitpanel hr {
   margin: 2px 0;

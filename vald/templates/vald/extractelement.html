@@ -7,9 +7,10 @@
 
 <table border=0 cellpadding=0 width="100%">
 <tr valign=top>
-<td width="70%">
+<td width="64%">
 
-<table border=0 cellpadding=0 width="100%">
+<table border=0 cellpadding=0 width=100% class="requestform">
+<colgroup><col width="265"><col></colgroup>
 
 <p><tr><td>Starting <span class="wavelabel1">wavelength</span> :
 <td>{{ form.stwvl }} <span class="wavelabel2">&Aring;</span>
@@ -46,7 +47,7 @@
 <tr><td>Optional comment for request<td>{{ form.subject }}
 </table>
 
-<td>{% include "vald/_unitfields.html" %}
+<td class="unitcell">{% include "vald/_unitfields.html" %}
 
 </table>
 
