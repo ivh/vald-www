@@ -46,7 +46,7 @@
 
 <tr><td colspan=2><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td>{{ form.pconf }}
+<td>{% include "vald/_pconf.html" %}
 
 <tr><td colspan=2><hr>
 <tr><td>Optional comment for request<td>{{ form.subject }}

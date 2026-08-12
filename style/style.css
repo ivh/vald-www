@@ -204,3 +204,13 @@ input[type="submit"]:hover, input[type="button"]:hover {
 .unitpanel hr {
   margin: 2px 0;
 }
+
+/* The selected linelist configuration's description. The same text is the
+   option's hover title, which desktop users may never hover over. */
+.pconfdesc {
+  font-size: 12px;
+  font-style: italic;
+  color: #404050;
+  max-width: 30em;
+  margin-top: 2px;
+}

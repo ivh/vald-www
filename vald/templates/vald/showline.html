@@ -20,7 +20,7 @@ ionization ]
 
 <tr><td colspan=3><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td colspan=2>{{ form.pconf }}
+<td colspan=2>{% include "vald/_pconf.html" %}
 
 <tr><td colspan=3><hr>
 <tr><td>Isotopic scaling of oscillator strength

@@ -41,18 +41,29 @@ ELEMENT_ION_RE = re.compile(r'^\d{0,3}[A-Za-z][A-Za-z0-9]{0,5}(?: \d{1,2})?$')
 
 
 class ChoiceDisablingSelect(forms.Select):
-    """Select that renders the choices named in `disabled_values` disabled.
+    """Select that disables the choices in `disabled_values` and describes them.
 
-    Set the attribute on the bound field's widget, not on the class: Django
+    `option_descriptions` maps a choice value to prose about it, rendered both as
+    the option's title (a hover tooltip - desktop only, and not announced by
+    screen readers) and as a data attribute, which is where the line shown under
+    the menu reads it from. Carrying it on the option rather than in a separate
+    JS map keeps one copy of the text and leaves the escaping to the template.
+
+    Set both attributes on the bound field's widget, not on the class: Django
     deep-copies base_fields per form instance, so a per-instance assignment
     cannot leak into another request.
     """
     disabled_values = ()
+    option_descriptions = {}
 
     def create_option(self, name, value, *args, **kwargs):
         option = super().create_option(name, value, *args, **kwargs)
         if str(value) in self.disabled_values:
             option['attrs']['disabled'] = True
+        description = self.option_descriptions.get(str(value))
+        if description:
+            option['attrs']['title'] = description
+            option['attrs']['data-description'] = description
         return option
 
 
@@ -150,7 +161,7 @@ class LinelistConfigChoiceMixin:
         super().__init__(*args, **kwargs)
         from .persconfig import (
             PCONF_DEFAULT, PCONF_PERSONAL, get_alternative_configs,
-            get_default_config,
+            get_default_config, get_user_config,
         )
 
         # Not `_has_personal_config(user)` with a None user: filter(user=None) is
@@ -167,8 +178,20 @@ class LinelistConfigChoiceMixin:
             else self.PCONF_UNAVAILABLE_LABEL,
         ))
 
+        # Config.description, which nothing used to show. Keyed by the same value
+        # the choice carries, so 'default' describes whichever config is default
+        # now rather than naming one.
+        descriptions = {PCONF_DEFAULT: default_config.description if default_config else ''}
+        descriptions.update({c.slug: c.description for c in get_alternative_configs()})
+        if self.personal_config_available:
+            personal = get_user_config(user)
+            descriptions[PCONF_PERSONAL] = personal.description if personal else ''
+
         field = self.fields['pconf']
         field.choices = choices
+        field.widget.option_descriptions = {
+            value: text for value, text in descriptions.items() if text
+        }
         if not self.personal_config_available:
             field.widget.disabled_values = (PCONF_PERSONAL,)
 

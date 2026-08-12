@@ -463,3 +463,80 @@ def test_a_reimport_keeps_the_name_the_menu_shows(default_and_variant):
     call_command('import_default_config', str(default_and_variant / 'variant.cfg'),
                  '--slug', 'vald3_all', '--config-name', 'Renamed', verbosity=0)
     assert Config.objects.get(slug='vald3_all').name == 'Renamed'
+
+
+# --- Config.description reaches the request forms ---------------------------
+#
+# It was a field nothing read: declared, admin-editable, and empty on every one
+# of the 679 rows. The dropdown is where a description is actually useful.
+
+DESCRIBED = 'Observed and predicted lines, atoms and molecules'
+
+
+@pytest.fixture
+def described_configs(db):
+    from vald.models import Config
+    default = Config.objects.create(name='Default', slug='default', user=None,
+                                    is_default=True,
+                                    description='Recommended for most work')
+    Config.objects.create(name='All lines', slug='vald3_all', user=None,
+                          is_default=False, description=DESCRIBED)
+    return default
+
+
+@pytest.mark.django_db
+def test_the_menu_carries_each_config_description(logged_in_client, described_configs):
+    body = logged_in_client.get('/extractall/').content.decode()
+
+    assert f'data-description="{DESCRIBED}"' in body
+    assert f'title="{DESCRIBED}"' in body, 'no hover text on the option'
+    assert 'Recommended for most work' in body
+
+
+@pytest.mark.django_db
+def test_a_config_without_a_description_gets_no_empty_tooltip(logged_in_client):
+    """An empty title renders an odd blank tooltip, so those are left off."""
+    from vald.models import Config
+    Config.objects.create(name='Default', slug='default', user=None,
+                          is_default=True, description='')
+
+    body = logged_in_client.get('/extractall/').content.decode()
+
+    assert 'title=""' not in body and 'data-description=""' not in body
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('page', ['/extractall/', '/extractelement/',
+                                  '/extractstellar/', '/showline/'])
+def test_every_form_shows_the_description_under_the_menu(logged_in_client,
+                                                         described_configs, page):
+    """The tooltip is desktop-only and silent to screen readers, so the same text
+    is printed under the menu on every form that offers the choice."""
+    body = logged_in_client.get(page).content.decode()
+
+    assert 'id="pconf_description"' in body
+    assert 'data-description' in body
+
+
+@pytest.mark.django_db
+def test_the_importer_can_set_and_keep_a_description(tmp_path):
+    """Prose someone wrote by hand must survive picking up new linelists."""
+    from django.core.management import call_command
+    from vald.models import Config
+
+    cfg = tmp_path / 'all.cfg'
+    cfg.write_text("0.05,5000.,9,150.\n"
+                   "'/CVALD3/ATOMS/a', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'A'\n")
+    call_command('import_default_config', str(cfg), '--slug', 'vald3_all',
+                 '--description', DESCRIBED, verbosity=0)
+    assert Config.objects.get(slug='vald3_all').description == DESCRIBED
+
+    # re-import without the flag: the description stays
+    call_command('import_default_config', str(cfg), '--slug', 'vald3_all',
+                 verbosity=0)
+    assert Config.objects.get(slug='vald3_all').description == DESCRIBED
+
+    # ...and an explicit empty string clears it
+    call_command('import_default_config', str(cfg), '--slug', 'vald3_all',
+                 '--description', '', verbosity=0)
+    assert Config.objects.get(slug='vald3_all').description == ''

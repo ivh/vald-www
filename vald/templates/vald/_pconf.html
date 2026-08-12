@@ -1,0 +1,28 @@
+{% comment %}
+The linelist configuration menu, plus the selected config's description beneath it.
+
+The description is also each option's title, i.e. a hover tooltip - but that only
+appears on desktop and is not announced by screen readers, so the same text is
+printed under the menu where it cannot be missed. Both come from the one
+data-description attribute the widget puts on the option, so there is a single
+copy of the text and the template escapes it.
+{% endcomment %}
+{{ form.pconf }}
+<div class="pconfdesc" id="pconf_description"></div>
+<script>
+(function () {
+  var select = document.getElementById("{{ form.pconf.auto_id }}");
+  var target = document.getElementById("pconf_description");
+  if (!select || !target) return;
+
+  function showDescription() {
+    var option = select.options[select.selectedIndex];
+    var text = option ? option.getAttribute("data-description") : null;
+    // textContent, not innerHTML: this is admin-entered prose, not markup.
+    target.textContent = text || "";
+  }
+
+  select.onchange = showDescription;
+  showDescription();
+})();
+</script>

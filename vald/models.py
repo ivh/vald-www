@@ -633,7 +633,13 @@ class Config(models.Model):
                                        related_name='configs')
     
     # Metadata
-    description = models.TextField(blank=True)
+    # Shown to users, not just here: it is the hover text on the linelist
+    # configuration menu and the line printed under it once selected. Left blank
+    # the menu says nothing but the config's name.
+    description = models.TextField(
+        blank=True,
+        help_text="What this configuration contains, shown beneath the linelist "
+                  "configuration menu on the request forms when it is selected")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

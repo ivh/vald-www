@@ -4,7 +4,8 @@ Import linelists and a system configuration from a .cfg file.
 Usage:
     python manage.py import_default_config /path/to/default.cfg
     python manage.py import_default_config /path/to/VALD3_all.cfg \\
-        --slug vald3_all --config-name 'All (observed and predicted, atoms and molecules)'
+        --slug vald3_all --config-name 'All lines' \\
+        --description 'Observed and predicted lines, atoms and molecules'
 
 Without --slug this replaces the system *default* - the config a request gets
 when it names no other, and the one a personal config is snapshotted from. With
@@ -26,6 +27,10 @@ class Command(BaseCommand):
         parser.add_argument('--config-name', type=str, default=None,
                            help='Name for the created config, as shown in the '
                                 'request forms (default: "Default", or the slug)')
+        parser.add_argument('--description', type=str, default=None,
+                           help='What this configuration contains. Shown under the '
+                                'linelist configuration menu on the request forms '
+                                'when it is selected')
         parser.add_argument('--slug', type=str, default=None,
                            help='Import as an alternative system config under this '
                                 'identifier instead of replacing the default')
@@ -44,6 +49,7 @@ class Command(BaseCommand):
             )
         is_default = slug is None
         config_name = options['config_name']
+        description = options['description']
         dry_run = options['dry_run']
 
         self.stdout.write(f"Importing from: {cfg_file}")
@@ -151,15 +157,19 @@ class Command(BaseCommand):
             }
             # A re-import without --config-name keeps the name the config already
             # has: it is the label users see in the request forms, and picking up
-            # the new linelists should not silently retitle the menu entry.
+            # the new linelists should not silently retitle the menu entry. Same
+            # for --description, which is prose someone wrote by hand.
             if config_name:
                 defaults['name'] = config_name
+            if description is not None:
+                defaults['description'] = description
             config, config_created = Config.objects.update_or_create(
                 **lookup,
                 defaults=defaults,
                 create_defaults={
                     **defaults,
                     'name': config_name or ('Default' if is_default else slug),
+                    'description': description or '',
                 },
             )
             config_name = config.name
