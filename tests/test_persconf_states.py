@@ -418,3 +418,132 @@ def test_a_personal_prefill_falls_back_when_the_config_is_gone(approved_user, va
     """?modify= of a request made before the config was deleted (R47 state 1)."""
     form = ExtractAllForm(initial={'pconf': 'personal'}, user=approved_user)
     assert form.initial['pconf'] == 'default'
+
+
+# --- choosing which system config to copy -----------------------------------
+
+@pytest.fixture
+def a_variant(db, vald_default):
+    """A second system config, larger than the default."""
+    from vald.models import Config, ConfigLinelist, Linelist
+    variant = Config.objects.create(name='All lines', slug='vald3_all', user=None,
+                                    is_default=False,
+                                    description='Includes predicted lines')
+    for cl in vald_default.configlinelist_set.all():
+        ConfigLinelist.objects.create(config=variant, linelist=cl.linelist,
+                                      priority=cl.priority)
+    extra = Linelist.objects.create(path='/predicted', name='Predicted',
+                                    element_min=1, element_max=99,
+                                    default_priority=99)
+    ConfigLinelist.objects.create(config=variant, linelist=extra, priority=99)
+    return variant
+
+
+@pytest.mark.django_db
+def test_the_page_offers_every_system_config_as_a_source(logged_in_client, a_variant):
+    body = logged_in_client.get('/persconf/').content.decode()
+    assert 'name="source"' in body
+    assert 'value="vald3_all"' in body
+    assert 'value="default"' in body
+
+
+@pytest.mark.django_db
+def test_copying_a_variant_records_it_as_the_source(logged_in_client, approved_user,
+                                                    a_variant):
+    logged_in_client.post('/persconf/', {'action': 'set_to_current_default',
+                                         'source': 'vald3_all'})
+
+    from vald.persconfig import get_user_config
+    config = get_user_config(approved_user)
+    assert config is not None
+    assert config.snapshot_of == a_variant
+    assert config.configlinelist_set.filter(linelist__path='/predicted').exists()
+
+
+@pytest.mark.django_db
+def test_a_copy_of_a_variant_is_not_reported_as_behind(logged_in_client, a_variant):
+    """The whole reason snapshot_of came first: the page must not tell someone who
+    deliberately took the larger config that they are missing linelists."""
+    logged_in_client.post('/persconf/', {'action': 'set_to_current_default',
+                                         'source': 'vald3_all'})
+
+    response = logged_in_client.get('/persconf/')
+    assert response.context['added_since'] == []
+    assert 'has been added to the VALD default' not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_no_source_still_means_the_default(logged_in_client, approved_user, a_variant):
+    """What every submission meant before the dropdown existed."""
+    logged_in_client.post('/persconf/', {'action': 'set_to_current_default'})
+
+    from vald.persconfig import get_default_config, get_user_config
+    assert get_user_config(approved_user).snapshot_of == get_default_config()
+
+
+@pytest.mark.django_db
+def test_an_unknown_source_falls_back_to_the_default(logged_in_client, approved_user,
+                                                     a_variant):
+    logged_in_client.post('/persconf/', {'action': 'set_to_current_default',
+                                         'source': 'no-such-config'})
+
+    from vald.persconfig import get_default_config, get_user_config
+    assert get_user_config(approved_user).snapshot_of == get_default_config()
+
+
+@pytest.mark.django_db
+def test_a_personal_config_cannot_be_named_as_a_source(logged_in_client, approved_user,
+                                                       a_variant):
+    """'personal' resolves to the user's own config; copying your own config over
+    itself is not what the control means, so it must land on the default."""
+    from vald.persconfig import get_default_config, get_or_create_user_config, get_user_config
+    get_or_create_user_config(approved_user)
+
+    logged_in_client.post('/persconf/', {'action': 'set_to_current_default',
+                                         'source': 'personal'})
+
+    assert get_user_config(approved_user).snapshot_of == get_default_config()
+
+
+# --- the read-only view of a system config ----------------------------------
+
+@pytest.mark.django_db
+def test_a_user_can_read_a_system_configs_linelists(logged_in_client, a_variant):
+    """They can pick it on the request forms, so they need to see what is in it."""
+    response = logged_in_client.get('/config/vald3_all/')
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert 'All lines' in body and 'Predicted' in body
+    assert 'Includes predicted lines' in body
+
+
+@pytest.mark.django_db
+def test_the_read_only_view_requires_a_login(a_variant):
+    from django.test import Client
+    response = Client().get('/config/vald3_all/', follow=True)
+    assert 'not logged in' in response.content.decode().lower()
+
+
+@pytest.mark.django_db
+def test_a_personal_config_is_not_reachable_through_it(logged_in_client, approved_user,
+                                                       vald_default):
+    """Personal configs have no slug, so no URL here can name one - which is what
+    stops this being a way to read someone else's configuration."""
+    from vald.persconfig import get_or_create_user_config
+    config = get_or_create_user_config(approved_user)
+    assert config.slug == ''
+
+    for attempt in ('', 'personal', config.name.replace(' ', '-').replace("'", '')):
+        response = logged_in_client.get(f'/config/{attempt}/')
+        assert response.status_code in (200, 301, 404)
+        if response.status_code == 200:
+            assert 'No such linelist configuration' in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_the_request_forms_link_to_the_selected_configs_contents(logged_in_client,
+                                                                a_variant):
+    body = logged_in_client.get('/extractall/').content.decode()
+    assert 'pconf_contents' in body
+    assert '/config/SLUG/' in body, 'no URL template for the JS to fill in'

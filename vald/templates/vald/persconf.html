@@ -25,9 +25,8 @@ age is invisible is the trap this page used to set.
   <ul>
     {% for linelist in added_since %}<li>{{ linelist.name }}</li>{% endfor %}
   </ul>
-  Remove your personal configuration to use them, or use
-  &ldquo;Set to current VALD default&rdquo; to take a fresh copy (which discards
-  your changes).
+  Remove your personal configuration to use them, or take a fresh copy below
+  (which discards your changes).
   {% endif %}
 {% else %}
   <p><b>You are using the VALD default configuration.</b> Your requests
@@ -46,19 +45,23 @@ age is invisible is the trap this page used to set.
        onclick="return confirm('This deletes your personal configuration and all the changes in it. Your requests will use the VALD default and follow future updates to it. Are you sure?');">
 </form>
 
-<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;">
+<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;"
+      name="resnapform" onsubmit="return confirmResnap(this);">
 {% csrf_token %}
 <input type="hidden" name="action" value="set_to_current_default">
-<input type="submit" value="Set to current VALD default"
-       onclick="return confirm('This replaces your personal configuration with a fresh copy of the current VALD default, discarding your changes. The copy will not follow future updates. Are you sure?');">
+Replace it with a fresh copy of:
+{% include "vald/_configsource.html" %}
+<input type="submit" value="Take a fresh copy">
 </form>
 {% else %}
 <p>
-<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;">
+<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;"
+      name="resnapform" onsubmit="return confirmResnap(this);">
 {% csrf_token %}
 <input type="hidden" name="action" value="set_to_current_default">
-<input type="submit" value="Set to current VALD default"
-       onclick="return confirm('This creates a personal configuration holding a copy of the VALD default as it is now. It will not change when the VALD default is updated. Are you sure?');">
+Create a personal configuration from a copy of:
+{% include "vald/_configsource.html" %}
+<input type="submit" value="Create it">
 </form>
 {% endif %}
 

@@ -65,14 +65,19 @@ def get_effective_config(user):
     return get_default_config(), False
 
 
-def create_user_config(user):
+def create_user_config(user, source=None):
     """
-    Snapshot the current VALD default as this user's personal config.
+    Snapshot a system config as this user's personal config.
+
+    Args:
+        source: the system config to copy. Defaults to the VALD default, which is
+            what every caller meant before variants existed.
 
     Returns:
-        Config instance for this user, or None if there is no system default
+        Config instance for this user, or None if there is no config to copy
     """
-    default_config = Config.objects.filter(user__isnull=True, is_default=True).first()
+    default_config = source or Config.objects.filter(
+        user__isnull=True, is_default=True).first()
     if not default_config:
         return None
 
@@ -82,6 +87,7 @@ def create_user_config(user):
             name=f"{user.name}'s Config",
             user=user,
             is_default=True,
+            snapshot_of=default_config,
             wl_window_ref=default_config.wl_window_ref,
             wl_ref=default_config.wl_ref,
             max_ionization=default_config.max_ionization,
@@ -165,26 +171,43 @@ def remove_user_config(user):
     Config.objects.filter(user=user).delete()
 
 
-def set_user_config_to_current_default(user):
-    """Replace the personal config with a fresh snapshot of today's default.
+def set_user_config_to_current_default(user, source=None):
+    """Replace the personal config with a fresh snapshot of a system config.
 
     Distinct from remove_user_config(): this keeps the user in the frozen state,
-    pinned to the default as it is now. Deleting instead means following the
+    pinned to the source as it is now. Deleting instead means following the
     default wherever it goes. Both are legitimate and the old single "reset"
     button silently did this one.
+
+    `source` defaults to the VALD default, so a caller that does not care gets
+    the historical behaviour.
     """
     remove_user_config(user)
-    return create_user_config(user)
+    return create_user_config(user, source=source)
+
+
+def snapshot_source(user_config):
+    """The system config a personal config is measured against.
+
+    snapshot_of where it is set, the current default otherwise - which is the
+    only thing it can have been for rows predating the field.
+    """
+    if user_config is not None and user_config.snapshot_of_id:
+        return user_config.snapshot_of
+    return get_default_config()
 
 
 def linelists_added_since(user_config):
-    """Linelists in the current VALD default that this snapshot does not have.
+    """Linelists in the config this was snapshotted from that it does not have.
 
     What the user is missing by being frozen. Shown on the page, because a
-    snapshot the user cannot see the age of is the same trap with better
-    buttons.
+    snapshot the user cannot see the age of is the same trap with better buttons.
+
+    Measured against snapshot_of, not the default: someone who copied a VALD3_*
+    variant is not behind default.cfg, and comparing them to it would report the
+    variant's own lines as missing and the default's as extra.
     """
-    default_config = get_default_config()
+    default_config = snapshot_source(user_config)
     if not default_config or not user_config or user_config.user_id is None:
         return []
 
@@ -297,7 +320,9 @@ def restore_linelist_to_default(linelist_id, user):
     if not config:
         return True
 
-    default_config = get_default_config()
+    # The config this snapshot came from, so "restore" undoes the user's edit
+    # rather than pulling a value out of a config they never copied.
+    default_config = snapshot_source(config)
     if not default_config:
         return False
 

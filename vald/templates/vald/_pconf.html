@@ -8,18 +8,29 @@ data-description attribute the widget puts on the option, so there is a single
 copy of the text and the template escapes it.
 {% endcomment %}
 {{ form.pconf }}
+<a id="pconf_contents" href="{% url 'vald:persconf' %}">see its linelists</a>
 <div class="pconfdesc" id="pconf_description"></div>
 <script>
 (function () {
   var select = document.getElementById("{{ form.pconf.auto_id }}");
   var target = document.getElementById("pconf_description");
+  var link = document.getElementById("pconf_contents");
   if (!select || !target) return;
+
+  // reverse() with a placeholder, so the URL shape stays the template's business
+  var CONFIG_URL = "{% url 'vald:system_config' 'SLUG' %}";
+  var PERSCONF_URL = "{% url 'vald:persconf' %}";
 
   function showDescription() {
     var option = select.options[select.selectedIndex];
     var text = option ? option.getAttribute("data-description") : null;
     // textContent, not innerHTML: this is admin-entered prose, not markup.
     target.textContent = text || "";
+    if (link && option) {
+      // 'personal' has no page of its own here - that is the persconf editor.
+      link.href = option.value === "personal"
+        ? PERSCONF_URL : CONFIG_URL.replace("SLUG", option.value);
+    }
   }
 
   select.onchange = showDescription;

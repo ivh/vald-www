@@ -172,12 +172,25 @@ def admin_help(request):
         default_ids = set(default_config.configlinelist_set.values_list(
             'linelist_id', flat=True))
     personal_total = Config.objects.filter(user__isnull=False).count()
+
+    # "Behind" means missing linelists the config it was snapshotted from has, so
+    # the comparison is per source: a copy of a VALD3_* variant is not behind
+    # default.cfg. One GROUP BY per distinct source rather than per config -
+    # there are a handful of system configs against ~700 personal ones.
     behind = 0
-    if default_ids:
+    for source in Config.objects.filter(user__isnull=True):
+        source_ids = set(source.configlinelist_set.values_list('linelist_id', flat=True))
+        if not source_ids:
+            continue
+        from_this_source = Q(config__snapshot_of=source)
+        if default_config and source.pk == default_config.pk:
+            # Rows predating snapshot_of can only have come from the default.
+            from_this_source |= Q(config__snapshot_of__isnull=True)
         rows = (ConfigLinelist.objects
-                .filter(config__user__isnull=False, linelist_id__in=default_ids)
+                .filter(from_this_source, config__user__isnull=False,
+                        linelist_id__in=source_ids)
                 .values('config_id').annotate(n=Count('linelist_id')))
-        behind = sum(1 for row in rows if row['n'] < len(default_ids))
+        behind += sum(1 for row in rows if row['n'] < len(source_ids))
 
     # The system configs as the request forms' menu shows them. Live, so an
     # imported variant appears here without anyone editing the help page - and
@@ -833,8 +846,8 @@ class UserAdmin(admin.ModelAdmin):
         """
         from django.contrib.admin.utils import unquote
         from .persconfig import (
-            get_default_config, get_effective_config, get_linelists_for_display,
-            get_modification_flags, linelists_added_since,
+            get_effective_config, get_linelists_for_display,
+            get_modification_flags, linelists_added_since, snapshot_source,
         )
 
         user = self.get_object(request, unquote(id))
@@ -842,7 +855,10 @@ class UserAdmin(admin.ModelAdmin):
             raise self.model.DoesNotExist
 
         config, is_personal = get_effective_config(user)
-        default_config = get_default_config()
+        # What this config is measured against: its own snapshot source, so the
+        # "modified" highlighting marks the user's edits and not the difference
+        # between two system configs.
+        default_config = snapshot_source(config) if is_personal else config
 
         linelists = []
         if config:

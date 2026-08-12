@@ -1151,3 +1151,36 @@ def test_the_linked_row_list_filters_to_that_config(staff_client, big_config):
 
     assert response.status_code == 200
     assert response.context['cl'].result_count == BIG_CONFIG_ROWS
+
+
+@pytest.mark.django_db
+def test_behind_count_measures_each_config_against_its_own_source(staff_client):
+    """A copy of a larger variant is not behind default.cfg. Counting everyone
+    against the default reported those users as needing to re-snapshot."""
+    from vald.models import Config, ConfigLinelist, Linelist
+    from vald.persconfig import create_user_config
+
+    shared = Linelist.objects.create(path='/shared', name='S', element_min=1,
+                                     element_max=99, default_priority=1)
+    extra = Linelist.objects.create(path='/extra', name='E', element_min=1,
+                                    element_max=99, default_priority=2)
+    default = Config.objects.create(name='Default', slug='default', user=None,
+                                    is_default=True)
+    variant = Config.objects.create(name='All', slug='vald3_all', user=None,
+                                    is_default=False)
+    ConfigLinelist.objects.create(config=default, linelist=shared, priority=1)
+    for linelist in (shared, extra):
+        ConfigLinelist.objects.create(config=variant, linelist=linelist, priority=1)
+
+    create_user_config(make_user('Variant', is_active=True), source=variant)
+    create_user_config(make_user('Tracking', is_active=True))
+
+    context = staff_client.get('/admin/help/').context
+    assert context['personal_total'] == 2
+    assert context['personal_behind'] == 0, 'a variant copy counted as behind'
+
+    # now the default gains a linelist: only its own copier is behind
+    added = Linelist.objects.create(path='/new', name='N', element_min=1,
+                                    element_max=99, default_priority=3)
+    ConfigLinelist.objects.create(config=default, linelist=added, priority=3)
+    assert staff_client.get('/admin/help/').context['personal_behind'] == 1

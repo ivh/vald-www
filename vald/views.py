@@ -1262,7 +1262,8 @@ def persconf(request):
         remove_user_config, set_user_config_to_current_default,
         linelists_added_since, get_linelists_for_display,
         update_config_linelist, restore_linelist_to_default,
-        get_modification_flags, clamp_rank
+        get_modification_flags, clamp_rank, snapshot_source,
+        get_alternative_configs, resolve_pconf, PCONF_DEFAULT
     )
 
     context = get_user_context(request)
@@ -1297,13 +1298,18 @@ def persconf(request):
         editid = action = None
 
     elif action == 'set_to_current_default':
-        if set_user_config_to_current_default(user):
+        # An unknown or missing slug means the default, which is what every
+        # submission meant before there was a choice.
+        source = resolve_pconf(None, request.POST.get('source') or PCONF_DEFAULT)
+        if source is None:
+            source = default_config
+        if set_user_config_to_current_default(user, source=source):
             messages.success(
                 request,
-                'Personal configuration set to a copy of the current VALD default. '
-                'It will stay as it is now when the VALD default is updated.')
+                f'Personal configuration set to a copy of "{source.name}" as it is '
+                'now. It will stay as it is when that configuration is updated.')
         else:
-            messages.error(request, 'Could not copy the VALD default.')
+            messages.error(request, 'Could not copy that configuration.')
         editid = action = None
 
     elif action == 'save' and linelist_id is not None:
@@ -1346,7 +1352,11 @@ def persconf(request):
     user_config, is_personal = get_effective_config(user)
 
     linelists = get_linelists_for_display(user_config)
-    modifications = get_modification_flags(user_config, default_config)
+    # Compared against the config this snapshot came from, so the red "modified"
+    # highlighting marks the user's own edits and not the gap between two system
+    # configs. For someone tracking the default this is that same config, and
+    # every flag comes out false.
+    modifications = get_modification_flags(user_config, snapshot_source(user_config))
 
     # Add modification info to linelists
     for ll in linelists:
@@ -1364,9 +1374,53 @@ def persconf(request):
         'is_personal': is_personal,
         'snapshot_date': user_config.snapshot_date if is_personal else None,
         'added_since': linelists_added_since(user_config) if is_personal else [],
+        # Same set the request forms offer, so "copy of X" and "run with X" cannot
+        # disagree about what exists. The default is named by the PCONF_DEFAULT
+        # token, not by its slug, exactly as the request menu does it: the slug is
+        # blank on a config created by hand in the admin, and 'default' is what
+        # resolve_pconf() answers to anyway.
+        'config_sources': [
+            {'value': PCONF_DEFAULT, 'name': default_config.name,
+             'description': default_config.description, 'is_default': True}
+        ] if default_config else []
     })
+    context['config_sources'] += [
+        {'value': c.slug, 'name': c.name, 'description': c.description,
+         'is_default': False}
+        for c in get_alternative_configs()
+    ]
 
     return render(request, 'vald/persconf.html', context)
+
+@require_login
+def system_config(request, slug):
+    """Read-only listing of a system configuration's linelists.
+
+    The request forms let a user pick any of the system configs, so they need a
+    way to see what one contains before choosing it - /persconf/ only ever shows
+    the default or their own snapshot.
+
+    Looked up by slug among system configs only. A personal config has no slug,
+    so no URL here can reach one, which is what keeps this from becoming a way to
+    read another user's configuration.
+    """
+    from .models import Config
+    from .persconfig import get_linelists_for_display
+
+    context = get_user_context(request)
+    config = Config.objects.filter(user__isnull=True, slug=slug).first()
+    if not config:
+        context['error'] = 'No such linelist configuration.'
+        return render(request, 'vald/error.html', context)
+
+    linelists = get_linelists_for_display(config)
+    context.update({
+        'config': config,
+        'linelists': linelists,
+        'enabled_count': sum(1 for entry in linelists if entry['is_enabled']),
+    })
+    return render(request, 'vald/system_config.html', context)
+
 
 @require_login
 def my_requests(request):

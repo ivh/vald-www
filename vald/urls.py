@@ -33,6 +33,8 @@ urlpatterns = [
 
     # Personal configuration
     path('persconf/', views.persconf, name='persconf'),
+    # Read-only view of one of the selectable system configurations
+    path('config/<slug:slug>/', views.system_config, name='system_config'),
 
     # Request tracking
     path('my-requests/', views.my_requests, name='my_requests'),

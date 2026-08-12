@@ -1,0 +1,25 @@
+{% comment %}
+The system config a personal configuration is copied from. Two forms on the page
+include this, only one of which is rendered, so the select is named rather than
+given an id.
+
+The confirmation has to name the chosen configuration: the wording is the only
+thing telling the user their edits are about to be discarded, and "the VALD
+default" was accurate only while that was the sole choice.
+{% endcomment %}
+<select name="source">
+  {% for source in config_sources %}
+  <option value="{{ source.value }}"{% if source.is_default %} selected{% endif %}
+          {% if source.description %}title="{{ source.description }}"{% endif %}>
+    {{ source.name }}{% if source.is_default %} (VALD default){% endif %}</option>
+  {% endfor %}
+</select>
+<script>
+function confirmResnap(form) {
+  var chosen = form.source.options[form.source.selectedIndex].text.trim();
+  return confirm(
+    'This replaces your personal configuration with a fresh copy of "' + chosen +
+    '" as it is now, discarding any changes you have made. The copy will not ' +
+    'follow future updates to it. Are you sure?');
+}
+</script>

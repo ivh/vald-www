@@ -540,3 +540,118 @@ def test_the_importer_can_set_and_keep_a_description(tmp_path):
     call_command('import_default_config', str(cfg), '--slug', 'vald3_all',
                  '--description', '', verbosity=0)
     assert Config.objects.get(slug='vald3_all').description == ''
+
+
+# --- snapshot_of: what a personal config is measured against ----------------
+#
+# Before this field, everything compared a personal config to the *current
+# default*. Copy a VALD3_* variant and that reports the variant's own lines as
+# missing and the default's as extra, and "restore this row" pulls values out of
+# a config the user never copied.
+
+@pytest.fixture
+def two_sources(db):
+    """A default and a variant that differ by one linelist."""
+    from vald.models import Config, ConfigLinelist, Linelist
+    shared = Linelist.objects.create(path='/shared', name='Shared', element_min=1,
+                                     element_max=99, default_priority=1)
+    extra = Linelist.objects.create(path='/predicted', name='Predicted',
+                                    element_min=1, element_max=99,
+                                    default_priority=2)
+    default = Config.objects.create(name='Default', slug='default', user=None,
+                                    is_default=True)
+    variant = Config.objects.create(name='All lines', slug='vald3_all', user=None,
+                                    is_default=False)
+    ConfigLinelist.objects.create(config=default, linelist=shared, priority=1)
+    for linelist in (shared, extra):
+        ConfigLinelist.objects.create(config=variant, linelist=linelist,
+                                      priority=linelist.default_priority)
+    return default, variant, extra
+
+
+@pytest.mark.django_db
+def test_a_snapshot_records_what_it_was_copied_from(approved_user, two_sources):
+    from vald.persconfig import create_user_config
+    _, variant, _ = two_sources
+
+    config = create_user_config(approved_user, source=variant)
+
+    assert config.snapshot_of == variant
+
+
+@pytest.mark.django_db
+def test_a_snapshot_defaults_to_the_vald_default(approved_user, two_sources):
+    """Callers that predate variants must keep working unchanged."""
+    from vald.persconfig import create_user_config
+    default, _, _ = two_sources
+
+    assert create_user_config(approved_user).snapshot_of == default
+
+
+@pytest.mark.django_db
+def test_a_variant_snapshot_is_not_reported_as_behind_the_default(approved_user,
+                                                                 two_sources):
+    """The bug this field exists to prevent: copying the larger variant would
+    otherwise be read as drifting from default.cfg."""
+    from vald.persconfig import create_user_config, linelists_added_since
+    _, variant, _ = two_sources
+
+    config = create_user_config(approved_user, source=variant)
+
+    assert linelists_added_since(config) == []
+
+
+@pytest.mark.django_db
+def test_a_snapshot_is_still_reported_as_behind_its_own_source(approved_user,
+                                                              two_sources):
+    from vald.models import ConfigLinelist, Linelist
+    from vald.persconfig import create_user_config, linelists_added_since
+    default, _, _ = two_sources
+    config = create_user_config(approved_user)
+
+    # a release adds a linelist to the source after the snapshot was taken
+    added = Linelist.objects.create(path='/new', name='New', element_min=1,
+                                    element_max=99, default_priority=3)
+    ConfigLinelist.objects.create(config=default, linelist=added, priority=3)
+
+    assert [l.path for l in linelists_added_since(config)] == ['/new']
+
+
+@pytest.mark.django_db
+def test_a_row_predating_the_field_is_measured_against_the_default(approved_user,
+                                                                  two_sources):
+    """678 existing personal configs have snapshot_of NULL; the default is the
+    only thing they can have come from."""
+    from vald.models import ConfigLinelist, Linelist
+    from vald.persconfig import create_user_config, linelists_added_since, snapshot_source
+    default, _, _ = two_sources
+    config = create_user_config(approved_user)
+    config.snapshot_of = None
+    config.save()
+
+    added = Linelist.objects.create(path='/new', name='New', element_min=1,
+                                    element_max=99, default_priority=3)
+    ConfigLinelist.objects.create(config=default, linelist=added, priority=3)
+
+    assert snapshot_source(config) == default
+    assert [l.path for l in linelists_added_since(config)] == ['/new']
+
+
+@pytest.mark.django_db
+def test_restore_takes_its_values_from_the_snapshot_source(approved_user, two_sources):
+    """A row that only exists in the variant cannot be restored from the default,
+    and must not silently fail or pull the default's values."""
+    from vald.models import ConfigLinelist
+    from vald.persconfig import create_user_config, restore_linelist_to_default
+    _, variant, extra = two_sources
+    config = create_user_config(approved_user, source=variant)
+
+    row = ConfigLinelist.objects.get(config=config, linelist=extra)
+    row.rank_wl = 9
+    row.is_enabled = False
+    row.save()
+
+    assert restore_linelist_to_default(extra.id, approved_user)
+    row.refresh_from_db()
+    source_row = ConfigLinelist.objects.get(config=variant, linelist=extra)
+    assert row.rank_wl == source_row.rank_wl and row.is_enabled

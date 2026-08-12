@@ -615,6 +615,16 @@ class Config(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True,
                             related_name='configs',
                             help_text="Owner (NULL = system config)")
+    # Which system config this personal snapshot was copied from. snapshot_at
+    # records when; this records what, and everything that reports a personal
+    # config as "behind" or restores a row to "the default" has to mean this one -
+    # a snapshot of a VALD3_* variant is not drifting from default.cfg. NULL on
+    # rows predating the field, where the source can only have been the default.
+    snapshot_of = models.ForeignKey('self', on_delete=models.SET_NULL,
+                                    null=True, blank=True,
+                                    related_name='snapshots',
+                                    help_text="System config this personal "
+                                              "configuration was copied from")
     is_default = models.BooleanField(default=False,
                                      help_text="Whether this is the default config for this user")
     
