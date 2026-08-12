@@ -1027,3 +1027,25 @@ def test_an_unknown_request_type_does_not_break_the_change_page(staff_client, a_
 
     assert response.status_code == 200
     assert 'No form for request type' in content_of(response.content.decode())
+
+
+@pytest.mark.django_db
+def test_help_page_lists_the_system_configs(staff_client, tmp_path):
+    """Live, so importing a variant shows up without editing the help page - and
+    the enabled count is what tells an operator which .cfg landed where."""
+    from django.core.management import call_command
+
+    header = "0.05,5000.,9,150.\n"
+    keep = "'/CVALD3/ATOMS/keep', 10, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'Keeper'\n"
+    off = ";'/CVALD3/ATOMS/off', 20, 1, 99, 0, 3,3,3,3,3,3,3,3,3, 'Disabled'\n"
+    (tmp_path / 'default.cfg').write_text(header + keep + off)
+    (tmp_path / 'all.cfg').write_text(header + keep + off.lstrip(';'))
+    call_command('import_default_config', str(tmp_path / 'default.cfg'), verbosity=0)
+    call_command('import_default_config', str(tmp_path / 'all.cfg'), '--slug',
+                 'vald3_all', '--config-name', 'All the lines', verbosity=0)
+
+    rows = {c['slug']: c for c in
+            staff_client.get('/admin/help/').context['system_configs']}
+    assert rows['default']['is_default'] and rows['default']['enabled'] == 1
+    assert not rows['vald3_all']['is_default'] and rows['vald3_all']['enabled'] == 2
+    assert 'All the lines' in staff_client.get('/admin/help/').content.decode()
