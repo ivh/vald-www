@@ -5,9 +5,7 @@
 {% csrf_token %}
 <hr><h3>Extract Element</h3><hr>
 
-<table border=0 cellpadding=0 width="100%">
-<tr valign=top>
-<td width="64%">
+{% include "vald/_unitfields.html" %}
 
 <table border=0 cellpadding=0 width=100% class="requestform">
 <colgroup><col width="265"><col></colgroup>
@@ -45,10 +43,6 @@
 
 <tr><td colspan=2><hr>
 <tr><td>Optional comment for request<td>{{ form.subject }}
-</table>
-
-<td class="unitcell">{% include "vald/_unitfields.html" %}
-
 </table>
 
 <hr>

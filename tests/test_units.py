@@ -310,3 +310,57 @@ def test_the_box_renders_unticked_with_its_explanation(logged_in_client, page):
     text = ' '.join(body.split())
     assert 'unless you check this box' in text
     assert 'save as default units' in text
+
+
+# --- the panel is collapsed until asked for ---------------------------------
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('page', ['/extractall/', '/extractelement/', '/extractstellar/'])
+def test_the_unit_panel_starts_collapsed(logged_in_client, page):
+    """Five radio groups is most of the page spent on settings most requests do
+    not change."""
+    body = logged_in_client.get(page).content.decode()
+
+    assert '<details class="unitpanel">' in body
+    assert '<details class="unitpanel" open' not in body
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('page', ['/extractall/', '/extractelement/', '/extractstellar/'])
+def test_the_collapsed_header_states_the_units_without_javascript(logged_in_client,
+                                                                 approved_user, page):
+    """A collapsed panel hiding what the request will be read in would be worse
+    than the overload it fixes, so the summary is rendered server-side too."""
+    set_prefs(approved_user, waveunit='nm', medium='vacuum', energyunit='1/cm')
+
+    body = ' '.join(logged_in_client.get(page).content.decode().split())
+
+    summary = body[body.index('unitsummary'):][:200]
+    assert 'nm' in summary and 'vacuum' in summary and '1/cm' in summary
+    assert 'change units' in body
+
+
+@pytest.mark.django_db
+def test_a_collapsed_panel_still_submits_its_units(logged_in_client, approved_user):
+    """Hidden inputs post; only disabled ones do not. Worth pinning, because
+    collapsing by default would otherwise silently drop every unit choice."""
+    set_prefs(approved_user, waveunit='angstrom', medium='air')
+
+    params = submitted(logged_in_client, **NM_VACUUM)
+
+    assert params['waveunit'] == 'nm' and params['medium'] == 'vacuum'
+
+
+@pytest.mark.django_db
+def test_the_label_script_waits_for_the_form_it_rewrites(logged_in_client):
+    """The panel sits above the form, so the wavelabel spans it rewrites are not
+    parsed when the script runs. Without the guard the labels sat at "Å" while the
+    request would have been read in nm - invisible to any test that reads HTML
+    rather than the built DOM.
+    """
+    body = logged_in_client.get('/extractstellar/').content.decode()
+
+    panel_at = body.index('<details class="unitpanel">')
+    label_at = body.index('class="wavelabel2"')
+    assert panel_at < label_at, 'panel no longer precedes the labels; guard may be moot'
+    assert 'DOMContentLoaded' in body, 'script does not wait for the labels to exist'

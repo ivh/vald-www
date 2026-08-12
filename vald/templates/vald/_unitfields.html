@@ -1,40 +1,50 @@
 {% comment %}
-Unit selection as part of the extract form, in a column beside it. The values are
-per-request; /unitselection/ sets the defaults a fresh form starts from.
+Unit selection as part of the request. The values are per-request;
+/unitselection/ sets the defaults a fresh form starts from.
 
-syncUnitLabels() keeps the labels next to the wavelength boxes honest. They used
-to be written once at parse time from the profile, which was fine while units
-could only change on another page - with the controls here, a stale label is a
-request that silently means something else.
+Collapsed by default, because five radio groups beside a long form is most of the
+page spent on settings most requests never change. <details> rather than a
+scripted toggle: it collapses without JS, is keyboard-operable, and a browser too
+old to know the element renders the contents expanded - which is the right way for
+this to fail. Hidden inputs still submit, so a collapsed panel is a submitted one.
+
+syncUnitLabels() keeps the labels next to the wavelength boxes honest, and writes
+the summary in the collapsed header. The labels used to be written once at parse
+time from the profile, which was fine while units could only change on another
+page - with the controls here, a stale label is a request that silently means
+something else.
 {% endcomment %}
-<table border=0 cellpadding=0 class="unitpanel">
-<tr><td colspan=2><b>Units for this request</b>
-<tr><td colspan=2><hr>
+<details class="unitpanel">
+<summary>Units for this request:
+  <span class="unitsummary">{{ form.energyunit.value }}, {{ form.waveunit.value }}
+  ({{ form.medium.value }}), {{ form.vdwformat.value }} vdW, isotopic scaling
+  {{ form.isotopic_scaling.value }}</span>
+  <span class="unitchange">change units</span></summary>
 
-<tr><td>Energy levels :<td>{% for radio in form.energyunit %}<div>{{ radio }}</div>{% endfor %}
-<tr><td colspan=2><hr>
-<tr><td class="medium">Wavelengths in :<td class="medium">{% for radio in form.medium %}<div>{{ radio }}</div>{% endfor %}
-<tr><td colspan=2><hr>
-<tr><td>Wavelength unit :<td>{% for radio in form.waveunit %}<div>{{ radio }}</div>{% endfor %}
-<tr><td colspan=2><hr>
-<tr><td>Van der Waals :<td>{% for radio in form.vdwformat %}<div>{{ radio }}</div>{% endfor %}
-<tr><td colspan=2><hr>
-<tr><td>Isotopic scaling :<td>{% for radio in form.isotopic_scaling %}<div>{{ radio }}</div>{% endfor %}
-<tr><td colspan=2><hr>
-<tr><td colspan=2 class="unitnote"><i>Applies to this request only. Your
+<table border=0 cellpadding=0 class="unitgrid">
+<tr valign=top>
+  <td>Energy levels<br>{% for radio in form.energyunit %}<div>{{ radio }}</div>{% endfor %}
+  <td class="medium">Wavelengths in<br>{% for radio in form.medium %}<div>{{ radio }}</div>{% endfor %}
+  <td>Wavelength unit<br>{% for radio in form.waveunit %}<div>{{ radio }}</div>{% endfor %}
+  <td>Van der Waals<br>{% for radio in form.vdwformat %}<div>{{ radio }}</div>{% endfor %}
+  <td>Isotopic scaling<br>{% for radio in form.isotopic_scaling %}<div>{{ radio }}</div>{% endfor %}
+</table>
+
+<div class="unitnote"><i>Applies to this request only. Your
 <a href="{% url 'vald:unitselection' %}">saved defaults</a> are unchanged, unless
 you check this box.</i>
 <br>{{ form.save_as_default }} <label for="{{ form.save_as_default.auto_id }}">save
-as default units</label>
-</table>
+as default units</label></div>
+</details>
 
 <script>
 (function () {
   var LABELS = {
-    angstrom: {unit: "Å",  quantity: "wavelength"},
-    nm:       {unit: "nm",      quantity: "wavelength"},
-    "1/cm":   {unit: "1/cm",    quantity: "wavenumber"}
+    angstrom: {unit: "Å",    quantity: "wavelength"},
+    nm:       {unit: "nm",   quantity: "wavelength"},
+    "1/cm":   {unit: "1/cm", quantity: "wavenumber"}
   };
+  var ENERGY = {"eV": "eV", "1/cm": "cm⁻¹"};
 
   function checked(name) {
     var inputs = document.getElementsByName(name);
@@ -71,15 +81,35 @@ as default units</label>
 
     setText("wavelabel1", label.quantity);
     setText("wavelabel2", label.unit + " (" + medium + ")");
+
+    // The collapsed header is the only thing telling the user what the request
+    // will be read in, so it has to track the controls rather than the page load.
+    setText("unitsummary", [
+      ENERGY[checked("energyunit")] || "eV",
+      label.unit + " (" + medium + ")",
+      (checked("vdwformat") || "default") + " vdW",
+      "isotopic scaling " + (checked("isotopic_scaling") || "on")
+    ].join(", "));
   }
 
-  var watched = ["waveunit", "medium"];
-  for (var w = 0; w < watched.length; w++) {
-    var inputs = document.getElementsByName(watched[w]);
-    for (var i = 0; i < inputs.length; i++) {
-      inputs[i].onclick = syncUnitLabels;
+  function wire() {
+    var watched = ["waveunit", "medium", "energyunit", "vdwformat", "isotopic_scaling"];
+    for (var w = 0; w < watched.length; w++) {
+      var inputs = document.getElementsByName(watched[w]);
+      for (var i = 0; i < inputs.length; i++) {
+        inputs[i].onclick = syncUnitLabels;
+      }
     }
+    syncUnitLabels();
   }
-  syncUnitLabels();
+
+  // This panel sits above the form, so the wavelabel spans it rewrites are not
+  // parsed yet when the script runs. Waiting for the document leaves the labels
+  // saying "Å" while the request would be read in nm.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wire);
+  } else {
+    wire();
+  }
 })();
 </script>

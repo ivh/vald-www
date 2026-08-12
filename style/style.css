@@ -177,32 +177,40 @@ input[type="submit"]:hover, input[type="button"]:hover {
   box-sizing: border-box;   /* or the border pushes it past the cell again */
 }
 
-/* Per-request unit selection, in a column beside the extract form. A rule and a
-   wide gutter separate it instead of a box: it is a different question about the
-   request, not a subsection of the form. */
-.unitcell {
-  border-left: 1px solid #9a9ab0;
-  padding-left: 30px;
-}
+/* Per-request unit selection: a collapsed one-line header above the form, opening
+   into a row of the five groups. Boxed rather than ruled off, now that it is a
+   block the form sits under rather than a column beside it. */
 .unitpanel {
   font-size: 13px;
+  border: 1px solid #b0b0c0;
+  background-color: #e4e4ee;
+  padding: 4px 8px;
+  margin-bottom: 10px;
 }
-.unitpanel td {
-  padding: 1px 8px 1px 0;
+.unitpanel > summary {
+  cursor: pointer;
+}
+/* The affordance: the disclosure triangle alone reads as decoration, and most
+   users will never change these. */
+.unitchange {
+  color: #202090;
+  text-decoration: underline;
+  margin-left: 6px;
+}
+.unitsummary {
+  font-style: italic;
+}
+.unitgrid {
+  margin: 6px 0 2px 14px;
+}
+.unitgrid td {
+  padding: 0 22px 0 0;
   vertical-align: top;
-}
-/* Only the label column resists wrapping. nowrap on the choices too makes the
-   whole panel un-shrinkable, and since it is the last column it gets clipped off
-   the right edge on a narrow window rather than wrapping - worse than a choice
-   on two lines. */
-.unitpanel td:first-child:not([colspan]) {
   white-space: nowrap;
 }
-.unitpanel td.unitnote {
-  padding-top: 4px;
-}
-.unitpanel hr {
-  margin: 2px 0;
+.unitnote {
+  margin-left: 14px;
+  max-width: 46em;
 }
 
 /* The selected linelist configuration's description. The same text is the
