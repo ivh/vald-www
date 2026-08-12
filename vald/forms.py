@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 import re
 
 from . import abundances
-from .models import User, UserPreferences
+from .models import UNIT_KEYS, User, UserPreferences
 
 
 # The model field is an unbounded TextField holding free text imported from
@@ -54,6 +54,65 @@ class ChoiceDisablingRadioSelect(forms.RadioSelect):
         if str(value) in self.disabled_values:
             option['attrs']['disabled'] = True
         return option
+
+
+def _pref_default(name):
+    """The site default for a unit, taken from the model so it cannot drift."""
+    return UserPreferences._meta.get_field(name).get_default()
+
+
+class UnitFieldsMixin(forms.Form):
+    """Unit selection as part of the request instead of only the user profile.
+
+    The backend already worked this way: create_job_config reads all five values
+    out of Request.parameters, never off the user, so nothing downstream changes.
+    UserPreferences stops being the truth and becomes the seed - see
+    extract_form_view for the precedence.
+
+    A Form subclass rather than a plain mixin because DeclarativeFieldsMetaclass
+    only collects fields from bases that have `declared_fields`; declared on a
+    bare object mixin they are silently dropped.
+
+    None of the five is required. A browser always submits them, but a POST that
+    predates these fields must keep meaning what it meant, which was "use my
+    saved defaults" - so an omitted unit falls back to the form's initial rather
+    than becoming a validation error.
+    """
+    energyunit = forms.ChoiceField(
+        label='Energy level units', choices=UserPreferences.ENERGY_CHOICES,
+        required=False, initial=_pref_default('energyunit'), widget=forms.RadioSelect)
+    medium = forms.ChoiceField(
+        label='Give wavelengths in medium', choices=UserPreferences.MEDIUM_CHOICES,
+        required=False, initial=_pref_default('medium'), widget=forms.RadioSelect)
+    waveunit = forms.ChoiceField(
+        label='Wavelength units', choices=UserPreferences.WAVEUNIT_CHOICES,
+        required=False, initial=_pref_default('waveunit'), widget=forms.RadioSelect)
+    vdwformat = forms.ChoiceField(
+        label='Van der Waals syntax', choices=UserPreferences.VDWFORMAT_CHOICES,
+        required=False, initial=_pref_default('vdwformat'), widget=forms.RadioSelect)
+    isotopic_scaling = forms.ChoiceField(
+        label='Isotopic scaling', choices=UserPreferences.ISOTOPIC_CHOICES,
+        required=False, initial=_pref_default('isotopic_scaling'),
+        widget=forms.RadioSelect)
+
+    def clean(self):
+        """Fill in omitted units, then normalise the medium under cm^-1.
+
+        The medium is the one a real browser can leave out: it is disabled under
+        cm^-1, and a disabled radio submits nothing. Normalising rather than
+        rejecting because preselect5 hard-codes cm^-1 output to vacuum wavenumbers
+        and ignores the medium flag entirely - see
+        test_medium_flag_is_inert_under_wavenumber_output. An air choice there is
+        not wrong, just inert; storing it would leave rows this form cannot render
+        honestly.
+        """
+        cleaned = super().clean()
+        for key in UNIT_KEYS:
+            if not cleaned.get(key):
+                cleaned[key] = self.get_initial_for_field(self.fields[key], key)
+        if cleaned.get('waveunit') == '1/cm':
+            cleaned['medium'] = 'vacuum'
+        return cleaned
 
 
 class PersonalConfigChoiceMixin:
@@ -268,7 +327,7 @@ class AccountDetailsForm(forms.ModelForm):
         fields = ['affiliation']
 
 
-class ExtractAllForm(PersonalConfigChoiceMixin, forms.Form):
+class ExtractAllForm(UnitFieldsMixin, PersonalConfigChoiceMixin, forms.Form):
     """Extract All form"""
     stwvl = forms.FloatField(
         label='Starting wavelength',
@@ -345,7 +404,7 @@ class ExtractAllForm(PersonalConfigChoiceMixin, forms.Form):
         return cleaned_data
 
 
-class ExtractElementForm(PersonalConfigChoiceMixin, forms.Form):
+class ExtractElementForm(UnitFieldsMixin, PersonalConfigChoiceMixin, forms.Form):
     """Extract Element form"""
     stwvl = forms.FloatField(
         label='Starting wavelength',
@@ -433,7 +492,7 @@ class ExtractElementForm(PersonalConfigChoiceMixin, forms.Form):
         return cleaned_data
 
 
-class ExtractStellarForm(PersonalConfigChoiceMixin, forms.Form):
+class ExtractStellarForm(UnitFieldsMixin, PersonalConfigChoiceMixin, forms.Form):
     """Extract Stellar form"""
     stwvl = forms.FloatField(
         label='Starting wavelength',

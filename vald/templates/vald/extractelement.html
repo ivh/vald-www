@@ -1,34 +1,21 @@
 {% extends "vald/base.html" %}
 
-{% block extra_head %}
-<script>
-var wavelabel1 = "wavelength";
-var wavelabel2 = "&Aring;";
-if (("{{ waveunit }}" == "angstrom") && ("{{ medium }}" == "air")   ) {wavelabel2 = "&Aring; (air)"}
-if (("{{ waveunit }}" == "angstrom") && ("{{ medium }}" == "vacuum")) {wavelabel2 = "&Aring; (vacuum)"}
-if (("{{ waveunit }}" == "nm")       && ("{{ medium }}" == "air")   ) {wavelabel2 = "nm (air)"}
-if (("{{ waveunit }}" == "nm")       && ("{{ medium }}" == "vacuum")) {wavelabel2 = "nm (vacuum)"}
-if (("{{ waveunit }}" == "1/cm")                               ) {wavelabel1 = "wavenumber"; wavelabel2 = "1/cm (vacuum)"}
-</script>
-{% endblock %}
-
 {% block content %}
 <form name="bottomform" method="post" action="{% url 'vald:submit_request' %}">
 {% csrf_token %}
-<table border=0 cellpadding=0 width="100%">
-
-<tr><td colspan=2>
 <hr><h3>Extract Element</h3><hr>
 
-<tr><td><a href="{% url 'vald:unitselection' %}">Unit selection</a>
-<td><i>Energy unit: {{ energyunit }} - Medium: {{ medium }} - Wavelength unit: {{ waveunit }} - VdW syntax: {{ vdwformat }}</i>
-<tr><td colspan=2><hr>
+<table border=0 cellpadding=0 width="100%">
+<tr valign=top>
+<td width="70%">
 
-<p><tr><td>Starting <script>document.write(wavelabel1);</script> :
-<td>{{ form.stwvl }} <script>document.write(wavelabel2);</script>
+<table border=0 cellpadding=0 width="100%">
 
-<tr><td>Ending <script>document.write(wavelabel1);</script> :
-<td>{{ form.endwvl }} <script>document.write(wavelabel2);</script>
+<p><tr><td>Starting <span class="wavelabel1">wavelength</span> :
+<td>{{ form.stwvl }} <span class="wavelabel2">&Aring;</span>
+
+<tr><td>Ending <span class="wavelabel1">wavelength</span> :
+<td>{{ form.endwvl }} <span class="wavelabel2">&Aring;</span>
 
 <tr><td>Element [ + ionization ] : <td>{{ form.elmion }}
 
@@ -57,12 +44,15 @@ if (("{{ waveunit }}" == "1/cm")                               ) {wavelabel1 = "
 
 <tr><td colspan=2><hr>
 <tr><td>Optional comment for request<td>{{ form.subject }}
-<tr><td colspan=2><hr>
+</table>
 
-<tr>
-<input type="hidden" name="reqtype" value="extractelement">
-<td><input type="submit" value="Submit request">
+<td>{% include "vald/_unitfields.html" %}
 
 </table>
+
+<hr>
+<input type="hidden" name="reqtype" value="extractelement">
+<input type="submit" value="Submit request">
+
 </form>
 {% endblock %}

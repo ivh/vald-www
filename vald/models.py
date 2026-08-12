@@ -365,6 +365,12 @@ class UserEmail(models.Model):
         return f"{self.email} ({self.user.name})"
 
 
+# The unit choices a request carries. Every request stores its own copy - it is
+# where create_job_config reads them from, never off the user - so this is also
+# the set a form can inherit from an earlier request.
+UNIT_KEYS = ('energyunit', 'medium', 'waveunit', 'vdwformat', 'isotopic_scaling')
+
+
 class UserPreferences(models.Model):
     """Store user unit preferences (energy unit, wavelength unit, medium, etc.)
     
@@ -414,13 +420,7 @@ class UserPreferences(models.Model):
     
     def as_dict(self):
         """Return preferences as a dictionary for form prefilling"""
-        return {
-            'energyunit': self.energyunit,
-            'medium': self.medium,
-            'waveunit': self.waveunit,
-            'vdwformat': self.vdwformat,
-            'isotopic_scaling': self.isotopic_scaling,
-        }
+        return {key: getattr(self, key) for key in UNIT_KEYS}
 
 
 # ============================================================================

@@ -1,0 +1,82 @@
+{% comment %}
+Unit selection as part of the extract form, in a column beside it. The values are
+per-request; /unitselection/ sets the defaults a fresh form starts from.
+
+syncUnitLabels() keeps the labels next to the wavelength boxes honest. They used
+to be written once at parse time from the profile, which was fine while units
+could only change on another page - with the controls here, a stale label is a
+request that silently means something else.
+{% endcomment %}
+<table border=0 cellpadding=0 class="unitpanel">
+<tr><td colspan=2><b>Units for this request</b>
+<tr><td colspan=2><hr>
+
+<tr><td>Energy levels :<td>{% for radio in form.energyunit %}<div>{{ radio }}</div>{% endfor %}
+<tr><td colspan=2><hr>
+<tr><td class="medium">Wavelengths in :<td class="medium">{% for radio in form.medium %}<div>{{ radio }}</div>{% endfor %}
+<tr><td colspan=2><hr>
+<tr><td>Wavelength unit :<td>{% for radio in form.waveunit %}<div>{{ radio }}</div>{% endfor %}
+<tr><td colspan=2><hr>
+<tr><td>Van der Waals :<td>{% for radio in form.vdwformat %}<div>{{ radio }}</div>{% endfor %}
+<tr><td colspan=2><hr>
+<tr><td>Isotopic scaling :<td>{% for radio in form.isotopic_scaling %}<div>{{ radio }}</div>{% endfor %}
+<tr><td colspan=2><hr>
+<tr><td colspan=2><i>Applies to this request only. Your
+<a href="{% url 'vald:unitselection' %}">saved defaults</a> are unchanged.</i>
+</table>
+
+<script>
+(function () {
+  var LABELS = {
+    angstrom: {unit: "Å",  quantity: "wavelength"},
+    nm:       {unit: "nm",      quantity: "wavelength"},
+    "1/cm":   {unit: "1/cm",    quantity: "wavenumber"}
+  };
+
+  function checked(name) {
+    var inputs = document.getElementsByName(name);
+    for (var i = 0; i < inputs.length; i++) {
+      if (inputs[i].checked) return inputs[i].value;
+    }
+    return null;
+  }
+
+  function setText(className, text) {
+    var nodes = document.getElementsByClassName(className);
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].innerHTML = text;
+    }
+  }
+
+  function syncUnitLabels() {
+    var waveunit = checked("waveunit") || "angstrom";
+    var label = LABELS[waveunit] || LABELS.angstrom;
+    // cm^-1 is always vacuum wavenumbers: preselect5 ignores the medium flag
+    // there, so the control is disabled rather than left to imply otherwise.
+    var wavenumber = waveunit === "1/cm";
+    var medium = wavenumber ? "vacuum" : (checked("medium") || "air");
+
+    var radios = document.getElementsByName("medium");
+    for (var i = 0; i < radios.length; i++) {
+      radios[i].disabled = wavenumber;
+      if (wavenumber) radios[i].checked = radios[i].value === "vacuum";
+    }
+    var cells = document.getElementsByClassName("medium");
+    for (var j = 0; j < cells.length; j++) {
+      cells[j].style.color = wavenumber ? "grey" : "";
+    }
+
+    setText("wavelabel1", label.quantity);
+    setText("wavelabel2", label.unit + " (" + medium + ")");
+  }
+
+  var watched = ["waveunit", "medium"];
+  for (var w = 0; w < watched.length; w++) {
+    var inputs = document.getElementsByName(watched[w]);
+    for (var i = 0; i < inputs.length; i++) {
+      inputs[i].onclick = syncUnitLabels;
+    }
+  }
+  syncUnitLabels();
+})();
+</script>

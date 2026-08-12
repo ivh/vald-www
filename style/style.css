@@ -157,3 +157,19 @@ input[type="submit"]:hover, input[type="button"]:hover {
   color: #0c5460;
   border: 1px solid #bee5eb;
 }
+
+/* Per-request unit selection, in a column beside the extract form. Boxed so it
+   reads as a panel about the request rather than another group of form rows. */
+.unitpanel {
+  border: 1px solid #b0b0c0;
+  background-color: #e8e8f0;
+  padding: 8px;
+  font-size: 13px;
+}
+.unitpanel td {
+  padding: 1px 6px 1px 0;
+  vertical-align: top;
+}
+.unitpanel hr {
+  margin: 2px 0;
+}

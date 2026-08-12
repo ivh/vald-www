@@ -18,7 +18,7 @@ from pathlib import Path
 import glob
 import logging
 
-from .models import Request, User, UserEmail
+from .models import UNIT_KEYS, Request, User, UserEmail
 from .forms import (
     AccountDetailsForm,
     PasswordResetRequestForm,
@@ -577,13 +577,39 @@ def modify_initial_data(request, user):
     return req_obj.parameters or {}
 
 
+def last_used_units(user, reqtype):
+    """Unit choices from this user's most recent request of the same type.
+
+    Units are per-request now, so without this a user who works in nm would pick
+    nm again on every single form. Read back rather than written to
+    UserPreferences deliberately: the profile keeps exactly one writer (the Units
+    page, as an explicit default), and habit is inferred from the request log.
+
+    Old rows predate some of these keys, so only the ones present are returned -
+    the caller layers this over the profile, which supplies the rest.
+    """
+    parameters = (Request.objects
+                  .filter(user=user, request_type=reqtype)
+                  .values_list('parameters', flat=True)
+                  .first()) or {}
+    return {key: parameters[key] for key in UNIT_KEYS if key in parameters}
+
+
 def extract_form_view(name, form_class, template):
     """Build one of the four near-identical extraction form views."""
     @require_login
     def view(request):
         context = get_user_context(request)
         user = get_current_user(request)
-        initial = modify_initial_data(request, user)
+        modify = modify_initial_data(request, user)
+        # Profile as the floor, then habit, then the request being modified - so a
+        # rerun reproduces the units its numbers were typed under rather than
+        # today's, which is what stops 5000 A being resubmitted as 5000 nm.
+        # The floor comes out of the context get_user_context already resolved
+        # rather than a second get_preferences(), which is a get_or_create.
+        initial = {**{key: context[key] for key in UNIT_KEYS},
+                   **last_used_units(user, name),
+                   **modify}
         context['form'] = form_class(initial=initial, user=user)
         return render(request, template, context)
     view.__name__ = name
@@ -795,7 +821,10 @@ def handle_extract_request(request):
         messages.error(request, 'Invalid request type.')
         return redirect('vald:index')
 
-    form = form_class(request.POST, user=user)
+    # initial matters even bound: a unit the POST omits falls back to it, so a
+    # submission that predates the unit fields still means "my saved defaults".
+    prefs = user.get_preferences()
+    form = form_class(request.POST, initial=prefs.as_dict(), user=user)
 
     if not form.is_valid():
         add_form_errors(request, form)
@@ -815,8 +844,8 @@ def handle_extract_request(request):
         'user_email': user.primary_email,
     }
 
-    # Get user preferences from database
-    prefs = user.get_preferences()
+    # Floor for anything the form does not carry; the cleaned_data loop below
+    # overwrites the units it does.
     email_context.update(prefs.as_dict())
 
     # Copy all cleaned data to context
@@ -839,9 +868,11 @@ def handle_extract_request(request):
         else:
             email_context[key] = value
 
-    # Merge user preferences into parameters for backend processing
-    request_params = form.cleaned_data.copy()
-    request_params.update(prefs.as_dict())
+    # Profile first, then the form on top: the unit fields live on the extract
+    # forms now, and Show Line has carried its own isotopic_scaling all along.
+    # The other order silently discarded both - the field was on screen, promised
+    # to take precedence, and never reached create_job_config.
+    request_params = {**prefs.as_dict(), **form.cleaned_data}
 
     template_map = {
         'extractall': 'vald/extractall.html',
