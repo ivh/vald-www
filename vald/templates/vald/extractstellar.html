@@ -46,7 +46,7 @@
 
 <tr><td colspan=2><hr>
 <tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td>{% for radio in form.pconf %}<div>{{ radio }}</div>{% endfor %}
+<td>{{ form.pconf }}
 
 <tr><td colspan=2><hr>
 <tr><td>Optional comment for request<td>{{ form.subject }}

@@ -594,12 +594,24 @@ class Linelist(models.Model):
 class Config(models.Model):
     """
     A configuration set defining which linelists to use and their settings.
-    
+
     Users can have personal configs that customize the default selection.
     The system default config (user=NULL, is_default=True) is used when
     no personal config is specified.
+
+    There can be several system configs (user=NULL): the VALD3_* variants
+    alongside default.cfg. Exactly one of them is is_default=True - the one a
+    request gets when it does not name another, and the one a personal config is
+    snapshotted from. The rest are offered as alternatives on the request forms,
+    named by `slug`.
     """
     name = models.CharField(max_length=100, help_text="Configuration name")
+    # The stable name a request stores in parameters['pconf'], so that renaming
+    # a config in the admin cannot change which linelists an old request reruns
+    # with. System configs only; a personal config is identified by its owner.
+    slug = models.SlugField(max_length=50, blank=True, default='',
+                            help_text="Stable identifier for a selectable system "
+                                      "config (blank for personal configs)")
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True,
                             related_name='configs',
                             help_text="Owner (NULL = system config)")
@@ -654,6 +666,13 @@ class Config(models.Model):
                 fields=['is_default'],
                 condition=models.Q(user__isnull=True, is_default=True),
                 name='unique_system_default_config'
+            ),
+            # A slug is what a stored request names, so two system configs
+            # answering to the same one would make parameters['pconf'] ambiguous.
+            models.UniqueConstraint(
+                fields=['slug'],
+                condition=models.Q(user__isnull=True) & ~models.Q(slug=''),
+                name='unique_system_config_slug'
             ),
         ]
     
@@ -725,7 +744,13 @@ class Config(models.Model):
     
     @classmethod
     def get_user_config(cls, user):
-        """Get the user's default config, falling back to system default."""
+        """Get the user's default config, falling back to system default.
+
+        Not what decides a job's linelists - persconfig.resolve_pconf() does
+        that, from the config the request actually named. The fallback here is
+        why choosing 'Custom' without having one used to run the default
+        silently.
+        """
         if user:
             user_config = cls.objects.filter(user=user, is_default=True).first()
             if user_config:

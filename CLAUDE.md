@@ -52,8 +52,13 @@ codebase at compatible migration state.
 - No shell scripts, no C compilation required
 
 **Linelist Configuration**: Database-backed via Django models
-- `Linelist` - Master catalog (377 linelists imported from default.cfg)
-- `Config` - Configuration sets (system default or user-specific)
+- `Linelist` - Master catalog (379 linelists, the union of the four .cfg files)
+- `Config` - Configuration sets, either system (`user=NULL`) or user-specific.
+  Several system configs coexist: `default.cfg` is the one with
+  `is_default=True`, and the `VALD3_*.cfg` variants sit beside it with
+  `is_default=False` and a `slug`. A request stores its choice in
+  `parameters['pconf']` as `'default'`, `'personal'`, or a variant's slug;
+  `persconfig.resolve_pconf()` is the only thing that maps it back to a Config.
 - `ConfigLinelist` - Junction table with priority and rank weights
 - Generates `.cfg` file on-the-fly for each job in the working directory
 
@@ -68,7 +73,10 @@ codebase at compatible migration state.
 - `JobConfig` - Dataclass with all job parameters
 - `JobRunner` - Runs Fortran binaries via subprocess
 - `create_job_config()` - Creates JobConfig from Request model
-- `get_config_path_for_user()` - Generates temp config file from database
+- `get_config_path_for_request()` - Writes the .cfg the request's `pconf` names
+  into the job directory. Raises rather than falling back to the default if that
+  config is gone: a job using different linelists from the ones the stored
+  request names is worse than one that fails.
 
 **vald/models.py**:
 - `Request` - Tracks submissions (UUID, FK to User, JSONField parameters, status)
@@ -132,6 +140,11 @@ The `pres_in.NNNNNN` file controls preselect5 behavior:
 ```bash
 # Import system default config (required before first use)
 python manage.py import_default_config /path/to/default.cfg
+
+# Import an alternative offered beside it in the request forms' menu.
+# --slug is what a request stores; 'default' and 'personal' are reserved.
+python manage.py import_default_config /path/to/VALD3_all.cfg \
+    --slug vald3_all --config-name 'All (observed and predicted, atoms and molecules)'
 
 # Import existing personal configs from files. Both kinds of legacy file are
 # handled: <Name>.cfg is the linelist configuration, <Name>-HTMLdefs.cfg the

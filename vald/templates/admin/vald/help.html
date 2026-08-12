@@ -159,6 +159,67 @@ job actually started, so during a busy spell turnaround rises even though the
 Fortran is no slower. Read a jump in it as pressure on the queue, not as
 extractions getting more expensive.</p>
 
+<h2>System linelist configurations</h2>
+
+<p>The request forms offer these as a drop-down. They are the <code>.cfg</code> files
+in <code>$VALD_HOME/CONFIG</code>, which differ only in which entries are commented
+out &mdash; observed versus predicted lines, atoms versus atoms and molecules.
+Counts are live.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Menu label</th>
+      <th>Slug</th>
+      <th class="count">Enabled</th>
+      <th class="count">Entries</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for cfg in system_configs %}
+    <tr>
+      <td>{{ cfg.name }}{% if cfg.is_default %} <strong>(default)</strong>{% endif %}</td>
+      <td><code>{{ cfg.slug|default:"&mdash;" }}</code></td>
+      <td class="count">{{ cfg.enabled }}</td>
+      <td class="count">{{ cfg.total }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4">No system configuration imported yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>The one marked <strong>(default)</strong> is what a request gets when it names no
+other, what a personal configuration is snapshotted from, and what the rest of this
+page means by &ldquo;the VALD default&rdquo;. There is exactly one. The others are
+alternatives, chosen per request; picking one does not interact with the user's
+personal configuration.</p>
+
+<p>A submitted request stores the <em>slug</em>, not the label, so renaming a
+configuration is safe and changing its slug orphans requests that already chose it.
+<code>default</code> and <code>personal</code> are reserved.</p>
+
+<h3>Re-importing</h3>
+
+<p><strong>The filename decides nothing.</strong> The target is chosen by
+<code>--slug</code>, or by its absence:</p>
+
+<pre>bin/vald-manage import_default_config <span class="c">&lt;file&gt;</span>              <span class="c"># replaces the default</span>
+bin/vald-manage import_default_config <span class="c">&lt;file&gt;</span> --slug vald3_all  <span class="c"># replaces that variant</span></pre>
+
+<p>Either way the configuration is rebuilt in place: it keeps its name, slug and
+identity, its linelist entries are replaced from the file, and personal
+configurations are untouched. Omitting <code>--config-name</code> keeps the label the
+menu already shows.</p>
+
+<p class="note"><strong>Pointing the wrong file at a slug is silent.</strong> Importing
+<code>VALD3_all.cfg</code> without <code>--slug</code> overwrites the system
+<em>default</em> with the all-lines set, and every user tracking the default gets
+predicted lines &mdash; while the menu still says &ldquo;Default&rdquo;. Nothing
+objects, and <code>--dry-run</code> will not catch it either: it reports the parse,
+not the target. Check the <em>Enabled</em> column above after any import; the count is
+distinctive per file.</p>
+
 <h2>Personal linelist configurations</h2>
 
 <p>Every user is in one of two states, and the difference decides what their
@@ -228,11 +289,17 @@ system survives.
 
 <pre>bin/vald-manage import_default_config $VALD_HOME/CONFIG/default.cfg</pre>
 
-<p>The importer deactivates any linelist absent from the file, and generated
-configurations skip inactive ones. That is what stops a years-old personal
-snapshot from naming a data file that has left the SVN tree. A linelist that
-reappears in a later <code>default.cfg</code> is reactivated. Re-importing rebuilds
-the system default in place and never touches personal configurations.
+<p>The importer deactivates any linelist that is then in <strong>no</strong> system
+configuration, and generated configurations skip inactive ones. That is what stops a
+years-old personal snapshot from naming a data file that has left the SVN tree. A
+linelist that reappears in a later import is reactivated.
+
+<p class="note">Note the scope. A list dropped from <code>default.cfg</code> but still
+present in one of the other configurations above stays active, so to retire it
+properly remove it from all of them. The union is deliberate: the
+<code>VALD3_all</code> variants carry predicted-line lists <code>default.cfg</code>
+does not, and judging one file at a time would have each import retire whatever the
+previous one added.
 
 <h2>Limits and settings</h2>
 

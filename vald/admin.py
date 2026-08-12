@@ -174,15 +174,31 @@ def admin_help(request):
     personal_total = Config.objects.filter(user__isnull=False).count()
     behind = 0
     if default_ids:
-        from django.db.models import Count
         rows = (ConfigLinelist.objects
                 .filter(config__user__isnull=False, linelist_id__in=default_ids)
                 .values('config_id').annotate(n=Count('linelist_id')))
         behind = sum(1 for row in rows if row['n'] < len(default_ids))
 
+    # The system configs as the request forms' menu shows them. Live, so an
+    # imported variant appears here without anyone editing the help page - and
+    # the enabled counts are what tells an operator which .cfg went where.
+    enabled_per_config = dict(
+        ConfigLinelist.objects
+        .filter(config__user__isnull=True, is_enabled=True)
+        .values_list('config_id')
+        .annotate(n=Count('id'))
+    )
+    system_configs = [
+        {'name': c.name, 'slug': c.slug, 'is_default': c.is_default,
+         'enabled': enabled_per_config.get(c.id, 0),
+         'total': c.configlinelist_set.count()}
+        for c in Config.objects.filter(user__isnull=True).order_by('-is_default', 'name')
+    ]
+
     context = {
         **admin.site.each_context(request),
         'title': 'Admin help',
+        'system_configs': system_configs,
         'personal_total': personal_total,
         'personal_behind': behind,
         'tracking_default': users.count() - personal_total,
@@ -1094,14 +1110,18 @@ class LinelistAdmin(admin.ModelAdmin):
 
 @admin.register(Config)
 class ConfigAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'is_default', 'linelist_count', 'updated_at')
+    list_display = ('name', 'slug', 'user', 'is_default', 'linelist_count', 'updated_at')
     list_filter = ('is_default', 'user')
-    search_fields = ('name', 'user__name', 'description')
+    search_fields = ('name', 'slug', 'user__name', 'description')
     readonly_fields = ('created_at', 'updated_at')
     inlines = [ConfigLinelistInline]
     fieldsets = (
         ('Basic Information', {
-            'fields': ('name', 'user', 'is_default', 'description')
+            'fields': ('name', 'slug', 'user', 'is_default', 'description'),
+            'description': 'The name is what the request forms show in the '
+                           'linelist configuration menu. The slug is what a '
+                           'submitted request stores, so changing it orphans '
+                           'requests that already chose this config.',
         }),
         ('Global Parameters', {
             'fields': (

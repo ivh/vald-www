@@ -113,34 +113,36 @@ class JobConfig:
             self.showline_queries = []
 
 
-def get_config_path_for_user(user, job_dir: Path, use_personal: bool = True) -> str:
+def get_config_path_for_request(user, job_dir: Path, pconf: str) -> str:
     """
-    Get config file path, generating from database if needed.
-    
+    Write the .cfg this request asked for into its job directory.
+
     Args:
         user: User model instance (required - only logged-in users make requests)
         job_dir: Job working directory for temp file generation
-        use_personal: If True, use user's personal config; if False, use system default
-        
+        pconf: the request's parameters['pconf'] - 'default', 'personal', or the
+               slug of one of the alternative system configs
+
     Returns:
         str: Path to config file to use
+
+    Raises:
+        ValueError: the choice names no config that exists. Deliberately not a
+            fall back to the default: a job that quietly used different
+            linelists from the ones the stored request names is worse than one
+            that fails.
     """
-    from vald.models import Config
-    
-    # Get config from database
-    if use_personal:
-        config = Config.get_user_config(user)
-    else:
-        config = Config.get_default_config()
-    
+    from vald.persconfig import resolve_pconf
+
+    config = resolve_pconf(user, pconf)
     if not config:
-        raise ValueError("No default config found in database")
-    
+        raise ValueError(f"Linelist configuration '{pconf}' no longer exists")
+
     # Generate temp config file
     temp_config_path = job_dir / 'config.cfg'
     with open(temp_config_path, 'w') as f:
         f.write(config.generate_cfg_content())
-    
+
     return str(temp_config_path)
 
 
@@ -882,10 +884,8 @@ def create_job_config(request_obj, backend_id: int, job_dir: Path,
     if reqtype == 'extractelement':
         config.element = params.get('elmion', '')
     
-    # Config file - use database config if enabled, otherwise file-based
-    pconf = params.get('pconf', 'default')
-    use_personal = (pconf == 'personal')
-    config.config_path = get_config_path_for_user(request_obj.user, job_dir, use_personal)
+    config.config_path = get_config_path_for_request(
+        request_obj.user, job_dir, params.get('pconf', 'default'))
     
     # Build format flags
     flags = [0] * 13
