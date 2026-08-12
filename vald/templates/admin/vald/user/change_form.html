@@ -10,7 +10,7 @@ password are silent no-ops, which read as broken buttons.
 {% if not add %}
 <p style="margin: 1em 0;">
     <a href="{% url 'admin:vald_user_config' original.id %}">View this user's linelist configuration</a>
-    &mdash; read-only, showing what differs from the VALD default.
+    &mdash; read-only, showing what differs from the configuration it was copied from.
 </p>
 <div class="submit-row">
     {% if not original.is_active %}

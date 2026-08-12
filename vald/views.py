@@ -1373,6 +1373,10 @@ def persconf(request):
         'config': user_config,
         'is_personal': is_personal,
         'snapshot_date': user_config.snapshot_date if is_personal else None,
+        # The config this snapshot was copied from, so the page can name it. It is
+        # no longer necessarily the VALD default, and saying so when it is not
+        # tells the user their base is something it is not.
+        'snapshot_of': snapshot_source(user_config) if is_personal else None,
         'added_since': linelists_added_since(user_config) if is_personal else [],
         # Same set the request forms offer, so "copy of X" and "run with X" cannot
         # disagree about what exists. The default is named by the PCONF_DEFAULT

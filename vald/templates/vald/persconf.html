@@ -15,12 +15,14 @@ age is invisible is the trap this page used to set.
 <div class="config-state">
 {% if is_personal %}
   <p><b>You have a personal configuration</b>, created {{ snapshot_date|date:"j F Y" }}.
-  It is a copy of the VALD default as it was on that date, plus your changes, and
-  it does <b>not</b> change when the VALD default is updated.
+  It is a copy of <b>{{ snapshot_of.name }}</b>{% if snapshot_of.is_default %}, the
+  VALD default,{% endif %} as it was on that date, plus your changes, and it does
+  <b>not</b> change when {{ snapshot_of.name }} is updated.
 
   {% if added_since %}
   <p class="config-state-warning"><b>{{ added_since|length }} linelist{{ added_since|pluralize }}
-  ha{{ added_since|pluralize:"s,ve" }} been added to the VALD default since then</b>,
+  ha{{ added_since|pluralize:"s,ve" }} been added to {{ snapshot_of.name }} since
+  then</b>,
   and {{ added_since|pluralize:"is,are" }} not included in your configuration:
   <ul>
     {% for linelist in added_since %}<li>{{ linelist.name }}</li>{% endfor %}
@@ -97,7 +99,7 @@ Create a personal configuration from a copy of:
 
   <td><a href="javascript:void();" onClick="thisform.action.value='save'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Save</a></td>
   <td><a href="javascript:void();" onClick="thisform.action.value='cancel'; thisform.editid.value='{{ linelist.id }}';thisform.submit(); return false;">Cancel</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Restore VALD default</a></td>
+  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;" title="Restore this linelist's values from {{ snapshot_of.name|default:'the VALD default' }}">Restore</a></td>
 
 {% else %}
   {# Read-only row #}

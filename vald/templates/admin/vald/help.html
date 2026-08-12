@@ -236,15 +236,19 @@ extractions actually use. This is the most common thing users ask about.
 
 <div class="state">
   <h3>Personal configuration</h3>
-  <p><span class="lbl">How</span> They edited a linelist, used &ldquo;Set to current
-     VALD default&rdquo;, or the account was migrated from the legacy interface.</p>
-  <p><span class="lbl">Effect</span> A <em>snapshot</em> of the VALD default as it
-     was when taken, plus their changes. It does <strong>not</strong> follow later
-     updates &mdash; a new linelist in a VALD release does not reach them.</p>
+  <p><span class="lbl">How</span> They edited a linelist, took a fresh copy of one
+     of the system configurations, or the account was migrated from the legacy
+     interface.</p>
+  <p><span class="lbl">Effect</span> A <em>snapshot</em> of whichever system
+     configuration they copied &mdash; the default unless they chose another &mdash;
+     as it was when taken, plus their changes. It does <strong>not</strong> follow
+     later updates: a new linelist in a VALD release does not reach them.</p>
   <p><span class="lbl">Count</span> <span class="count">{{ personal_total }}</span> user(s),
      of which <span class="count">{{ personal_behind }}</span>
-     {{ personal_behind|pluralize:"is,are" }} missing at least one
-     of the {{ default_linelist_count }} linelists now in the default.</p>
+     {{ personal_behind|pluralize:"is,are" }} missing at least one linelist that
+     the configuration they copied has now. Each is measured against its own
+     source, so a copy of a variant is not counted as behind the
+     {{ default_linelist_count }}-linelist default.</p>
   <p><span class="lbl">Do</span> Nothing, usually &mdash; a snapshot is a deliberate
      choice, and stability is often what the user wants. The Personal Configuration
      page tells them what they are missing and offers to remove it.</p>
@@ -253,8 +257,8 @@ extractions actually use. This is the most common thing users ask about.
 <p><strong>To see a specific user's configuration</strong>, open them from the
 <a href="{{ user_changelist }}">user list</a> and follow the <em>Configuration</em>
 link, or use the column on the list itself. It is read-only and shows only the
-entries that differ from the current default, which is usually a handful out of
-several hundred.
+entries that differ from the configuration that user copied, which is usually a
+handful out of several hundred.
 
 <p>Their three buttons, and what each means:
 
@@ -267,9 +271,11 @@ several hundred.
   <dd>Deletes it. They go back to tracking the default and pick up everything
       added since. Their changes are lost &mdash; there is no undo.</dd>
 
-  <dt>Set to current VALD default</dt>
-  <dd>Replaces it with a fresh copy of today's default, discarding their changes.
-      They stay frozen, just at a newer starting point.</dd>
+  <dt>Take a fresh copy (with the configuration menu beside it)</dt>
+  <dd>Replaces it with a fresh copy of the chosen system configuration as it is
+      today, discarding their changes. They stay frozen, just at a newer starting
+      point &mdash; and possibly on a different base, which is what
+      <code>Config.snapshot_of</code> records.</dd>
 </dl>
 
 <p class="note">The date shown on a configuration is when it was <em>taken</em>,

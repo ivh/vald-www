@@ -47,16 +47,18 @@ actually running", which the inline cannot show.
     <div class="state">
       <p><b>Personal configuration</b>, dated {{ snapshot_date|date:"j F Y" }}{% if snapshot_from_file %}
       <span class="muted">(mtime of the legacy .cfg it was imported from)</span>{% endif %}.
-      A copy of the VALD default as it was then, plus this user's changes. It does
-      <b>not</b> follow later updates to the VALD default.</p>
+      A copy of <b>{{ snapshot_of.name }}</b>{% if snapshot_of.is_default %} (the VALD
+      default){% endif %} as it was then, plus this user's changes. It does
+      <b>not</b> follow later updates to it.</p>
       <p class="muted">{{ changed_count }} of {{ total_count }} linelist{{ total_count|pluralize }}
-      differ from the current default.</p>
+      differ from {{ snapshot_of.name }}.</p>
     </div>
 
     {% if added_since %}
       <div class="state warn">
-        <p><b>{{ added_since|length }} linelist{{ added_since|pluralize }} added to the
-        VALD default since this snapshot</b>, and therefore not in use by this user:</p>
+        <p><b>{{ added_since|length }} linelist{{ added_since|pluralize }} added to
+        {{ snapshot_of.name }} since this snapshot</b>, and therefore not in use by
+        this user:</p>
         <ul>{% for l in added_since %}<li>{{ l.name }} <span class="muted">{{ l.path }}</span></li>{% endfor %}</ul>
         <p class="muted">The user can pick these up by removing their personal
         configuration on the Personal Configuration page.</p>
@@ -83,7 +85,7 @@ actually running", which the inline cannot show.
 
   {% if not linelists %}
     <p class="muted">{% if show_all %}This configuration has no linelists.{% else %}
-    Nothing differs from the VALD default.{% endif %}</p>
+    Nothing differs from {{ snapshot_of.name|default:'the VALD default' }}.{% endif %}</p>
   {% else %}
     <table>
       <tr>
@@ -102,7 +104,8 @@ actually running", which the inline cannot show.
       </tr>
       {% endfor %}
     </table>
-    <p class="muted">Values differing from the current VALD default are highlighted.</p>
+    <p class="muted">Values differing from
+    {{ snapshot_of.name|default:'the VALD default' }} are highlighted.</p>
   {% endif %}
 
 {% endif %}

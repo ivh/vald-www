@@ -99,9 +99,10 @@ def test_the_page_says_what_a_frozen_config_is_missing(logged_in_client, vald_de
     edit_first_linelist(logged_in_client, vald_default)
     add_linelist_to_default(vald_default)
 
-    body = logged_in_client.get('/persconf/').content.decode()
+    body = ' '.join(logged_in_client.get('/persconf/').content.decode().split())
     assert 'You have a personal configuration' in body
-    assert '1 linelist' in body and 'added to the VALD default since' in body
+    # names the config copied from, which for this fixture is the default
+    assert '1 linelist' in body and f'been added to {vald_default.name} since' in body
     assert 'Added in 2027' in body
 
 
@@ -547,3 +548,68 @@ def test_the_request_forms_link_to_the_selected_configs_contents(logged_in_clien
     body = logged_in_client.get('/extractall/').content.decode()
     assert 'pconf_contents' in body
     assert '/config/SLUG/' in body, 'no URL template for the JS to fill in'
+
+
+# --- the page has to name the base it actually copied ------------------------
+#
+# The info box said "a copy of the VALD default" whatever the source was, which
+# told a user who deliberately picked the atoms-only list that their base was
+# something else.
+
+@pytest.mark.django_db
+def test_the_state_box_names_the_config_that_was_copied(logged_in_client, a_variant):
+    logged_in_client.post('/persconf/', {'action': 'set_to_current_default',
+                                         'source': 'vald3_all'})
+
+    body = logged_in_client.get('/persconf/').content.decode()
+    box = body[body.index('You have a personal configuration'):][:400]
+
+    assert 'All lines' in box
+    assert 'copy of the VALD default' not in box
+
+
+@pytest.mark.django_db
+def test_the_state_box_still_says_vald_default_for_a_default_copy(logged_in_client,
+                                                                 a_variant):
+    """Naming it must not lose the "this is the VALD default" reassurance for the
+    case that is still overwhelmingly the common one."""
+    logged_in_client.post('/persconf/', {'action': 'set_to_current_default',
+                                         'source': 'default'})
+
+    box = logged_in_client.get('/persconf/').content.decode()
+    box = box[box.index('You have a personal configuration'):][:400]
+
+    assert 'VALD default' in box
+
+
+@pytest.mark.django_db
+def test_the_added_since_warning_names_the_source(logged_in_client, approved_user,
+                                                  a_variant):
+    from vald.models import ConfigLinelist, Linelist
+    logged_in_client.post('/persconf/', {'action': 'set_to_current_default',
+                                         'source': 'vald3_all'})
+
+    # the variant, not the default, gains a linelist after the snapshot
+    added = Linelist.objects.create(path='/later', name='Later', element_min=1,
+                                    element_max=99, default_priority=100)
+    ConfigLinelist.objects.create(config=a_variant, linelist=added, priority=100)
+
+    body = logged_in_client.get('/persconf/').content.decode()
+    assert 'been added to All lines since' in ' '.join(body.split())
+    assert 'added to the VALD default since' not in ' '.join(body.split())
+
+
+@pytest.mark.django_db
+def test_a_legacy_snapshot_with_no_source_still_reads_sensibly(logged_in_client,
+                                                              approved_user,
+                                                              vald_default):
+    """snapshot_of is NULL on every pre-existing personal config."""
+    from vald.persconfig import get_or_create_user_config
+    config = get_or_create_user_config(approved_user)
+    config.snapshot_of = None
+    config.save()
+
+    body = logged_in_client.get('/persconf/').content.decode()
+    box = body[body.index('You have a personal configuration'):][:400]
+
+    assert 'VALD default' in box, 'a NULL source must still name the default'

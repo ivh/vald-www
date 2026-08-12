@@ -382,8 +382,9 @@ def test_config_view_warns_about_linelists_added_since_the_snapshot(
                                  element_min=1, element_max=99)
     ConfigLinelist.objects.create(config=system_default, linelist=ll, priority=99)
 
-    body = staff_client.get(config_url(approved_user)).content.decode()
-    assert 'added to the' in body and 'Added in 2027' in body
+    body = ' '.join(staff_client.get(config_url(approved_user)).content.decode().split())
+    assert f'added to {system_default.name} since this snapshot' in body
+    assert 'Added in 2027' in body
 
 
 @pytest.mark.django_db
@@ -1184,3 +1185,29 @@ def test_behind_count_measures_each_config_against_its_own_source(staff_client):
                                     element_max=99, default_priority=3)
     ConfigLinelist.objects.create(config=default, linelist=added, priority=3)
     assert staff_client.get('/admin/help/').context['personal_behind'] == 1
+
+
+@pytest.mark.django_db
+def test_the_admin_config_view_names_the_copied_configuration(staff_client):
+    """An admin answering "why is this user missing a linelist" must not be told
+    the snapshot came from the default when it came from a variant."""
+    from vald.models import Config, ConfigLinelist, Linelist
+    from vald.persconfig import create_user_config
+
+    linelist = Linelist.objects.create(path='/a', name='A', element_min=1,
+                                       element_max=99)
+    default = Config.objects.create(name='Default', slug='default', user=None,
+                                    is_default=True)
+    variant = Config.objects.create(name='Atoms only', slug='vald3_atoms', user=None,
+                                    is_default=False)
+    for config in (default, variant):
+        ConfigLinelist.objects.create(config=config, linelist=linelist, priority=1)
+
+    user = make_user('Copier', is_active=True, password='pw-for-testing-123')
+    create_user_config(user, source=variant)
+
+    body = content_of(staff_client.get(
+        f'/admin/vald/user/{user.pk}/config/').content.decode())
+
+    assert 'Atoms only' in body
+    assert 'copy of the VALD default' not in body

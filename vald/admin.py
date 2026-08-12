@@ -882,6 +882,10 @@ class UserAdmin(admin.ModelAdmin):
         context = {
             **self.admin_site.each_context(request),
             'title': f'Configuration: {user.name}',
+            # Named rather than assumed: a snapshot of a VALD3_* variant is not a
+            # copy of the default, and this page is what a support question is
+            # answered from.
+            'snapshot_of': default_config if is_personal else None,
             'opts': self.model._meta,
             'vald_user': user,
             'config': config,
