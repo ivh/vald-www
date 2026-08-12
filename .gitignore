@@ -80,3 +80,4 @@ ftp_results/
 
 # Local DB snapshots (backup_db.sh default dir; the server points elsewhere)
 backups/
+.claude
