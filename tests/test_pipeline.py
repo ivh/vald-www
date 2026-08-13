@@ -80,10 +80,10 @@ def test_upstream_failure_is_reported(extract):
 ])
 def test_a_hung_stage_is_bounded_and_killed(extract, preselect, presformat):
     """Previously only the last stage had a timeout, so this blocked indefinitely."""
-    ok, result, elapsed = extract(preselect, presformat, timeout=3)
+    ok, result, elapsed = extract(preselect, presformat, timeout=1)
     assert not ok
     assert 'timed out' in result.lower()
-    assert elapsed < 10, f'took {elapsed:.1f}s - the deadline was not enforced'
+    assert elapsed < 5, f'took {elapsed:.1f}s - the deadline was not enforced'
     assert not surviving_fakes(), 'timed-out pipeline left orphaned processes'
 
 

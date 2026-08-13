@@ -9,6 +9,9 @@ import pytest
 from vald.forms import ExtractAllForm, ExtractStellarForm
 from vald.models import Request, UNIT_KEYS
 
+# Nothing here runs a job; only what the submission stored is under test.
+pytestmark = pytest.mark.usefixtures('no_background_worker')
+
 EXTRACT = {'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5002',
            'format': 'short', 'viaftp': 'via ftp', 'pconf': 'default'}
 

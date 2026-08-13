@@ -17,6 +17,7 @@ from django_ratelimit.decorators import ratelimit
 from pathlib import Path
 import glob
 import logging
+import threading
 
 from .models import UNIT_KEYS, Request, User, UserEmail
 from .forms import (
@@ -796,6 +797,17 @@ def handle_registration_request(request):
     return render(request, 'vald/contact.html', context)
 
 
+def start_background_worker(target):
+    """Run a submitted request's worker in a daemon thread.
+
+    Its own function so tests can decline it. The worker writes the job's status
+    to the database after the response has gone out, so it outlives the request
+    that started it - and in a test, the test itself, whose open transaction it
+    then cannot get past.
+    """
+    threading.Thread(target=target, daemon=True).start()
+
+
 @ratelimit(key='vald.ratelimit.session_user',
            rate='vald.ratelimit.submit_rate', method='POST', block=False)
 def handle_extract_request(request):
@@ -943,8 +955,6 @@ def handle_extract_request(request):
     )
 
     # Start background processing
-    import threading
-
     def process_request_background():
         """Process request in background thread"""
         from django import db
@@ -1084,9 +1094,7 @@ def handle_extract_request(request):
             except Exception as save_error:
                 logger.exception(f"Failed to save exception status for request {req_obj.uuid}: {save_error}")
 
-    # Start background thread
-    thread = threading.Thread(target=process_request_background, daemon=True)
-    thread.start()
+    start_background_worker(process_request_background)
 
     # Immediately redirect to request detail page
     messages.success(request, 'Your request has been submitted and is being processed.')

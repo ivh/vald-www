@@ -5,21 +5,7 @@ model layer directly, but never process_request_background - the daemon thread
 that records the outcome. An UnboundLocalError there marked every successful
 extraction as Failed, and nothing caught it.
 """
-import time
-
 import pytest
-
-
-def wait_for_terminal(uuid, timeout=10):
-    """Poll until the background thread leaves the request in a terminal state."""
-    from vald.models import Request
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        req = Request.objects.get(uuid=uuid)
-        if req.status in ('complete', 'failed'):
-            return req
-        time.sleep(0.05)
-    raise AssertionError(f'request {uuid} still {req.status} after {timeout}s')
 
 
 EXTRACT = {
@@ -29,7 +15,8 @@ EXTRACT = {
 
 
 @pytest.mark.django_db(transaction=True)
-def test_successful_extraction_is_recorded_complete(logged_in_client, monkeypatch, tmp_path):
+def test_successful_extraction_is_recorded_complete(logged_in_client, wait_for_worker,
+                                                    monkeypatch, tmp_path):
     """A job that succeeds must end up 'complete' with the output filename stored.
 
     Regression: process_request_background did `output_file = Path(result).name`
@@ -45,10 +32,10 @@ def test_successful_extraction_is_recorded_complete(logged_in_client, monkeypatc
 
     resp = logged_in_client.post('/submit/', EXTRACT)
     assert resp.status_code == 302        # redirect to the detail page
+    wait_for_worker()
 
     from vald.models import Request
-    uuid = Request.objects.latest('created_at').uuid
-    req = wait_for_terminal(uuid)
+    req = Request.objects.latest('created_at')
 
     assert req.status == 'complete', f'error_message: {req.error_message}'
     assert req.output_file == 'TestUser.000001.gz'   # basename only (R18)
@@ -56,16 +43,16 @@ def test_successful_extraction_is_recorded_complete(logged_in_client, monkeypatc
 
 
 @pytest.mark.django_db(transaction=True)
-def test_failed_extraction_records_the_error(logged_in_client, monkeypatch):
+def test_failed_extraction_records_the_error(logged_in_client, wait_for_worker, monkeypatch):
     def fake_submit(req_obj):
         return (False, 'preselect5 failed: something specific')
     monkeypatch.setattr('vald.backend.submit_request_direct', fake_submit)
 
     logged_in_client.post('/submit/', EXTRACT)
+    wait_for_worker()
 
     from vald.models import Request
-    uuid = Request.objects.latest('created_at').uuid
-    req = wait_for_terminal(uuid)
+    req = Request.objects.latest('created_at')
 
     assert req.status == 'failed'
     assert 'something specific' in req.error_message
