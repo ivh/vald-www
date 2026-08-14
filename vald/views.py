@@ -573,8 +573,7 @@ def modify_initial_data(request, user):
     else:
         owner = req_obj.user.name if req_obj.user else 'an unknown user'
         messages.info(request, f'Form pre-filled from a request by {owner}. Submitting it '
-                               f'creates a new request owned by you, using your own units '
-                               f'and linelist configuration.')
+                               f'creates a new request owned by you.')
     return req_obj.parameters or {}
 
 

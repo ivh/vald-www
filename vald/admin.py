@@ -22,6 +22,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 from django.utils.http import urlencode
 from django import forms
+from .job_runner import debug_shell_recipe
 from .models import Request, User, UserEmail, UserPreferences, Linelist, Config, ConfigLinelist
 
 
@@ -690,10 +691,10 @@ class RequestAdmin(admin.ModelAdmin):
                     'duration', 'has_output')
     list_filter = ('status', 'request_type', 'created_at')
     search_fields = ('uuid', 'user__name', 'user__emails__email')
-    readonly_fields = ('uuid', 'created_at', 'updated_at', 'rerun_link')
+    readonly_fields = ('uuid', 'created_at', 'updated_at', 'rerun_link', 'shell_recipe')
     fieldsets = (
         ('Request Information', {
-            'fields': ('uuid', 'request_type', 'user', 'rerun_link')
+            'fields': ('uuid', 'request_type', 'user', 'rerun_link', 'shell_recipe')
         }),
         ('Parameters', {
             'fields': ('parameters',),
@@ -760,6 +761,30 @@ class RequestAdmin(admin.ModelAdmin):
             'Requires a front-end login in this browser; the new request will be owned by that '
             'account.</p>',
             url, urlencode({'modify': str(obj.uuid)}), obj.request_type)
+
+    @admin.display(description='Run by hand')
+    def shell_recipe(self, obj):
+        """The pipeline for this request as shell commands, for debugging.
+
+        Rerun goes through the web form; this is the other half - the exact
+        binaries and stage inputs, to paste into a shell on the server when a job
+        needs to be taken apart. Rendering it must never break the change page,
+        so a request whose parameters or config cannot be turned into a pipeline
+        says so instead of raising.
+        """
+        if obj is None or not obj.pk:
+            return '—'
+        try:
+            recipe = debug_shell_recipe(obj)
+        except Exception as e:
+            return format_html('<span>No pipeline for this request: {}</span>', e)
+        return format_html(
+            '<pre style="white-space:pre-wrap;user-select:all;max-width:60em;'
+            'padding:.6em;border:1px solid var(--hairline-color,#ccc);'
+            'border-radius:4px">{}</pre>'
+            '<p class="help">Paste on the server with $VALD_HOME/bin on PATH. Writes the '
+            'job directory afresh, so it works after the working directory has been swept.</p>',
+            recipe)
 
 
 class UserEmailInline(admin.TabularInline):

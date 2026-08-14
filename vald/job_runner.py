@@ -9,9 +9,11 @@ import os
 import gzip
 import re
 import logging
+import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 from dataclasses import dataclass
@@ -621,13 +623,9 @@ class JobRunner:
                     out.write("\n" + "=" * 79 + "\n\n")
 
                 try:
-                    # Build showline command
-                    cmd = [str(self.showline)]
-                    if config.format_flags[12] == 1:  # HFS
-                        cmd.append('-HFS')
-                    if config.format_flags[11] == 0:  # No isotopic scaling
-                        cmd.append('-noisotopic')
-                    
+                    cmd = [str(self.showline)] + self.showline_args(config)
+
+
                     with open(show_in_path, 'r') as show_in:
                         result = subprocess.run(
                             cmd,
@@ -703,69 +701,98 @@ class JobRunner:
 
         return (True, str(final_output))
     
+    # The _*_text() methods exist separately from the _write_*() ones so the
+    # admin can show the exact stdin a job was given without writing anything.
+
+    def _pres_in_text(self, config: JobConfig) -> str:
+        """Contents of the pres_in file preselect reads on stdin."""
+        config_path = config.config_path or str(self.default_config)
+        return ''.join(line + '\n' for line in [
+            f"{config.wl_start},{config.wl_end}",          # wavelength range
+            f"{config.max_lines}",                         # max lines
+            f"{config.element}",                           # element (empty = all)
+            f"'{config_path}'",                            # config file, quoted
+            ' '.join(str(x) for x in config.format_flags), # 13 format flags
+        ])
+
     def _write_pres_in(self, config: JobConfig, path: Path):
         """Write pres_in file for preselect."""
-        with open(path, 'w') as f:
-            # Line 1: wavelength range
-            f.write(f"{config.wl_start},{config.wl_end}\n")
-            
-            # Line 2: max lines
-            f.write(f"{config.max_lines}\n")
-            
-            # Line 3: element filter (empty for all)
-            f.write(f"{config.element}\n")
-            
-            # Line 4: config file path (quoted)
-            config_path = config.config_path or str(self.default_config)
-            f.write(f"'{config_path}'\n")
-            
-            # Line 5: 13 format flags
-            flags = ' '.join(str(x) for x in config.format_flags)
-            f.write(f"{flags}\n")
-    
+        path.write_text(self._pres_in_text(config))
+
+    def _select_input_text(self, config: JobConfig) -> str:
+        """Contents of select.input, which select5 opens by name."""
+        lines = [
+            # wavelength range, depth limit, microturbulence
+            f"{config.wl_start},{config.wl_end},{config.depth_limit},{config.microturbulence}",
+            f"'{config.model_path or self._find_model(config.teff, config.logg)}'",
+        ]
+
+        # Abundances, as quoted comma-terminated tokens. select5 reads these as
+        # Fortran character literals, so the raw form the user typed
+        # ("Fe: -4.50") is not equivalent to "'Fe:-4.50',". Format follows
+        # CheckAbund() in old/backend/parserequest.c.
+        if config.abundances:
+            try:
+                pairs = abundances.parse(config.abundances)
+            except ValueError as e:
+                # Should be unreachable: the form validates the same grammar
+                logger.error("Discarding unparsable abundances %r (token %r)",
+                             config.abundances, e.args[0])
+                pairs = []
+            if pairs:
+                lines.append(abundances.to_select_input(pairs))
+        lines.append("'END'")
+
+        lines.append("'Synth'")       # output format
+        lines.append("'select.out'")
+        # Line cap applied by select, not the 0 that preselect gets
+        lines.append(f"{config.select_max_lines}")
+
+        return ''.join(line + '\n' for line in lines)
+
     def _write_select_input(self, config: JobConfig, path: Path):
         """Write select.input file for stellar extraction."""
-        with open(path, 'w') as f:
-            # Line 1: wavelength range, depth limit, microturbulence
-            f.write(f"{config.wl_start},{config.wl_end},{config.depth_limit},{config.microturbulence}\n")
-            
-            # Line 2: model atmosphere path
-            model_path = config.model_path or self._find_model(config.teff, config.logg)
-            f.write(f"'{model_path}'\n")
-            
-            # Line 3+: abundances, as quoted comma-terminated tokens.
-            # select5 reads these as Fortran character literals, so the raw form
-            # the user typed ("Fe: -4.50") is not equivalent to "'Fe:-4.50',".
-            # Format follows CheckAbund() in old/backend/parserequest.c.
-            if config.abundances:
-                try:
-                    pairs = abundances.parse(config.abundances)
-                except ValueError as e:
-                    # Should be unreachable: the form validates the same grammar
-                    logger.error("Discarding unparsable abundances %r (token %r)",
-                                 config.abundances, e.args[0])
-                    pairs = []
-                if pairs:
-                    f.write(abundances.to_select_input(pairs) + "\n")
-            f.write("'END'\n")
+        path.write_text(self._select_input_text(config))
 
-            # Output format
-            f.write("'Synth'\n")
-            f.write("'select.out'\n")
+    def _show_in_text(self, config: JobConfig, wl_center: float,
+                      wl_window: float, element: str) -> str:
+        """Contents of one show_in file, read by showline on stdin."""
+        config_path = config.config_path or str(self.default_config)
+        return ''.join(line + '\n' for line in [
+            f"{wl_center},{wl_window}",
+            f"{element}",
+            config_path,  # showline expects the path unquoted, unlike preselect
+        ])
 
-            # Line cap applied by select, not the 0 that preselect gets
-            f.write(f"{config.select_max_lines}\n")
-    
-    def _write_show_in(self, config: JobConfig, path: Path, 
+    def _write_show_in(self, config: JobConfig, path: Path,
                        wl_center: float, wl_window: float, element: str):
         """Write show_in file for showline."""
-        with open(path, 'w') as f:
-            f.write(f"{wl_center},{wl_window}\n")
-            f.write(f"{element}\n")
-            config_path = config.config_path or str(self.default_config)
-            # showline expects path without quotes (unlike preselect)
-            f.write(f"{config_path}\n")
-    
+        path.write_text(self._show_in_text(config, wl_center, wl_window, element))
+
+    def showline_args(self, config: JobConfig) -> List[str]:
+        """Command-line switches showline gets for this job."""
+        args = []
+        if config.format_flags[12] == 1:
+            args.append('-HFS')
+        if config.format_flags[11] == 0:
+            args.append('-noisotopic')
+        return args
+
+    def pipeline_binaries(self, config: JobConfig) -> List[Path]:
+        """Stage binaries, upstream first, for a non-showline job.
+
+        Mirrors _run_extract/_run_stellar; keep it in step with them - it is what
+        the admin's copy-paste recipe is built from.
+        """
+        if config.request_type == 'extractstellar':
+            stages = [self.preselect, self.select]
+        else:
+            stages = [self.preselect, self.presformat]
+        if config.format_flags[12] == 1:
+            stages += [self.hfs_split, self.post_hfs_format]
+        return stages
+
+
     def _parse_showline_queries(self, config: JobConfig) -> List[Tuple[float, float, str]]:
         """Parse showline queries from config. Returns list of (wl_center, wl_window, element)."""
         if config.showline_queries:
@@ -852,17 +879,20 @@ class JobRunner:
             logger.warning("Could not remove intermediate file %s: %s", path, e)
 
 
-def create_job_config(request_obj, backend_id: int, job_dir: Path, 
-                      client_name: str) -> JobConfig:
+def create_job_config(request_obj, backend_id: int, job_dir: Path,
+                      client_name: str, config_path: Optional[str] = None) -> JobConfig:
     """
     Create JobConfig from a Request model instance.
-    
+
     Args:
         request_obj: Request model instance
         backend_id: 6-digit job ID
         job_dir: Working directory for job
         client_name: Alphanumeric client name
-        
+        config_path: path to use as the .cfg, instead of writing one into
+            job_dir. Only for callers that must not touch the filesystem -
+            rendering a job's inputs for inspection, not running it.
+
     Returns:
         JobConfig instance
     """
@@ -884,7 +914,7 @@ def create_job_config(request_obj, backend_id: int, job_dir: Path,
     if reqtype == 'extractelement':
         config.element = params.get('elmion', '')
     
-    config.config_path = get_config_path_for_request(
+    config.config_path = config_path or get_config_path_for_request(
         request_obj.user, job_dir, params.get('pconf', 'default'))
     
     # Build format flags
@@ -965,5 +995,93 @@ def create_job_config(request_obj, backend_id: int, job_dir: Path,
             config.wl_start = queries[0][0]
             config.wl_end = queries[0][1]
             config.element = queries[0][2]
-    
+
     return config
+
+
+def recorded_backend_id(request_obj) -> Optional[int]:
+    """The 6-digit id a finished request actually ran under.
+
+    uuid_to_6digit() is only the first candidate: submit_request_direct walks it
+    forward on collision, so for a request that produced output the filename is
+    the authoritative source.
+    """
+    name = request_obj.output_file
+    if not name:
+        return None
+    parts = Path(name).name.split('.')
+    for part in parts[1:]:
+        if len(part) == 6 and part.isdigit():
+            return int(part)
+    return None
+
+
+def _heredoc(filename: str, text: str, tag: str) -> str:
+    """A quoted heredoc, so the file lands byte-for-byte with no shell expansion."""
+    return f"cat > {filename} <<'{tag}'\n{text}{tag}"
+
+
+def debug_shell_recipe(request_obj) -> str:
+    """Shell commands that re-run this request's pipeline by hand.
+
+    For copy-pasting into a shell on the server. The stage inputs are written out
+    verbatim rather than referenced, so a job whose working directory the sweep
+    has already removed is still reproducible, and pres_in can be edited and the
+    pipeline re-run without going through the web form.
+
+    Assumes VALD_HOME/bin is on PATH - the binaries are named bare.
+    """
+    from .backend import uuid_to_6digit
+
+    backend_id = recorded_backend_id(request_obj)
+    if backend_id is None:
+        backend_id = uuid_to_6digit(request_obj.uuid)
+
+    job_dir = Path(settings.VALD_WORKING_DIR) / f"{backend_id:06d}"
+    client_name = request_obj.user.client_name if request_obj.user else 'vald'
+    config = create_job_config(request_obj, backend_id, job_dir, client_name,
+                               config_path=str(job_dir / 'config.cfg'))
+    runner = JobRunner()
+
+    quoted_dir = shlex.quote(str(job_dir))
+    manage = Path(settings.BASE_DIR) / 'manage.py'
+    # The running process's own interpreter and settings module, so the line
+    # works regardless of which venv and which settings this deployment uses.
+    settings_module = os.environ.get('DJANGO_SETTINGS_MODULE', 'vald_web.settings')
+
+    lines = [
+        f"# {request_obj.request_type} {request_obj.uuid}",
+        f"mkdir -p {quoted_dir} && cd {quoted_dir}",
+        f"DJANGO_SETTINGS_MODULE={settings_module} {shlex.quote(sys.executable)} "
+        f"{shlex.quote(str(manage))} dump_request_cfg {request_obj.uuid} -o config.cfg",
+    ]
+
+    if config.request_type == 'showline':
+        for i, (wl_center, wl_window, element) in enumerate(
+                runner._parse_showline_queries(config)):
+            show_in = f"show_in.{backend_id:06d}_{i:03d}"
+            lines.append(_heredoc(
+                show_in,
+                runner._show_in_text(config, wl_center, wl_window, element),
+                f"SHOW_IN_{i}"))
+            cmd = [runner.showline.name] + runner.showline_args(config)
+            lines.append(f"{' '.join(cmd)} < {show_in}")
+        return '\n'.join(lines) + '\n'
+
+    pres_in = f"pres_in.{backend_id:06d}"
+    lines.append(_heredoc(pres_in, runner._pres_in_text(config), 'PRES_IN'))
+    if config.request_type == 'extractstellar':
+        lines.append(_heredoc('select.input', runner._select_input_text(config),
+                              'SELECT_INPUT'))
+
+    stages = [binary.name for binary in runner.pipeline_binaries(config)]
+    pipe = f"{stages[0]} < {pres_in}" + ''.join(f" | {s}" for s in stages[1:])
+
+    # Stellar without HFS is the one pipeline whose result is not on stdout:
+    # select5 writes the file named in select.input and only prints its header.
+    if config.request_type == 'extractstellar' and config.format_flags[12] != 1:
+        lines.append(f"{pipe} > /dev/null   # results in select.out")
+    else:
+        lines.append(f"{pipe} > {client_name}.{backend_id:06d}")
+
+    return '\n'.join(lines) + '\n'

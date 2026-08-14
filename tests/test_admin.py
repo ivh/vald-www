@@ -3,6 +3,8 @@
 Note the two unrelated User models: django.contrib.auth's, which is who logs
 into /admin/, and vald.models.User, which is the VALD account being administered.
 """
+from pathlib import Path
+
 import pytest
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import User as StaffUser
@@ -1044,6 +1046,87 @@ def test_an_unknown_request_type_does_not_break_the_change_page(staff_client, a_
 
     assert response.status_code == 200
     assert 'No form for request type' in content_of(response.content.decode())
+
+
+# --- Copy-paste pipeline recipe on the request change page -----------------
+
+@pytest.mark.django_db
+def test_the_change_page_shows_the_pipeline_as_shell_commands(staff_client, a_request,
+                                                             system_default):
+    """The other half of Rerun: the binaries and their stdin, to paste on the
+    server. Stellar, so select.input has to be there beside pres_in."""
+    body = content_of(staff_client.get(change_url(a_request)).content.decode())
+
+    assert 'preselect5 &lt; pres_in.' in body
+    assert '| select5' in body
+    assert 'cat &gt; select.input' in body
+    assert f'dump_request_cfg {a_request.uuid}' in body
+
+
+@pytest.mark.django_db
+def test_the_recipe_pipes_through_hfs_when_the_request_asked_for_it(staff_client,
+                                                                   a_request,
+                                                                   system_default):
+    a_request.parameters = dict(a_request.parameters, hfssplit=True)
+    a_request.save()
+
+    body = content_of(staff_client.get(change_url(a_request)).content.decode())
+
+    assert '| hfs_pres | post_hfs_format5' in body
+
+
+@pytest.mark.django_db
+def test_the_recipe_uses_the_id_the_job_actually_ran_under(staff_client, a_request,
+                                                          system_default):
+    """uuid_to_6digit() is only the first candidate - submit_request_direct walks
+    it forward on collision, so a finished job's filename is what to trust."""
+    a_request.output_file = 'SomeUser.654321.gz'
+    a_request.save()
+
+    body = content_of(staff_client.get(change_url(a_request)).content.decode())
+
+    assert 'pres_in.654321' in body
+
+
+@pytest.mark.django_db
+def test_the_recipe_renders_without_a_config_in_the_database(staff_client, a_request):
+    """No system_default fixture, so there is no config to resolve. Unlike a real
+    job the recipe does not need one - it defers that to dump_request_cfg, which
+    fails loudly on the server rather than taking the admin page down here."""
+    body = content_of(staff_client.get(change_url(a_request)).content.decode())
+
+    assert f'dump_request_cfg {a_request.uuid}' in body
+
+
+@pytest.mark.django_db
+def test_unusable_parameters_do_not_break_the_change_page(staff_client, a_request,
+                                                          system_default):
+    """parameters is a JSONField with no schema, so a hand-edited or legacy row
+    can hold something no pipeline can be built from."""
+    a_request.parameters = dict(a_request.parameters, stwvl='not a wavelength')
+    a_request.save()
+
+    response = staff_client.get(change_url(a_request))
+
+    assert response.status_code == 200
+    assert 'No pipeline for this request' in content_of(response.content.decode())
+
+
+@pytest.mark.django_db
+def test_rendering_the_recipe_writes_nothing_to_the_working_directory(a_request,
+                                                                     system_default,
+                                                                     settings):
+    """Viewing a request in the admin must not leave a job directory behind, so
+    the recipe names the .cfg rather than generating one the way a real job does."""
+    from vald.job_runner import debug_shell_recipe
+
+    working = Path(settings.VALD_WORKING_DIR)
+    before = sorted(working.glob('*')) if working.exists() else []
+
+    debug_shell_recipe(a_request)
+
+    after = sorted(working.glob('*')) if working.exists() else []
+    assert before == after
 
 
 @pytest.mark.django_db
