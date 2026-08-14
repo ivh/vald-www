@@ -93,8 +93,10 @@ before the rebuild. Non-HFS extract and stellar paths unchanged.
 character fields under `-std=legacy` on gfortran >= 13). The two are independent:
 one stops the build, the other corrupts a read at run time on particular data.
 
-Worth noting that the `presformat5` fix described in that note does **not**
-appear to have been applied to the source -- an HFS extract-all over 5000-5002 A
-still fails exactly as documented there, and 28 of 75 HFS requests in our test
-database failed with that error and its `post_hfs_format5` follow-on. Both fixes
-are needed for a working HFS pipeline on a current toolchain.
+They did surface together, though. While testing this build fix, an HFS
+extract-all over 5000-5002 A still failed with that note's `FORMAT ERROR IN LINE
+#`. The cause was that the same rsync had overwritten `SOURCE/SELECT/Makefile`,
+losing the target-specific override that builds `presformat5` without
+`-std=legacy` -- the half of that fix which does the actual work. Restoring the
+Makefile and rebuilding cleared it. Both fixes are needed for a working HFS
+pipeline on a current toolchain, and neither is in SVN.

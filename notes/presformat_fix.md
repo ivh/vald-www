@@ -49,3 +49,25 @@ output, not the raw comment, so the bug is isolated there.
 
 Verified on gfortran 13.4.0: HFS extract-all that previously failed now returns
 correct output; non-HFS and stellar paths unchanged.
+
+## The Makefile half is the fragile one
+
+Both parts are needed, but they fail differently when lost. The `presformat5.f`
+edit only *removes the dependence* on `-std=legacy`; it fixes nothing on its own.
+The Makefile override is what actually drops the flag, so losing it silently
+reinstates the bug while the source still looks fixed.
+
+That is exactly what happened in the 2026-08-14 rsync from the Linux server:
+`presformat5.f` survived, `SOURCE/SELECT/Makefile` was overwritten with upstream
+r3750, and HFS extractions started failing again with the same `FORMAT ERROR IN
+LINE #`. Both files are local-only changes that have never been committed to
+SVN, so any sync from a mirror can take them.
+
+Copies of both live in `~/vald-local-changes` with `MANIFEST.tsv` recording the
+upstream and local checksums, alongside the `EXTERNAL split` fix to
+`SOURCE/SELECT/hfs_pres.f` (see `hfs_split_fix.md`). After any rsync into
+`$VALD_HOME`, check the tree against that manifest before rebuilding.
+
+`tests/test_backend_binaries.py::test_hfs_extract_all_in_the_optical` is the
+quick check from this side: it is `xfail(strict=False)`, so an XPASS means the
+installed binaries carry the fix and an XFAIL means they do not.
