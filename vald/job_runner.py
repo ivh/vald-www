@@ -1021,6 +1021,33 @@ def _heredoc(filename: str, text: str, tag: str) -> str:
     return f"cat > {filename} <<'{tag}'\n{text}{tag}"
 
 
+def _dump_cfg_command(request_obj, cfg_path: Path) -> str:
+    """Command that writes this request's .cfg to cfg_path.
+
+    Via bin/vald-manage, which is the supported way to run a management command
+    by hand: it reads secrets.txt the way systemd's EnvironmentFile= does. A
+    bare `python manage.py` line cannot work on the server, because
+    settings_deploy takes SECRET_KEY from the environment and an interactive
+    shell has none - it dies at import with KeyError: 'SECRET_KEY'.
+
+    cfg_path must be absolute: vald-manage cd's to the application directory
+    before exec'ing manage.py, so a relative -o lands there rather than in the
+    job directory, and the pipeline then reads a config file that is not where
+    pres_in says it is.
+    """
+    wrapper = Path(settings.BASE_DIR) / 'bin' / 'vald-manage'
+    tail = f"dump_request_cfg {request_obj.uuid} -o {shlex.quote(str(cfg_path))}"
+    if wrapper.exists():
+        return f"{shlex.quote(str(wrapper))} {tail}"
+    # No wrapper - a checkout that runs from the development settings, which
+    # need no secrets.txt. Name the interpreter and settings this process is
+    # itself using rather than guessing.
+    settings_module = os.environ.get('DJANGO_SETTINGS_MODULE', 'vald_web.settings')
+    manage = Path(settings.BASE_DIR) / 'manage.py'
+    return (f"DJANGO_SETTINGS_MODULE={settings_module} {shlex.quote(sys.executable)} "
+            f"{shlex.quote(str(manage))} {tail}")
+
+
 def debug_shell_recipe(request_obj) -> str:
     """Shell commands that re-run this request's pipeline by hand.
 
@@ -1039,21 +1066,16 @@ def debug_shell_recipe(request_obj) -> str:
 
     job_dir = Path(settings.VALD_WORKING_DIR) / f"{backend_id:06d}"
     client_name = request_obj.user.client_name if request_obj.user else 'vald'
+    cfg_path = job_dir / 'config.cfg'
     config = create_job_config(request_obj, backend_id, job_dir, client_name,
-                               config_path=str(job_dir / 'config.cfg'))
+                               config_path=str(cfg_path))
     runner = JobRunner()
 
     quoted_dir = shlex.quote(str(job_dir))
-    manage = Path(settings.BASE_DIR) / 'manage.py'
-    # The running process's own interpreter and settings module, so the line
-    # works regardless of which venv and which settings this deployment uses.
-    settings_module = os.environ.get('DJANGO_SETTINGS_MODULE', 'vald_web.settings')
-
     lines = [
         f"# {request_obj.request_type} {request_obj.uuid}",
         f"mkdir -p {quoted_dir} && cd {quoted_dir}",
-        f"DJANGO_SETTINGS_MODULE={settings_module} {shlex.quote(sys.executable)} "
-        f"{shlex.quote(str(manage))} dump_request_cfg {request_obj.uuid} -o config.cfg",
+        _dump_cfg_command(request_obj, cfg_path),
     ]
 
     if config.request_type == 'showline':

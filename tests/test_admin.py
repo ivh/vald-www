@@ -1089,6 +1089,34 @@ def test_the_recipe_uses_the_id_the_job_actually_ran_under(staff_client, a_reque
 
 
 @pytest.mark.django_db
+def test_the_recipe_regenerates_the_cfg_through_vald_manage(staff_client, a_request,
+                                                            system_default):
+    """Not `python manage.py`: on the server settings_deploy reads SECRET_KEY
+    from the environment, which an interactive shell has not got. vald-manage
+    loads secrets.txt the way systemd does."""
+    body = content_of(staff_client.get(change_url(a_request)).content.decode())
+
+    assert f'bin/vald-manage dump_request_cfg {a_request.uuid}' in body
+    assert 'manage.py dump_request_cfg' not in body
+
+
+@pytest.mark.django_db
+def test_the_cfg_is_dumped_to_an_absolute_path(a_request, system_default, settings):
+    """vald-manage cd's to the application directory before exec'ing manage.py,
+    so a relative -o writes the .cfg there instead of into the job directory -
+    and the pipeline then reads a config that is not where pres_in says it is."""
+    from vald.job_runner import debug_shell_recipe
+
+    recipe = debug_shell_recipe(a_request)
+
+    target = [word for line in recipe.splitlines() if 'dump_request_cfg' in line
+              for word in line.split()][-1]
+    assert Path(target).is_absolute()
+    assert Path(target).parent.parent == Path(settings.VALD_WORKING_DIR)
+    assert f"'{target}'" in recipe, 'pres_in must name the same file'
+
+
+@pytest.mark.django_db
 def test_the_recipe_renders_without_a_config_in_the_database(staff_client, a_request):
     """No system_default fixture, so there is no config to resolve. Unlike a real
     job the recipe does not need one - it defers that to dump_request_cfg, which
