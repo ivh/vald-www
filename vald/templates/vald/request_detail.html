@@ -25,7 +25,7 @@ being that the tab reports the job finishing without being looked at.
 {% endif %}
 <tr><td><b>Status:</b></td><td>
     {% if req.status == 'complete' %}
-    <span style="color: green; font-weight: bold;">✓ Complete</span>
+    <span style="color: green; font-weight: bold;">✓ Done</span>
     {% if req.parameters.truncated %}<span style="color: #b36b00; font-weight: bold;"> — truncated</span>{% endif %}
     {% if req.results_expired %}<span style="color: gray;"> — results expired</span>{% endif %}
     {% elif req.status == 'failed' %}

@@ -7,7 +7,7 @@
 <p>
 <b>Summary:</b>
 {{ pending_count }} pending,
-{{ complete_count }} complete,
+{{ complete_count }} done,
 {{ failed_count }} failed
 </p>
 
@@ -27,7 +27,12 @@
     <td>{{ req.describe|default:"—" }}</td>
     <td>
         {% if req.status == 'complete' %}
-        <span style="color: green; font-weight: bold;">✓ Complete</span>
+            {% if req.parameters.truncated %}
+            <span style="color: #b36b00; font-weight: bold;"
+                  title="Stopped at the {{ req.parameters.truncated_at }}-line limit, so it does not reach the end of the wavelength range">⚠ truncated</span>
+            {% else %}
+            <span style="color: green; font-weight: bold;">✓ Done</span>
+            {% endif %}
         {% elif req.status == 'failed' %}
         <span style="color: red; font-weight: bold;">✗ Failed</span>
         {% elif req.status == 'processing' %}
