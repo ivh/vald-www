@@ -26,6 +26,7 @@ being that the tab reports the job finishing without being looked at.
 <tr><td><b>Status:</b></td><td>
     {% if req.status == 'complete' %}
     <span style="color: green; font-weight: bold;">✓ Complete</span>
+    {% if req.parameters.truncated %}<span style="color: #b36b00; font-weight: bold;"> — truncated</span>{% endif %}
     {% if req.results_expired %}<span style="color: gray;"> — results expired</span>{% endif %}
     {% elif req.status == 'failed' %}
     <span style="color: red; font-weight: bold;">✗ Failed</span>
@@ -58,6 +59,13 @@ being that the tab reports the job finishing without being looked at.
     <a href="{% url 'vald:download_bib_request' req.uuid req.bib_output_filename %}"><button>Bibliography ({{ bib_output_size }})</button></a>
     {% endif %}
     {% endif %}
+</td></tr>
+{% endif %}
+{% if req.parameters.truncated %}
+<tr><td><b>Truncated:</b></td><td>
+    <i>This extraction stopped at the {{ req.parameters.truncated_at }}-line limit, so it
+    does not reach the end of the wavelength range you asked for. Narrow the range, or
+    restrict the species, to get a complete result.</i>
 </td></tr>
 {% endif %}
 </table>

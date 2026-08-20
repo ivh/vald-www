@@ -31,6 +31,7 @@ class Outcome(NamedTuple):
     result: str
     text: str
     job_dir: Path
+    truncated: bool
 
 
 @pytest.fixture(scope='session')
@@ -56,14 +57,15 @@ def run_job(tmp_path_factory, vald_home, job_results):
 
         runner = JobRunner()
         runner.ftp_dir = ftp
-        ok, result = runner.run(JobConfig(job_dir=job, **params))
+        config = JobConfig(job_dir=job, **params)
+        ok, result = runner.run(config)
 
         text = ''
         for candidate in ftp.iterdir():
             if candidate.suffix == '.gz' and '.bib' not in candidate.name:
                 with gzip.open(candidate, 'rt', errors='replace') as f:
                     text = f.read()
-        return Outcome(ok, result, text, job)
+        return Outcome(ok, result, text, job, config.truncated)
 
     def run(**kwargs):
         params = dict(
@@ -339,3 +341,36 @@ def test_hfs_extract_all_in_the_optical(run_job):
                   wl_start=5000.0, wl_end=5001.0,
                   format_flags=flags(hfs=1))
     assert run.ok, run.result
+
+
+# --- the line cap must be visible to the app, not silent -------------------
+
+def test_extract_truncation_is_reported(run_job):
+    """preselect5 stops at the pres_in cap with rc=0; only its stderr says so."""
+    run = run_job(request_type='extractall', max_lines=5,
+                  format_flags=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0])
+    assert run.ok, run.result
+    assert len(data_rows(run.text)) == 5
+    assert run.truncated
+    assert 'VALD-TRUNCATED' in (run.job_dir / 'preselect5.err').read_text()
+
+
+def test_extract_within_the_cap_is_not_reported_as_truncated(run_job):
+    run = run_job(request_type='extractall', max_lines=500000,
+                  format_flags=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0])
+    assert run.ok, run.result
+    assert not run.truncated
+
+
+def test_stellar_truncation_is_reported(run_job):
+    """select5 announces the cap in the output file rather than on stderr."""
+    run = run_job(**stellar(abundances='', select_max_lines=2))
+    assert run.ok, run.result
+    assert run.truncated
+    assert 'WARNING: Output was truncated to' in run.text
+
+
+def test_stellar_within_the_cap_is_not_reported_as_truncated(run_job):
+    run = run_job(**stellar(abundances=''))
+    assert run.ok, run.result
+    assert not run.truncated

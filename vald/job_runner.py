@@ -33,6 +33,19 @@ STDERR_EXCERPT_BYTES = 2000
 # How much of it to show the user
 USER_ERROR_MAX_CHARS = 200
 
+# Hitting VALD_MAX_LINES_PER_REQUEST is not an error, so no stage reports it in
+# its return code - both exit 0 having quietly stopped early. The two that
+# enforce the cap say so in different places instead: preselect5 stops with this
+# in its STOP message (extract), select5 writes its warning into the output it
+# produces (stellar). create_job_config() decides which of them gets the cap.
+PRESELECT_TRUNCATED = 'VALD-TRUNCATED'
+SELECT_TRUNCATED = 'WARNING: Output was truncated to'
+
+# select5 puts its warning on the first line of select.out, ahead of the range
+# line; the HFS stages pass it through at the same place. A couple of lines of
+# slack in case a stage prepends something later.
+TRUNCATION_HEAD_LINES = 3
+
 
 def summarise_stage_error(stderr_text: str) -> str:
     """Condense Fortran stderr into something safe to show a user.
@@ -107,7 +120,11 @@ class JobConfig:
     
     # Showline-specific: list of (wl_center, wl_window, element) tuples
     showline_queries: List[Tuple[float, float, str]] = None
-    
+
+    # Set by the runner, not by the caller: the job stopped at the line cap.
+    # run() returns only (ok, path), so this is how the fact gets back out.
+    truncated: bool = False
+
     def __post_init__(self):
         if self.format_flags is None:
             self.format_flags = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
@@ -836,13 +853,45 @@ class JobRunner:
         target = f"{iteff:05d}G{ilogg:02d}.KRZ"
         return str(stellar_dir / target)
     
-    def _finalize_output(self, config: JobConfig, output_file: Path, 
+    def _was_truncated(self, config: JobConfig, output_file: Path) -> bool:
+        """Whether the job stopped at the line cap rather than running out of lines.
+
+        Checked in both places because which stage enforces the cap depends on
+        the request type, and neither raises the return code to say so. The
+        signal is read here rather than per pipeline so extract and stellar
+        cannot drift apart.
+
+        A run whose line count lands exactly on the cap reports itself truncated
+        even though nothing was lost - both stages compare with >= / .EQ. That
+        false positive is in the Fortran and users already see select5's warning
+        in their stellar files; it is not worth second-guessing from here.
+        """
+        try:
+            stderr = self._stderr_path(config.job_dir, 'preselect5').read_text(errors='replace')
+            if PRESELECT_TRUNCATED in stderr:
+                return True
+        except OSError:
+            pass
+
+        try:
+            with open(output_file, 'r', errors='replace') as f:
+                head = [line for _, line in zip(range(TRUNCATION_HEAD_LINES), f)]
+        except OSError:
+            return False
+        return any(SELECT_TRUNCATED in line for line in head)
+
+    def _finalize_output(self, config: JobConfig, output_file: Path,
                          bib_file: Path) -> Tuple[bool, str]:
         """Compress output and move to FTP directory."""
-        
+
         if not output_file.exists():
             return (False, f"Output file not found: {output_file.name}")
-        
+
+        config.truncated = self._was_truncated(config, output_file)
+        if config.truncated:
+            logger.info("Job %06d stopped at the line cap in %s",
+                        config.job_id, config.job_dir)
+
         self.ftp_dir.mkdir(parents=True, exist_ok=True)
         
         # Compress main output

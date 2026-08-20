@@ -46,6 +46,9 @@ def extract(tmp_path):
                            config_path=str(tmp_path / 'config.cfg'))
         started = time.monotonic()
         ok, result = runner.run(config)
+        # Attribute rather than a fourth return value, so the tests that unpack
+        # three keep working; only the truncation tests need the config back.
+        run.config = config
         return ok, result, time.monotonic() - started
 
     yield run
@@ -120,6 +123,41 @@ def test_stage_stderr_is_kept_on_disk(extract, tmp_path):
     err = tmp_path / 'job' / 'preselect5.err'
     assert err.exists()
     assert 'diagnostic detail' in err.read_text()
+
+
+
+# --- truncation at VALD_MAX_LINES_PER_REQUEST ------------------------------
+
+def test_preselect_truncation_is_detected_from_its_stderr(extract):
+    """preselect5 exits 0 at the cap, so stderr is the only place it says so."""
+    ok, result, _ = extract(
+        'echo "STOP VALD-TRUNCATED: maximum number of lines reached" >&2; echo DATA',
+        'cat')
+    assert ok, result
+    assert extract.config.truncated
+
+
+def test_select_truncation_is_detected_from_the_output_head(extract):
+    """select5 writes its warning as the first line of the file it produces."""
+    ok, result, _ = extract(
+        'printf " WARNING: Output was truncated to      5 lines\\nDATA\\n"', 'cat')
+    assert ok, result
+    assert extract.config.truncated
+
+
+def test_a_complete_run_is_not_flagged_as_truncated(extract):
+    ok, result, _ = extract('echo DATA', 'cat')
+    assert ok, result
+    assert not extract.config.truncated
+
+
+def test_unrelated_stage_stderr_does_not_flag_truncation(extract):
+    """The IEEE underflow notes the real binaries emit must not read as a cap hit."""
+    ok, result, _ = extract(
+        'echo "Note: The following floating-point exceptions are signalling:" >&2; echo DATA',
+        'cat')
+    assert ok, result
+    assert not extract.config.truncated
 
 
 def test_sigpipe_constant_matches_what_shells_report():
