@@ -18,7 +18,7 @@
 <div class="card requestcard">
   {% include "vald/_wavelengthrange.html" %}
   <div class="formrow">
-    <div class="formlabel">Element [ + ionization ]</div>
+    <label class="formlabel" for="{{ form.elmion.id_for_label }}">Element [ + ionization ]</label>
     <div class="formfield">{{ form.elmion }}</div>
   </div>
   {% include "vald/_extracttail.html" %}

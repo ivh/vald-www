@@ -15,40 +15,40 @@
 
 <div class="card requestcard">
   <div class="formrow">
-    <div class="formlabel">Approximate wavelength</div>
+    <label class="formlabel" for="{{ form.wvl0.id_for_label }}">Approximate wavelength</label>
     <div class="formfield">{{ form.wvl0 }} <span class="unit">&Aring; (air)</span></div>
   </div>
   <div class="formrow">
-    <div class="formlabel">Wavelength window</div>
+    <label class="formlabel" for="{{ form.win0.id_for_label }}">Wavelength window</label>
     <div class="formfield">{{ form.win0 }} <span class="unit">&Aring; (air)</span></div>
   </div>
   <div class="formrow">
-    <div class="formlabel">Element [ + ionization ]</div>
+    <label class="formlabel" for="{{ form.el0.id_for_label }}">Element [ + ionization ]</label>
     <div class="formfield">{{ form.el0 }}</div>
   </div>
 
   <div class="formsplit"></div>
 
   <div class="formrow">
-    <div class="formlabel">Retrieve data via</div>
+    <div class="formlabel" id="lbl-viaftp">Retrieve data via</div>
     <div class="formfield">
-      <div class="radioset">{% for radio in form.viaftp %}{{ radio }}{% endfor %}</div>
+      <div class="radioset" role="group" aria-labelledby="lbl-viaftp">{% for radio in form.viaftp %}{{ radio }}{% endfor %}</div>
     </div>
   </div>
 
   <div class="formsplit"></div>
 
   <div class="formrow top">
-    <div class="formlabel"><a href="{% url 'vald:persconf' %}">Linelist configuration</a></div>
+    <label class="formlabel" for="{{ form.pconf.id_for_label }}">Linelist configuration</label>
     <div class="formfield stack">{% include "vald/_pconf.html" %}</div>
   </div>
 
   <div class="formsplit"></div>
 
   <div class="formrow top">
-    <div class="formlabel">Isotopic scaling of oscillator strength</div>
+    <div class="formlabel" id="lbl-isotopic">Isotopic scaling of oscillator strength</div>
     <div class="formfield stack">
-      <div class="radioset">{% for radio in form.isotopic_scaling %}{{ radio }}{% endfor %}</div>
+      <div class="radioset" role="group" aria-labelledby="lbl-isotopic">{% for radio in form.isotopic_scaling %}{{ radio }}{% endfor %}</div>
       <span class="hint">Takes precedence over the default set in
       <a href="{% url 'vald:unitselection' %}">unit selection</a>.</span>
     </div>

@@ -18,12 +18,12 @@
   <table class="datatable">
     <thead>
       <tr>
-        <th>Request type</th>
-        <th>Details</th>
-        <th>Status</th>
-        <th>Submitted</th>
-        <th>Download</th>
-        <th>Actions</th>
+        <th scope="col">Request type</th>
+        <th scope="col">Details</th>
+        <th scope="col">Status</th>
+        <th scope="col">Submitted</th>
+        <th scope="col">Download</th>
+        <th scope="col">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -66,16 +66,16 @@
   {% if page_obj.paginator.num_pages > 1 %}
   <div class="pager">
     {% if page_obj.has_previous %}
-    <a href="?page={{ page_obj.previous_page_number }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4 L5.5 8 L9.5 12"/></svg>Newer</a>
+    <a href="?page={{ page_obj.previous_page_number }}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4 L5.5 8 L9.5 12"/></svg>Newer</a>
     {% else %}
-    <span class="disabled"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4 L5.5 8 L9.5 12"/></svg>Newer</span>
+    <span class="disabled"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4 L5.5 8 L9.5 12"/></svg>Newer</span>
     {% endif %}
     <span class="muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
       <span class="faint">({{ page_obj.paginator.count }} requests)</span></span>
     {% if page_obj.has_next %}
-    <a href="?page={{ page_obj.next_page_number }}">Older<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 4 L10.5 8 L6.5 12"/></svg></a>
+    <a href="?page={{ page_obj.next_page_number }}">Older<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 4 L10.5 8 L6.5 12"/></svg></a>
     {% else %}
-    <span class="disabled">Older<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 4 L10.5 8 L6.5 12"/></svg></span>
+    <span class="disabled">Older<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 4 L10.5 8 L6.5 12"/></svg></span>
     {% endif %}
   </div>
   {% endif %}

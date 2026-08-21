@@ -26,24 +26,24 @@ reaches for - medium, wavelabel1, wavelabel2, unitsummary - are unchanged.
 
 <div class="unitgrid">
   <div class="unitgroup">
-    <span class="eyebrow">Energy levels</span>
-    <div class="radioset stack">{% for radio in form.energyunit %}{{ radio }}{% endfor %}</div>
+    <span class="eyebrow" id="lbl-energyunit">Energy levels</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-energyunit">{% for radio in form.energyunit %}{{ radio }}{% endfor %}</div>
   </div>
   <div class="unitgroup medium">
-    <span class="eyebrow">Wavelengths in</span>
-    <div class="radioset stack">{% for radio in form.medium %}{{ radio }}{% endfor %}</div>
+    <span class="eyebrow" id="lbl-medium">Wavelengths in</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-medium">{% for radio in form.medium %}{{ radio }}{% endfor %}</div>
   </div>
   <div class="unitgroup">
-    <span class="eyebrow">Wavelength unit</span>
-    <div class="radioset stack">{% for radio in form.waveunit %}{{ radio }}{% endfor %}</div>
+    <span class="eyebrow" id="lbl-waveunit">Wavelength unit</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-waveunit">{% for radio in form.waveunit %}{{ radio }}{% endfor %}</div>
   </div>
   <div class="unitgroup">
-    <span class="eyebrow">Van der Waals</span>
-    <div class="radioset stack">{% for radio in form.vdwformat %}{{ radio }}{% endfor %}</div>
+    <span class="eyebrow" id="lbl-vdwformat">Van der Waals</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-vdwformat">{% for radio in form.vdwformat %}{{ radio }}{% endfor %}</div>
   </div>
   <div class="unitgroup">
-    <span class="eyebrow">Isotopic scaling</span>
-    <div class="radioset stack">{% for radio in form.isotopic_scaling %}{{ radio }}{% endfor %}</div>
+    <span class="eyebrow" id="lbl-isotopic_scaling">Isotopic scaling</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-isotopic_scaling">{% for radio in form.isotopic_scaling %}{{ radio }}{% endfor %}</div>
   </div>
 </div>
 

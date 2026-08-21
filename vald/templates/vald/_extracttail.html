@@ -2,17 +2,22 @@
 Everything the three extract forms have in common below their own fields:
 output format, delivery, the line requirements, the linelist configuration and
 the comment. One copy, so the three forms cannot drift apart.
+
+A radio or checkbox group cannot use <label for>: each control already carries
+its own label, and what is missing is a name for the group. role="group" plus
+aria-labelledby gives it one without a <fieldset> spanning - and so breaking -
+the two-column grid row.
 {% endcomment %}
 <div class="formrow">
-  <div class="formlabel">Extraction format</div>
+  <div class="formlabel" id="lbl-format">Extraction format</div>
   <div class="formfield">
-    <div class="radioset">{% for radio in form.format %}{{ radio }}{% endfor %}</div>
+    <div class="radioset" role="group" aria-labelledby="lbl-format">{% for radio in form.format %}{{ radio }}{% endfor %}</div>
   </div>
 </div>
 <div class="formrow">
-  <div class="formlabel">Retrieve data via</div>
+  <div class="formlabel" id="lbl-viaftp">Retrieve data via</div>
   <div class="formfield">
-    <div class="radioset">{% for radio in form.viaftp %}{{ radio }}{% endfor %}</div>
+    <div class="radioset" role="group" aria-labelledby="lbl-viaftp">{% for radio in form.viaftp %}{{ radio }}{% endfor %}</div>
   </div>
 </div>
 
@@ -26,8 +31,8 @@ the comment. One copy, so the three forms cannot drift apart.
 <div class="formsplit"></div>
 
 <div class="formrow top">
-  <div class="formlabel">Require lines to have a known value of</div>
-  <div class="checkgrid">
+  <div class="formlabel" id="lbl-known">Require lines to have a known value of</div>
+  <div class="checkgrid" role="group" aria-labelledby="lbl-known">
     <label>{{ form.hrad }} {{ form.hrad.label }}</label>
     <label>{{ form.hlande }} {{ form.hlande.label }}</label>
     <label>{{ form.hstark }} {{ form.hstark.label }}</label>
@@ -39,13 +44,13 @@ the comment. One copy, so the three forms cannot drift apart.
 <div class="formsplit"></div>
 
 <div class="formrow top">
-  <div class="formlabel"><a href="{% url 'vald:persconf' %}">Linelist configuration</a></div>
+  <label class="formlabel" for="{{ form.pconf.id_for_label }}">Linelist configuration</label>
   <div class="formfield stack">{% include "vald/_pconf.html" %}</div>
 </div>
 
 <div class="formsplit"></div>
 
 <div class="formrow">
-  <div class="formlabel">Optional comment for request</div>
+  <label class="formlabel" for="{{ form.subject.id_for_label }}">Optional comment for request</label>
   <div class="formfield">{{ form.subject }}</div>
 </div>

@@ -9,6 +9,8 @@
 </head>
 <body>
 
+<a class="skiplink" href="#content">Skip to main content</a>
+
 <header class="site-header">
     <a class="masthead" href="{% url 'vald:index' %}">
         <img src="{% static 'VALD3_logo.png' %}" alt="VALD3">
@@ -93,7 +95,8 @@ stays a POST: it changes server state.
         {% endif %}
 
 
-        <div class="site-content {% block content_class %}plain{% endblock %}">
+        <div class="site-content {% block content_class %}plain{% endblock %}"
+             id="content" tabindex="-1">
             {% block content %}{% endblock %}
         </div>
 

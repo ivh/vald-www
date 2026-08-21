@@ -4,10 +4,10 @@ spans are rewritten by _unitfields.html's script, so the unit shown always
 matches the units the request will actually be read in.
 {% endcomment %}
 <div class="formrow">
-  <div class="formlabel">Starting <span class="wavelabel1">wavelength</span></div>
+  <label class="formlabel" for="{{ form.stwvl.id_for_label }}">Starting <span class="wavelabel1">wavelength</span></label>
   <div class="formfield">{{ form.stwvl }} <span class="wavelabel2">&Aring;</span></div>
 </div>
 <div class="formrow">
-  <div class="formlabel">Ending <span class="wavelabel1">wavelength</span></div>
+  <label class="formlabel" for="{{ form.endwvl.id_for_label }}">Ending <span class="wavelabel1">wavelength</span></label>
   <div class="formfield">{{ form.endwvl }} <span class="wavelabel2">&Aring;</span></div>
 </div>

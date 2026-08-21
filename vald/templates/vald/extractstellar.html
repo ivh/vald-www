@@ -19,23 +19,23 @@
   {% include "vald/_wavelengthrange.html" %}
 
   <div class="formrow">
-    <div class="formlabel">Detection threshold</div>
+    <label class="formlabel" for="{{ form.dlimit.id_for_label }}">Detection threshold</label>
     <div class="formfield">{{ form.dlimit }} <span class="unit">fraction, in the range 0&ndash;1</span></div>
   </div>
   <div class="formrow">
-    <div class="formlabel">Microturbulence</div>
+    <label class="formlabel" for="{{ form.micturb.id_for_label }}">Microturbulence</label>
     <div class="formfield">{{ form.micturb }} <span class="unit">{{ form.micturb.help_text }}</span></div>
   </div>
   <div class="formrow">
-    <div class="formlabel">Effective temperature</div>
+    <label class="formlabel" for="{{ form.teff.id_for_label }}">Effective temperature</label>
     <div class="formfield">{{ form.teff }} <span class="unit">{{ form.teff.help_text }}</span></div>
   </div>
   <div class="formrow">
-    <div class="formlabel">Surface gravity</div>
+    <label class="formlabel" for="{{ form.logg.id_for_label }}">Surface gravity</label>
     <div class="formfield">{{ form.logg }} <span class="unit">{{ form.logg.help_text }}</span></div>
   </div>
   <div class="formrow top">
-    <div class="formlabel">Chemical composition</div>
+    <label class="formlabel" for="{{ form.chemcomp.id_for_label }}">Chemical composition</label>
     <div class="formfield stack">
       {{ form.chemcomp }}
       <span class="hint">{{ form.chemcomp.help_text }}</span>
