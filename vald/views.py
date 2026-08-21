@@ -22,6 +22,7 @@ import threading
 from .models import UNIT_KEYS, Request, User, UserEmail
 from .forms import (
     AccountDetailsForm,
+    UserPreferencesForm,
     PasswordResetRequestForm,
     PasswordResetForm,
     RegistrationForm,
@@ -1127,8 +1128,18 @@ def account(request):
 
 @require_login
 def unitselection(request):
-    """Unit selection page"""
+    """Unit selection page.
+
+    Renders UserPreferencesForm - the same form save_units validates the POST
+    with - so the five option labels come from the model's choices. Spelled out
+    in the template they had drifted: this page offered "air" and "Default"
+    where the per-request panel, which does render the form, offers
+    "Air (λ > 200nm)" and "Default (single value)" for the same settings.
+    """
     context = get_user_context(request)
+    user = get_current_user(request)
+    if user:
+        context['form'] = UserPreferencesForm(instance=user.get_preferences())
     return render(request, 'vald/unitselection.html', context)
 
 
@@ -1145,7 +1156,6 @@ def save_units(request):
 
     # Validate against the model's choices rather than trusting raw POST -
     # these values feed pres_in flag generation, so junk must not persist.
-    from .forms import UserPreferencesForm
     prefs = user.get_preferences()
     form = UserPreferencesForm(request.POST, instance=prefs)
     if not form.is_valid():
@@ -1154,9 +1164,11 @@ def save_units(request):
     form.save()
 
     messages.success(request, 'Your unit preferences have been saved successfully.')
-    context = get_user_context(request)
-    context['unitsupdated'] = True
-    return render(request, 'vald/unitselection.html', context)
+    # Rendered by the page's own view rather than assembling the context again
+    # here: it is the one place that knows what unitselection.html needs, and a
+    # second copy is how the saved page came to be missing the form entirely.
+    # A bound form would redisplay the POST; this re-reads what was stored.
+    return unitselection(request)
 
 
 def documentation(request, docpage):

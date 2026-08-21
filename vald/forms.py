@@ -26,6 +26,13 @@ class UserPreferencesForm(forms.ModelForm):
     class Meta:
         model = UserPreferences
         fields = ['energyunit', 'medium', 'waveunit', 'vdwformat', 'isotopic_scaling']
+        # Radios rather than the ModelForm default of a <select> each: these are
+        # five short, fixed choices that the per-request panel already shows as
+        # radios, and /unitselection/ renders this form to get the model's own
+        # option labels instead of spelling them out again. Widgets do not affect
+        # validation, so save_units is unchanged by this.
+        widgets = {name: forms.RadioSelect() for name in
+                   ('energyunit', 'medium', 'waveunit', 'vdwformat', 'isotopic_scaling')}
 
 
 # These two values are written verbatim into the control files the Fortran
