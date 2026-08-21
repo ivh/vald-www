@@ -239,9 +239,8 @@ pre {
 .site-content.plain > h3:first-child,
 .site-content.plain > h2:first-child { margin-bottom: 12px; }
 
-/* Shown to logged-out visitors above whatever page they landed on, which is
-   where the old interface put it too. */
-.login-card { max-width: 520px; margin-bottom: 20px; }
+/* Lives on the index page only; the header button links to it by anchor. */
+.login-card { max-width: 520px; margin-bottom: 20px; scroll-margin-top: 20px; }
 .login-card .card-body { display: flex; flex-direction: column; gap: 14px; }
 .loginfields { display: flex; flex-direction: column; gap: 12px; max-width: 340px; }
 label.stacked {

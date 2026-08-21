@@ -25,6 +25,14 @@
             <span class="whoami-mail">{{ user_email }}</span>
         </div>
     </div>
+    {% else %}
+    {% comment %}
+    The form itself lives on the index page, which is where logging in ends up
+    anyway - /login/ has no page of its own and every outcome redirects to the
+    index. On every other page it was noise, and on the activation and
+    password-reset pages a second login form beside them was actively confusing.
+    {% endcomment %}
+    <a class="btn btn-quiet" href="{% url 'vald:index' %}#login">Log in</a>
     {% endif %}
 </header>
 
@@ -84,27 +92,6 @@ stays a POST: it changes server state.
         </ul>
         {% endif %}
 
-        {% if not user_email %}
-        <div class="card login-card">
-            <form class="card-body" method="post" action="{% url 'vald:login' %}" name="regform">
-                {% csrf_token %}
-                <h3>Log in</h3>
-                <div class="loginfields">
-                    <label class="stacked" for="login_user">Email address
-                        <input type="text" id="login_user" name="user" value="" autocomplete="username">
-                    </label>
-                    <label class="stacked" for="login_password">Password
-                        <input type="password" id="login_password" name="password" value="" autocomplete="current-password">
-                    </label>
-                </div>
-                <p class="hint">No password yet? Leave it blank to set one up.</p>
-                <div class="btn-row">
-                    <button type="submit" class="btn-primary">Log in</button>
-                    <a class="hint" href="{% url 'vald:request_password_reset' %}">Forgotten your password?</a>
-                </div>
-            </form>
-        </div>
-        {% endif %}
 
         <div class="site-content {% block content_class %}plain{% endblock %}">
             {% block content %}{% endblock %}
