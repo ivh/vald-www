@@ -1,26 +1,55 @@
 {% extends "vald/base.html" %}
 
+{% block content_class %}{% endblock %}
+
 {% block content %}
-<h3>Linelist configuration: {{ config.name }}</h3>
+<div class="pagehead">
+  <div class="pagehead-titles">
+    <h1>{{ config.name }}</h1>
+    <span class="pagesub">{{ linelists|length }} linelist{{ linelists|pluralize }},
+      {{ enabled_count }} active. Shown read-only.</span>
+  </div>
+</div>
 
-{% if config.description %}<p><i>{{ config.description }}</i>{% endif %}
+{% if config.description %}
+<div class="callout callout-info" style="margin-bottom: 20px;">{{ config.description }}</div>
+{% endif %}
 
-<p>{{ linelists|length }} linelist{{ linelists|pluralize }}, {{ enabled_count }}
-active. This is one of the configurations offered on the request forms; it is shown
-read-only. To change linelist settings for your own requests, use the
+<p style="margin-bottom: 20px;">This is one of the configurations offered on the
+request forms. To change linelist settings for your own requests, use the
 <a href="{% url 'vald:persconf' %}">personal configuration</a> page, which starts
-from a copy of one of these.
+from a copy of one of these.</p>
 
-<table border=1 cellpadding=3>
-<tr align=center>
-<th>ID<th>Active<th>Name<th>WL<th>gf<th>rad<th>stark<th>waals<th>lande<th>term<th>vdw<th>zeeman
-
-{% for linelist in linelists %}
-<tr align=center>
-<td align="right">{{ linelist.id }}</td>
-<td>{% if linelist.is_enabled %}yes{% else %}no{% endif %}</td>
-<td align="left">{{ linelist.name }}</td>
-{% for rank in linelist.ranks %}<td>{{ rank }}</td>{% endfor %}
-{% endfor %}
-</table>
+<div class="card">
+  <div class="tablescroll">
+  <table class="datatable configtable">
+    <thead>
+      <tr>
+        <th scope="col">ID</th>
+        <th scope="col">Active</th>
+        <th scope="col">Name</th>
+        <th scope="col">WL</th>
+        <th scope="col">gf</th>
+        <th scope="col">rad</th>
+        <th scope="col">stark</th>
+        <th scope="col">waals</th>
+        <th scope="col">lande</th>
+        <th scope="col">term</th>
+        <th scope="col">vdw</th>
+        <th scope="col">zeeman</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for linelist in linelists %}
+      <tr>
+        <td class="num">{{ linelist.id }}</td>
+        <td>{% if linelist.is_enabled %}yes{% else %}<span class="faint">no</span>{% endif %}</td>
+        <td>{{ linelist.name }}</td>
+        {% for rank in linelist.ranks %}<td>{{ rank }}</td>{% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
 {% endblock %}

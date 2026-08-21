@@ -614,8 +614,34 @@ input[type="button"]:hover {
   border-left: 4px solid var(--trunc-edge);
   background: var(--trunc-bg);
 }
-.modified_data { background-color: #ff5555; }
+/* A value the user has changed from the configuration they copied. Black on
+   #ff5555 passed contrast but shouted; the error tint is the palette's red and
+   reads at 8.25:1. The page still calls it red. */
+.modified_data {
+  background-color: var(--err-bg);
+  color: var(--err-ink);
+  font-weight: 500;
+}
 .new_data { background-color: var(--trunc-edge); }
+
+/* 13 columns of mostly single digits: tighten the cells so the table fits
+   without scrolling on a normal window, and keep the numbers monospaced so the
+   rank columns line up. */
+.configtable th,
+.configtable td { padding: 7px 10px; }
+.configtable td { font-family: var(--mono); font-size: 13px; }
+.configtable td:nth-child(3) { font-family: var(--sans); font-size: 14px; }
+.configtable .num { text-align: right; }
+.configtable input[type="text"] {
+  width: 42px;
+  height: 28px;
+  padding: 2px 6px;
+  font-family: var(--mono);
+  text-align: center;
+}
+.configtable .rowactions { white-space: nowrap; }
+.configtable .rowactions form { display: inline; }
+.configtable .rowactions button { padding: 4px 10px; font-size: 13px; }
 
 /* Per-request unit selection: a collapsed one-line header above the form,
    opening into a row of the five groups. */

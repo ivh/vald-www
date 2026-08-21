@@ -1,140 +1,173 @@
 {% extends "vald/base.html" %}
 {% load vald_extras %}
 
+{% block content_class %}{% endblock %}
+
 {% block content %}
-<h3>Personal linelist configuration</h3>
-
-<p>This page allows you to customize which linelists are used in your requests, and to modify the rank parameters for individual linelists.
-
-<p><b>Note:</b> Modified parameters are highlighted in <span class="modified_data">red</span>.
+<div class="pagehead">
+  <div class="pagehead-titles">
+    <h1>Linelist configuration</h1>
+    <span class="pagesub">Which linelists your requests use, and the rank
+      parameters for each. Modified values are marked in red.</span>
+  </div>
+</div>
 
 {% comment %}
 Which of the two states the user is in, and what it costs them. A snapshot whose
 age is invisible is the trap this page used to set.
 {% endcomment %}
-<div class="config-state">
+<div class="config-state{% if added_since %} config-state-warning{% endif %}">
 {% if is_personal %}
   <p><b>You have a personal configuration</b>, created {{ snapshot_date|date:"j F Y" }}.
   It is a copy of <b>{{ snapshot_of.name }}</b>{% if snapshot_of.is_default %}, the
   VALD default,{% endif %} as it was on that date, plus your changes, and it does
-  <b>not</b> change when {{ snapshot_of.name }} is updated.
+  <b>not</b> change when {{ snapshot_of.name }} is updated.</p>
 
   {% if added_since %}
-  <p class="config-state-warning"><b>{{ added_since|length }} linelist{{ added_since|pluralize }}
+  <p><b>{{ added_since|length }} linelist{{ added_since|pluralize }}
   ha{{ added_since|pluralize:"s,ve" }} been added to {{ snapshot_of.name }} since
-  then</b>,
-  and {{ added_since|pluralize:"is,are" }} not included in your configuration:
+  then</b>, and {{ added_since|pluralize:"is,are" }} not included in your
+  configuration:</p>
   <ul>
     {% for linelist in added_since %}<li>{{ linelist.name }}</li>{% endfor %}
   </ul>
-  Remove your personal configuration to use them, or take a fresh copy below
-  (which discards your changes).
+  <p>Remove your personal configuration to use them, or take a fresh copy below
+  (which discards your changes).</p>
   {% endif %}
 {% else %}
   <p><b>You are using the VALD default configuration.</b> Your requests
   automatically include any linelists added in future VALD releases. Editing any
   linelist below creates a personal configuration, which is a copy of the VALD
-  default as it is today and will not change when the default is updated.
+  default as it is today and will not change when the default is updated.</p>
 {% endif %}
 </div>
 
-{% if is_personal %}
-<p>
-<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;">
-{% csrf_token %}
-<input type="hidden" name="action" value="remove">
-<input type="submit" value="Remove personal configuration"
-       onclick="return confirm('This deletes your personal configuration and all the changes in it. Your requests will use the VALD default and follow future updates to it. Are you sure?');">
-</form>
+<div class="card" style="margin-bottom: 20px;">
+  <div class="card-body btn-row">
+  {% if is_personal %}
+    <form method="post" action="{% url 'vald:persconf' %}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="remove">
+      <button type="submit"
+              onclick="return confirm('This deletes your personal configuration and all the changes in it. Your requests will use the VALD default and follow future updates to it. Are you sure?');">Remove personal configuration</button>
+    </form>
 
-<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;"
-      name="resnapform" onsubmit="return confirmResnap(this);">
-{% csrf_token %}
-<input type="hidden" name="action" value="set_to_current_default">
-Replace it with a fresh copy of:
-{% include "vald/_configsource.html" %}
-<input type="submit" value="Take a fresh copy">
-</form>
-{% else %}
-<p>
-<form method="post" action="{% url 'vald:persconf' %}" style="display:inline;"
-      name="resnapform" onsubmit="return confirmResnap(this);">
-{% csrf_token %}
-<input type="hidden" name="action" value="set_to_current_default">
-Create a personal configuration from a copy of:
-{% include "vald/_configsource.html" %}
-<input type="submit" value="Create it">
-</form>
-{% endif %}
-
-<form name="thisform" method="post" action="{% url 'vald:persconf' %}">
-{% csrf_token %}
-<input type="hidden" name="action" value="">
-<input type="hidden" name="editid" value="">
-
-<table border=1 cellpadding=3>
-<tr align=center>
-<th>ID<th>Active<th>Name<th>WL<th>gf<th>rad<th>stark<th>waals<th>lande<th>term<th>vdw<th>zeeman<th colspan=3>Options
-
-{% for linelist in linelists %}
-{% if editid == linelist.id %}
-  {# Editable row #}
-  <tr align=center>
-  <td align="right">{{ linelist.id }}</td>
-  <td{% if linelist.mod_comment %} class="modified_data"{% endif %}>
-    <input type=checkbox {% if linelist.is_enabled %}checked{% endif %} name="linelist-checked">
-  </td>
-  <td align="left">{{ linelist.name }}</td>
-
-  {# Editable rank parameters 0-8 #}
-  <td{% if linelist|get_mod_flag:0 %} class="modified_data"{% endif %}><input type="text" name="edit-val-0" value="{{ linelist|get_param:0 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:1 %} class="modified_data"{% endif %}><input type="text" name="edit-val-1" value="{{ linelist|get_param:1 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:2 %} class="modified_data"{% endif %}><input type="text" name="edit-val-2" value="{{ linelist|get_param:2 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:3 %} class="modified_data"{% endif %}><input type="text" name="edit-val-3" value="{{ linelist|get_param:3 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:4 %} class="modified_data"{% endif %}><input type="text" name="edit-val-4" value="{{ linelist|get_param:4 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:5 %} class="modified_data"{% endif %}><input type="text" name="edit-val-5" value="{{ linelist|get_param:5 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:6 %} class="modified_data"{% endif %}><input type="text" name="edit-val-6" value="{{ linelist|get_param:6 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:7 %} class="modified_data"{% endif %}><input type="text" name="edit-val-7" value="{{ linelist|get_param:7 }}" size=2></td>
-  <td{% if linelist|get_mod_flag:8 %} class="modified_data"{% endif %}><input type="text" name="edit-val-8" value="{{ linelist|get_param:8 }}" size=2></td>
-
-  <td><a href="javascript:void();" onClick="thisform.action.value='save'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Save</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='cancel'; thisform.editid.value='{{ linelist.id }}';thisform.submit(); return false;">Cancel</a></td>
-  <td><a href="javascript:void();" onClick="thisform.action.value='restore'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;" title="Restore this linelist's values from {{ snapshot_of.name|default:'the VALD default' }}">Restore</a></td>
-
-{% else %}
-  {# Read-only row #}
-  <tr align=center>
-  <td align="right">{{ linelist.id }}</td>
-  <td{% if linelist.mod_comment %} class="modified_data"{% endif %}>
-    {% if linelist.is_enabled %} X {% else %} &nbsp; {% endif %}
-  </td>
-  <td align="left">{{ linelist.name }}</td>
-
-  {# Display rank parameters 0-8 #}
-  <td{% if linelist|get_mod_flag:0 %} class="modified_data"{% endif %}>{{ linelist|get_param:0 }}</td>
-  <td{% if linelist|get_mod_flag:1 %} class="modified_data"{% endif %}>{{ linelist|get_param:1 }}</td>
-  <td{% if linelist|get_mod_flag:2 %} class="modified_data"{% endif %}>{{ linelist|get_param:2 }}</td>
-  <td{% if linelist|get_mod_flag:3 %} class="modified_data"{% endif %}>{{ linelist|get_param:3 }}</td>
-  <td{% if linelist|get_mod_flag:4 %} class="modified_data"{% endif %}>{{ linelist|get_param:4 }}</td>
-  <td{% if linelist|get_mod_flag:5 %} class="modified_data"{% endif %}>{{ linelist|get_param:5 }}</td>
-  <td{% if linelist|get_mod_flag:6 %} class="modified_data"{% endif %}>{{ linelist|get_param:6 }}</td>
-  <td{% if linelist|get_mod_flag:7 %} class="modified_data"{% endif %}>{{ linelist|get_param:7 }}</td>
-  <td{% if linelist|get_mod_flag:8 %} class="modified_data"{% endif %}>{{ linelist|get_param:8 }}</td>
-
-  {% if editid %}
-    {# When editing another linelist, no options #}
-    <td colspan=3> &nbsp;<br></td>
+    <form method="post" action="{% url 'vald:persconf' %}" name="resnapform"
+          onsubmit="return confirmResnap(this);" class="btn-row">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="set_to_current_default">
+      <label class="stacked" style="flex-direction: row; align-items: center; gap: 10px;">
+        Replace it with a fresh copy of
+        {% include "vald/_configsource.html" %}
+      </label>
+      <button type="submit">Take a fresh copy</button>
+    </form>
   {% else %}
-    {# When browsing, show edit option #}
-    <td><a href="javascript:void();" onClick="thisform.action.value='edit'; thisform.editid.value='{{ linelist.id }}'; thisform.submit(); return false;">Edit</a></td>
-    <td colspan=2>&nbsp;</td>
+    <form method="post" action="{% url 'vald:persconf' %}" name="resnapform"
+          onsubmit="return confirmResnap(this);" class="btn-row">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="set_to_current_default">
+      <label class="stacked" style="flex-direction: row; align-items: center; gap: 10px;">
+        Create a personal configuration from a copy of
+        {% include "vald/_configsource.html" %}
+      </label>
+      <button type="submit">Create it</button>
+    </form>
   {% endif %}
-{% endif %}
-</tr>
-{% endfor %}
+  </div>
+</div>
 
-</table>
+{% comment %}
+The edited row's inputs live in cells spread across the table, so they cannot be
+wrapped in a form of their own. They reference this one by id instead, which is
+what the form attribute is for - and it means Save, Cancel and Restore can be
+real submit buttons carrying action=... rather than the javascript: links they
+used to be, which needed JS and announced themselves as links.
+
+The POST fields are unchanged: action from the button, editid from here.
+{% endcomment %}
+{% if editid %}
+<form id="editrow" method="post" action="{% url 'vald:persconf' %}">
+  {% csrf_token %}
+  <input type="hidden" name="editid" value="{{ editid }}">
 </form>
+{% endif %}
 
-<p><a href="{% url 'vald:index' %}">Return to main page</a>
+<div class="card">
+  <div class="tablescroll">
+  <table class="datatable configtable">
+    <thead>
+      <tr>
+        <th scope="col">ID</th>
+        <th scope="col">Active</th>
+        <th scope="col">Name</th>
+        <th scope="col">WL</th>
+        <th scope="col">gf</th>
+        <th scope="col">rad</th>
+        <th scope="col">stark</th>
+        <th scope="col">waals</th>
+        <th scope="col">lande</th>
+        <th scope="col">term</th>
+        <th scope="col">vdw</th>
+        <th scope="col">zeeman</th>
+        <th scope="col">Options</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for linelist in linelists %}
+      {% if editid == linelist.id %}
+      <tr>
+        <td class="num">{{ linelist.id }}</td>
+        <td{% if linelist.mod_comment %} class="modified_data"{% endif %}>
+          <input type="checkbox" form="editrow" name="linelist-checked"
+                 aria-label="Include {{ linelist.name }}"
+                 {% if linelist.is_enabled %}checked{% endif %}>
+        </td>
+        <td>{{ linelist.name }}</td>
+        <td{% if linelist|get_mod_flag:0 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-0" size="2" aria-label="WL rank for {{ linelist.name }}" value="{{ linelist|get_param:0 }}"></td>
+        <td{% if linelist|get_mod_flag:1 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-1" size="2" aria-label="gf rank for {{ linelist.name }}" value="{{ linelist|get_param:1 }}"></td>
+        <td{% if linelist|get_mod_flag:2 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-2" size="2" aria-label="rad rank for {{ linelist.name }}" value="{{ linelist|get_param:2 }}"></td>
+        <td{% if linelist|get_mod_flag:3 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-3" size="2" aria-label="stark rank for {{ linelist.name }}" value="{{ linelist|get_param:3 }}"></td>
+        <td{% if linelist|get_mod_flag:4 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-4" size="2" aria-label="waals rank for {{ linelist.name }}" value="{{ linelist|get_param:4 }}"></td>
+        <td{% if linelist|get_mod_flag:5 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-5" size="2" aria-label="lande rank for {{ linelist.name }}" value="{{ linelist|get_param:5 }}"></td>
+        <td{% if linelist|get_mod_flag:6 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-6" size="2" aria-label="term rank for {{ linelist.name }}" value="{{ linelist|get_param:6 }}"></td>
+        <td{% if linelist|get_mod_flag:7 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-7" size="2" aria-label="vdw rank for {{ linelist.name }}" value="{{ linelist|get_param:7 }}"></td>
+        <td{% if linelist|get_mod_flag:8 %} class="modified_data"{% endif %}><input type="text" form="editrow" name="edit-val-8" size="2" aria-label="zeeman rank for {{ linelist.name }}" value="{{ linelist|get_param:8 }}"></td>
+        <td class="rowactions">
+          <button type="submit" form="editrow" name="action" value="save" class="btn-primary">Save</button>
+          <button type="submit" form="editrow" name="action" value="cancel">Cancel</button>
+          <button type="submit" form="editrow" name="action" value="restore"
+                  title="Restore this linelist's values from {{ snapshot_of.name|default:'the VALD default' }}">Restore</button>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td class="num">{{ linelist.id }}</td>
+        <td{% if linelist.mod_comment %} class="modified_data"{% endif %}>{% if linelist.is_enabled %}yes{% else %}<span class="faint">no</span>{% endif %}</td>
+        <td>{{ linelist.name }}</td>
+        <td{% if linelist|get_mod_flag:0 %} class="modified_data"{% endif %}>{{ linelist|get_param:0 }}</td>
+        <td{% if linelist|get_mod_flag:1 %} class="modified_data"{% endif %}>{{ linelist|get_param:1 }}</td>
+        <td{% if linelist|get_mod_flag:2 %} class="modified_data"{% endif %}>{{ linelist|get_param:2 }}</td>
+        <td{% if linelist|get_mod_flag:3 %} class="modified_data"{% endif %}>{{ linelist|get_param:3 }}</td>
+        <td{% if linelist|get_mod_flag:4 %} class="modified_data"{% endif %}>{{ linelist|get_param:4 }}</td>
+        <td{% if linelist|get_mod_flag:5 %} class="modified_data"{% endif %}>{{ linelist|get_param:5 }}</td>
+        <td{% if linelist|get_mod_flag:6 %} class="modified_data"{% endif %}>{{ linelist|get_param:6 }}</td>
+        <td{% if linelist|get_mod_flag:7 %} class="modified_data"{% endif %}>{{ linelist|get_param:7 }}</td>
+        <td{% if linelist|get_mod_flag:8 %} class="modified_data"{% endif %}>{{ linelist|get_param:8 }}</td>
+        <td class="rowactions">
+          {% if not editid %}
+          <form method="post" action="{% url 'vald:persconf' %}">
+            {% csrf_token %}
+            <input type="hidden" name="editid" value="{{ linelist.id }}">
+            <button type="submit" name="action" value="edit" class="btn-quiet">Edit</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
 {% endblock %}
