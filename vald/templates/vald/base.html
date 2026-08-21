@@ -1,96 +1,117 @@
-{% load static %}<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+{% load static %}<!DOCTYPE html>
+<html lang="en">
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{{ sitename }}{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'style.css' %}">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-<table border="0" cellspacing="0" cellpadding="5px" width="100%">
-<tr>
-<td class="version" valign="top">
-    <h3>Server: {{ sitename }}</h3>
-</td>
-<td class="topframe">
-    {% block topframe %}
+
+<header class="site-header">
+    <a class="masthead" href="{% url 'vald:index' %}">
+        <img src="{% static 'VALD3_logo.png' %}" alt="VALD3">
+    </a>
+    <div class="server-id">
+        <span class="eyebrow">Server</span>
+        <span class="mono">{{ sitename }}</span>
+    </div>
+    <div class="header-spacer"></div>
     {% if user_email %}
-    <h2>Welcome to VALD3</h2>
-    <table border="0" cellspacing="0" cellpadding="0">
-      <tr><td>Logged in as:  &nbsp; <td><em>{{ user_name }}</em><br>
-      <tr><td>Email address:    &nbsp; <td><em>{{ user_email }}</em> <br>
-    </table>
-
-    <br><p><form action="{% url 'vald:index' %}" method="post" name="topform">
-      {% csrf_token %}
-      <input type="hidden" name="page" value="none">
-
-      <table border="0" cellspacing="1" cellpadding="0">
-
-        <tr><td><input type="button" value="Show Line" onClick="page.value='showline'; submit();">
-            <td><input type="button" value="Extract All" onClick="page.value='extractall'; submit();">
-            <td><input type="button" value="Extract Element" onClick="page.value='extractelement'; submit();">
-            <td><input type="button" value="Extract Stellar" onClick="page.value='extractstellar'; submit();">
-            <td width=30px>&nbsp;</td>
-            <td><a href="{% url 'vald:my_requests' %}"><input type="button" value="My Requests"></a>
-            <td><a href="{% url 'vald:account' %}"><input type="button" value="Account"></a>
-            <td><a href="{% url 'vald:unitselection' %}"><input type="button" value="Units"></a>
-            <td><a href="{% url 'vald:persconf' %}"><input type="button" value="Configuration"></a>
-            <td><input type="button" value="Logout" onClick="page.value='logout'; submit();">
-
-      </table>
-
-    </form>
-    {% else %}
-    <h2>Welcome to VALD3</h2>
-    <form name="regform" method="post" action="{% url 'vald:login' %}">
-      {% csrf_token %}
-      <table border="0" cellspacing="0" cellpadding="0">
-        <tr><td nowrap>Email address :
-            <td nowrap>
-        <tr><td><input type="text" name="user" value="" size=45>
-        <tr><td>Password :
-            <td nowrap>
-        <tr><td><input type="password" name="password" value="" size=45>
-        <tr><td colspan=2><i>(No password yet? Leave it blank to set up.)</i>
-        <tr><td><br><input type="submit" value="Login">
-      </table>
-    </form>
+    <div class="whoami">
+        <div class="whoami-who">
+            <span class="whoami-name">{{ user_name }}</span>
+            <span class="whoami-mail">{{ user_email }}</span>
+        </div>
+    </div>
     {% endif %}
-    {% endblock %}
-</td>
-</tr>
+</header>
 
-<tr>
-<td class="navigate">
-    <table class="navigate" width="100%" border="0" cellspacing="0" cellpadding="0">
-      <tr><td height="10px"> </td></tr>
-      <tr><td height="10px"><b>Info</b> </td></tr>
-      <tr><td height="10px"> </td></tr>
-      <tr><td class="navigateitem"> <a href="{% url 'vald:documentation' 'contact.html' %}">&nbsp; Registration & Contact</a> </td></tr>
-      <tr><td class="navigateitem"> <a href="{% url 'vald:documentation' 'about_vald.html' %}">&nbsp; About VALD       </a> </td></tr>
-      <tr><td class="navigateitem"> <a href="http://www.astro.uu.se/valdwiki">&nbsp; Documentation    </a> </td></tr>
-      <tr><td class="navigateitem"> <a href="{% url 'vald:news_all' %}">&nbsp; News </a> </td></tr>
-      <tr><td height="10px"> </td></tr>
-      <tr><td height="10px"><b>VALD3 Mirror Servers</b> </td></tr>
-      <tr><td height="10px"> </td></tr>
-      <tr><td class="navigateitem"> <a href="http://vald.astro.uu.se/~vald/php/vald.php">&nbsp; VALD3 Mirror Uppsala </a> </td></tr>
-      <tr><td class="navigateitem"> <a href="http://vald.oreme.org/~vald/php/vald.php">&nbsp; VALD3 Mirror Montpellier </a> </td></tr>
-      <tr><td class="navigateitem"> <a href="http://vald.inasan.ru/~vald3/php/vald.php">&nbsp; VALD3 Mirror Moscow </a> </td></tr>
-      <tr><td height="10px"> </td></tr>
-    </table>
-</td>
-<td class="content">
-    {% if messages %}
-    <ul class="messages">
-        {% for message in messages %}
-        <li class="{{ message.tags }}">{% if 'safe' in message.tags %}{{ message|safe }}{% else %}{{ message }}{% endif %}</li>
-        {% endfor %}
-    </ul>
-    {% endif %}
-    {% block content %}
-    {% endblock %}
-</td>
-</tr>
-</table>
+{% if user_email %}
+{% comment %}
+The request types used to be buttons in a POST form that set a hidden "page"
+field from JavaScript. They have real GET URLs, so they are links now - which
+means they can be bookmarked, opened in a new tab, and work without JS. Logout
+stays a POST: it changes server state.
+{% endcomment %}
+<nav class="site-nav">
+    {% with cur=request.resolver_match.url_name %}
+    <a href="{% url 'vald:showline' %}"{% if cur == 'showline' or cur == 'showline_online' %} aria-current="page"{% endif %}>Show Line</a>
+    <a href="{% url 'vald:extractall' %}"{% if cur == 'extractall' %} aria-current="page"{% endif %}>Extract All</a>
+    <a href="{% url 'vald:extractelement' %}"{% if cur == 'extractelement' %} aria-current="page"{% endif %}>Extract Element</a>
+    <a href="{% url 'vald:extractstellar' %}"{% if cur == 'extractstellar' %} aria-current="page"{% endif %}>Extract Stellar</a>
+    <span class="navgap"></span>
+    <a href="{% url 'vald:my_requests' %}"{% if cur == 'my_requests' or cur == 'request_detail' %} aria-current="page"{% endif %}>My Requests</a>
+    <a href="{% url 'vald:account' %}"{% if cur == 'account' %} aria-current="page"{% endif %}>Account</a>
+    <a href="{% url 'vald:unitselection' %}"{% if cur == 'unitselection' or cur == 'save_units' %} aria-current="page"{% endif %}>Units</a>
+    <a href="{% url 'vald:persconf' %}"{% if cur == 'persconf' or cur == 'system_config' %} aria-current="page"{% endif %}>Configuration</a>
+    {% endwith %}
+    <span class="navgap"></span>
+    <form action="{% url 'vald:index' %}" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="page" value="logout">
+        <button type="submit">Log out</button>
+    </form>
+</nav>
+{% endif %}
+
+<div class="site-body">
+
+    <aside class="site-sidebar">
+        <div class="side-group">
+            <span class="eyebrow">Info</span>
+            <a href="{% url 'vald:documentation' 'contact.html' %}">Registration &amp; Contact</a>
+            <a href="{% url 'vald:documentation' 'about_vald.html' %}">About VALD</a>
+            <a href="http://www.astro.uu.se/valdwiki">Documentation</a>
+            <a href="{% url 'vald:news_all' %}">News</a>
+        </div>
+        <div class="side-group">
+            <span class="eyebrow">VALD3 mirror servers</span>
+            <a href="http://vald.astro.uu.se/~vald/php/vald.php">Uppsala</a>
+            <a href="http://vald.oreme.org/~vald/php/vald.php">Montpellier</a>
+            <a href="http://vald.inasan.ru/~vald3/php/vald.php">Moscow</a>
+        </div>
+    </aside>
+
+    <div class="site-main">
+
+        {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+            <li class="{{ message.tags }}">{% if 'safe' in message.tags %}{{ message|safe }}{% else %}{{ message }}{% endif %}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if not user_email %}
+        <div class="card login-card">
+            <form class="card-body" method="post" action="{% url 'vald:login' %}" name="regform">
+                {% csrf_token %}
+                <h3>Log in</h3>
+                <div class="loginfields">
+                    <label class="stacked" for="login_user">Email address
+                        <input type="text" id="login_user" name="user" value="" autocomplete="username">
+                    </label>
+                    <label class="stacked" for="login_password">Password
+                        <input type="password" id="login_password" name="password" value="" autocomplete="current-password">
+                    </label>
+                </div>
+                <p class="hint">No password yet? Leave it blank to set one up.</p>
+                <div class="btn-row">
+                    <button type="submit" class="btn-primary">Log in</button>
+                    <a class="hint" href="{% url 'vald:request_password_reset' %}">Forgotten your password?</a>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+
+        <div class="site-content {% block content_class %}plain{% endblock %}">
+            {% block content %}{% endblock %}
+        </div>
+
+    </div>
+</div>
+
 </body>
 </html>

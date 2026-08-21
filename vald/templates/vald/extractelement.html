@@ -1,53 +1,32 @@
 {% extends "vald/base.html" %}
 
+{% block content_class %}{% endblock %}
+
 {% block content %}
+<div class="pagehead">
+  <div class="pagehead-titles">
+    <h1>Extract Element</h1>
+    <span class="pagesub">One element and ionization stage within a spectral interval.</span>
+  </div>
+</div>
+
 <form name="bottomform" method="post" action="{% url 'vald:submit_request' %}">
 {% csrf_token %}
-<hr><h3>Extract Element</h3><hr>
 
 {% include "vald/_unitfields.html" %}
 
-<table border=0 cellpadding=0 width=100% class="requestform">
-<colgroup><col width="265"><col></colgroup>
-
-<p><tr><td>Starting <span class="wavelabel1">wavelength</span> :
-<td>{{ form.stwvl }} <span class="wavelabel2">&Aring;</span>
-
-<tr><td>Ending <span class="wavelabel1">wavelength</span> :
-<td>{{ form.endwvl }} <span class="wavelabel2">&Aring;</span>
-
-<tr><td>Element [ + ionization ] : <td>{{ form.elmion }}
-
-<tr><td>Extraction format : <td>
-{% for radio in form.format %}<div>{{ radio }}</div>{% endfor %}
-
-<tr><td>Retrieve data via
-<td>{% for radio in form.viaftp %}<div>{{ radio }}</div>{% endfor %}
-<tr><td colspan=2><hr>
-<tr><td>Hyperfine structure<td>{{ form.hfssplit }} Include HFS splitting
-<tr><td colspan=2><hr>
-<tr><td>Require lines to have a known value of : <td>
-{{ form.hrad }} Radiative damping constant
-
-<tr><td><td>{{ form.hstark }} Stark damping constant
-
-<tr><td><td>{{ form.hwaals }} Van der Waals damping constant
-
-<tr><td><td>{{ form.hlande }} Land&eacute; factor
-
-<tr><td><td>{{ form.hterm }} Term designation
-
-<tr><td colspan=2><hr>
-<tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td>{% include "vald/_pconf.html" %}
-
-<tr><td colspan=2><hr>
-<tr><td>Optional comment for request<td>{{ form.subject }}
-</table>
-
-<hr>
-<input type="hidden" name="reqtype" value="extractelement">
-<input type="submit" value="Submit request">
+<div class="card requestcard">
+  {% include "vald/_wavelengthrange.html" %}
+  <div class="formrow">
+    <div class="formlabel">Element [ + ionization ]</div>
+    <div class="formfield">{{ form.elmion }}</div>
+  </div>
+  {% include "vald/_extracttail.html" %}
+  <div class="card-foot">
+    <input type="hidden" name="reqtype" value="extractelement">
+    <button type="submit" class="btn-primary">Submit request</button>
+  </div>
+</div>
 
 </form>
 {% endblock %}

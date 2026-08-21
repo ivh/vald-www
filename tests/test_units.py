@@ -230,11 +230,18 @@ def test_the_wavelength_labels_are_updatable(logged_in_client, page):
 
 @pytest.mark.django_db
 def test_stellar_help_text_does_not_share_a_row_with_the_units(logged_in_client):
-    """The units panel took the third column the chemcomp help used to sit in."""
+    """The units panel took the third column the chemcomp help used to sit in.
+
+    The rows are a grid rather than a table now, and the help text comes from the
+    field's own help_text rather than being spelled out again in the template -
+    so what this checks is that it still falls between the chemcomp box and the
+    start of the next row, which is what "under the box" means here.
+    """
     body = logged_in_client.get('/extractstellar/').content.decode()
     start = body.index('id="id_chemcomp"')
-    cell = body[start:body.index('<tr', start)]
-    assert 'For example' in cell, 'help text no longer sits under the chemcomp box'
+    cell = body[start:body.index('class="formrow"', start)]
+    assert 'solar values are used for anything omitted' in cell, \
+        'help text no longer sits under the chemcomp box'
 
 
 # --- "also save as my defaults" --------------------------------------------

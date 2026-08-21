@@ -1,58 +1,53 @@
 {% extends "vald/base.html" %}
 
+{% block content_class %}{% endblock %}
+
 {% block content %}
+<div class="pagehead">
+  <div class="pagehead-titles">
+    <h1>Extract Stellar</h1>
+    <span class="pagesub">Lines above a detection threshold for a model atmosphere.</span>
+  </div>
+</div>
+
 <form name="bottomform" method="post" action="{% url 'vald:submit_request' %}">
 {% csrf_token %}
-<hr><h3>Extract Stellar</h3><hr>
 
 {% include "vald/_unitfields.html" %}
 
-<table border=0 cellpadding=0 width=100% class="requestform">
-<colgroup><col width="265"><col></colgroup>
+<div class="card requestcard">
+  {% include "vald/_wavelengthrange.html" %}
 
-<p><tr><td>Starting <span class="wavelabel1">wavelength</span> :
-<td>{{ form.stwvl }} <span class="wavelabel2">&Aring;</span>
+  <div class="formrow">
+    <div class="formlabel">Detection threshold</div>
+    <div class="formfield">{{ form.dlimit }} <span class="unit">fraction, in the range 0&ndash;1</span></div>
+  </div>
+  <div class="formrow">
+    <div class="formlabel">Microturbulence</div>
+    <div class="formfield">{{ form.micturb }} <span class="unit">{{ form.micturb.help_text }}</span></div>
+  </div>
+  <div class="formrow">
+    <div class="formlabel">Effective temperature</div>
+    <div class="formfield">{{ form.teff }} <span class="unit">{{ form.teff.help_text }}</span></div>
+  </div>
+  <div class="formrow">
+    <div class="formlabel">Surface gravity</div>
+    <div class="formfield">{{ form.logg }} <span class="unit">{{ form.logg.help_text }}</span></div>
+  </div>
+  <div class="formrow top">
+    <div class="formlabel">Chemical composition</div>
+    <div class="formfield stack">
+      {{ form.chemcomp }}
+      <span class="hint">{{ form.chemcomp.help_text }}</span>
+    </div>
+  </div>
 
-<tr><td>Ending <span class="wavelabel1">wavelength</span> :
-<td>{{ form.endwvl }} <span class="wavelabel2">&Aring;</span>
-<tr><td>Detection threshold : <td>{{ form.dlimit }} (fraction, in the range 0-1)
-
-<tr><td>Microturbulence :
-<td>{{ form.micturb }}  km/sec
-
-<tr><td>Teff :
-<td>{{ form.teff }}  K
-
-<tr><td>log g :
-<td>{{ form.logg }}  g in cgs units
-<tr valign=top><td>Chemical composition : <td>{{ form.chemcomp }}<br>For example : Sr: -4.67, Cr: -3.37. You can also set metallicity: M/H: -0.5
-
-<tr><td>Extraction format :
-<td>{% for radio in form.format %}<div>{{ radio }}</div>{% endfor %}
-
-<tr><td>Retrieve data via
-<td>{% for radio in form.viaftp %}<div>{{ radio }}</div>{% endfor %}
-<tr><td colspan=2><hr>
-<tr><td>Hyperfine structure<td>{{ form.hfssplit }} Include HFS splitting
-<tr><td colspan=2><hr>
-<tr><td>Require lines to have a known value of : <td>
-{{ form.hrad }} Radiative damping constant
-<tr><td><td>{{ form.hstark }} Stark damping constant
-<tr><td><td>{{ form.hwaals }} Van der Waals damping constant
-<tr><td><td>{{ form.hlande }} Land&eacute; factor
-<tr><td><td>{{ form.hterm }} Term designation
-
-<tr><td colspan=2><hr>
-<tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td>{% include "vald/_pconf.html" %}
-
-<tr><td colspan=2><hr>
-<tr><td>Optional comment for request<td>{{ form.subject }}
-</table>
-
-<hr>
-<input type="hidden" name="reqtype" value="extractstellar">
-<input type="submit" value="Submit request">
+  {% include "vald/_extracttail.html" %}
+  <div class="card-foot">
+    <input type="hidden" name="reqtype" value="extractstellar">
+    <button type="submit" class="btn-primary">Submit request</button>
+  </div>
+</div>
 
 </form>
 {% endblock %}

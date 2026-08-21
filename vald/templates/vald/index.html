@@ -6,20 +6,20 @@
 Shown to logged-out visitors only: returning users arriving from the old
 interface need to know why they are being asked to activate.
 {% endcomment %}
-<p style="border: 1px solid #888; background: #f6f6f0; padding: 10px; margin-bottom: 1em;">
-    <b>Welcome to the new VALD interface.</b>
-    If you used VALD before, your account is already here &mdash; just enter 
+<div class="callout callout-info" style="margin-bottom: 20px;">
+    <div class="callout-title">Welcome to the new VALD interface.</div>
+    <div>If you used VALD before, your account is already here &mdash; just enter
     your registered email address and follow the one-time activation link we send
-    you, to set a password; then log in. 
+    you, to set a password; then log in.
     It only takes a minute to activate your account which will give you saved unit
     preferences, your own linelist configuration, and a history of your requests.
-    See <a href="{% url 'vald:news_all' %}">News</a> for details.
-</p>
+    See <a href="{% url 'vald:news_all' %}">News</a> for details.</div>
+</div>
 {% endif %}
 {% if content_html %}
 {{ content_html|safe }}
 {% else %}
 <h3>About VALD</h3>
-<p>Welcome to the VALD (Vienna Atomic Line Database) web interface.
+<p>Welcome to the VALD (Vienna Atomic Line Database) web interface.</p>
 {% endif %}
 {% endblock %}

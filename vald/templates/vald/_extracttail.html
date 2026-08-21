@@ -1,0 +1,51 @@
+{% comment %}
+Everything the three extract forms have in common below their own fields:
+output format, delivery, the line requirements, the linelist configuration and
+the comment. One copy, so the three forms cannot drift apart.
+{% endcomment %}
+<div class="formrow">
+  <div class="formlabel">Extraction format</div>
+  <div class="formfield">
+    <div class="radioset">{% for radio in form.format %}{{ radio }}{% endfor %}</div>
+  </div>
+</div>
+<div class="formrow">
+  <div class="formlabel">Retrieve data via</div>
+  <div class="formfield">
+    <div class="radioset">{% for radio in form.viaftp %}{{ radio }}{% endfor %}</div>
+  </div>
+</div>
+
+<div class="formsplit"></div>
+
+<div class="formrow">
+  <div class="formlabel">Hyperfine structure</div>
+  <div class="formfield"><label>{{ form.hfssplit }} {{ form.hfssplit.label }}</label></div>
+</div>
+
+<div class="formsplit"></div>
+
+<div class="formrow top">
+  <div class="formlabel">Require lines to have a known value of</div>
+  <div class="checkgrid">
+    <label>{{ form.hrad }} {{ form.hrad.label }}</label>
+    <label>{{ form.hlande }} {{ form.hlande.label }}</label>
+    <label>{{ form.hstark }} {{ form.hstark.label }}</label>
+    <label>{{ form.hterm }} {{ form.hterm.label }}</label>
+    <label>{{ form.hwaals }} {{ form.hwaals.label }}</label>
+  </div>
+</div>
+
+<div class="formsplit"></div>
+
+<div class="formrow top">
+  <div class="formlabel"><a href="{% url 'vald:persconf' %}">Linelist configuration</a></div>
+  <div class="formfield stack">{% include "vald/_pconf.html" %}</div>
+</div>
+
+<div class="formsplit"></div>
+
+<div class="formrow">
+  <div class="formlabel">Optional comment for request</div>
+  <div class="formfield">{{ form.subject }}</div>
+</div>
