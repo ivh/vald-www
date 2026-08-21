@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.conf import settings
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
@@ -1529,6 +1529,43 @@ def request_detail(request, uuid):
     except Request.DoesNotExist:
         messages.error(request, 'Request not found.')
         return redirect('vald:my_requests')
+
+
+@require_login
+def request_status(request, uuid):
+    """Whether a request is still running, as JSON, for the detail page to poll.
+
+    The detail page used to carry <meta http-equiv="refresh" content="10">,
+    which reloads whatever the user was reading every ten seconds with no way
+    to stop it - a WCAG 2.2.1 failure, and it threw away scroll position and
+    text selection each time. The page now asks this and reloads once, when
+    there is actually something new to show.
+
+    Deliberately owner-only, unlike the result downloads: those are guarded by
+    the uuid being the capability, but this is reached with the session cookie
+    from a page that already required a login, so there is no reason to widen
+    it. A request that is not yours is 404, not 403 - whether a given uuid
+    exists is not something to confirm.
+    """
+    user = get_current_user(request)
+    try:
+        req_obj = Request.objects.get(uuid=uuid, user_id=user.id)
+    except Request.DoesNotExist:
+        return JsonResponse({'error': 'not found'}, status=404)
+
+    # Recomputed the same way request_detail does; it is a count, not a promise.
+    queue_position = None
+    if req_obj.status == 'pending':
+        queue_position = Request.objects.filter(
+            status='pending',
+            created_at__lt=req_obj.created_at
+        ).count() + 1
+
+    return JsonResponse({
+        'status': req_obj.status,
+        'pending': req_obj.is_pending(),
+        'queue_position': queue_position,
+    })
 
 
 def _serve_result(request, uuid, which, filename):

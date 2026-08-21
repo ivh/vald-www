@@ -6,7 +6,7 @@ import re
 import pytest
 from django.utils import timezone
 
-from vald.models import Request
+from vald.models import Request, User
 
 
 @pytest.fixture
@@ -255,3 +255,41 @@ def test_a_running_request_reloads_itself(logged_in_client, approved_user):
 def test_other_pages_keep_the_plain_title(logged_in_client, settings):
     title = title_of(logged_in_client.get('/').content.decode())
     assert title == settings.SITENAME
+
+
+# --- the status endpoint the detail page polls -------------------------------
+
+@pytest.mark.django_db
+def test_status_reports_pending_then_done(logged_in_client, approved_user):
+    """What the detail page polls instead of reloading itself every 10 seconds."""
+    req = Request.objects.create(user=approved_user, request_type='extractall',
+                                 status='pending', parameters={})
+
+    body = logged_in_client.get(f'/request/{req.uuid}/status/').json()
+    assert body['pending'] is True and body['status'] == 'pending'
+
+    req.status = 'complete'
+    req.save(update_fields=['status'])
+
+    body = logged_in_client.get(f'/request/{req.uuid}/status/').json()
+    assert body['pending'] is False, 'the page would never stop polling'
+
+
+@pytest.mark.django_db
+def test_status_of_someone_elses_request_is_not_readable(logged_in_client):
+    """Owner-only, and 404 rather than 403: whether a uuid exists is not
+    something to confirm to someone who does not own it."""
+    other = User.objects.create(name='Someone Else', affiliation='', is_active=True)
+    req = Request.objects.create(user=other, request_type='extractall',
+                                 status='pending', parameters={})
+
+    assert logged_in_client.get(f'/request/{req.uuid}/status/').status_code == 404
+
+
+@pytest.mark.django_db
+def test_status_needs_a_session(client, approved_user):
+    req = Request.objects.create(user=approved_user, request_type='extractall',
+                                 status='pending', parameters={})
+
+    # A redirect, not JSON - which is why the poller reloads on a non-JSON reply.
+    assert client.get(f'/request/{req.uuid}/status/').status_code == 302

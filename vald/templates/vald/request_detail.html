@@ -10,7 +10,12 @@ being that the tab reports the job finishing without being looked at.
 
 {% block extra_head %}
 {% if req.is_pending %}
-<meta http-equiv="refresh" content="10">
+{% comment %}
+Without JS there is nothing to poll with, so the old whole-page refresh stands
+in - the objection to it was that the user could not stop it, and here it is
+their own choice of browser configuration that selects it.
+{% endcomment %}
+<noscript><meta http-equiv="refresh" content="10"></noscript>
 {% endif %}
 {% endblock %}
 
@@ -45,9 +50,10 @@ being that the tab reports the job finishing without being looked at.
 {% elif not req.is_complete %}
 <div class="callout callout-info">
   <div class="callout-title">Request in progress</div>
-  <div>This page refreshes every 10 seconds. Processing typically takes a few
-  minutes &mdash; you can close this page and return later.{% if queue_position %}
-  Queue position <b>#{{ queue_position }}</b>.{% endif %}</div>
+  <div>This page updates itself when the job finishes. Processing typically takes
+  a few minutes &mdash; you can close this page and return later.
+  <span id="queue-note">{% if queue_position %}Queue position
+  <b id="queue-position">#{{ queue_position }}</b>.{% endif %}</span></div>
 </div>
 {% endif %}
 
@@ -113,4 +119,50 @@ being that the tab reports the job finishing without being looked at.
   <a class="btn" href="{% url 'vald:'|add:req.request_type %}?modify={{ req.uuid }}">Modify request</a>
 </div>
 
+{% if req.is_pending %}
+{% comment %}
+Replaces a meta refresh that reloaded the page every ten seconds regardless of
+what the reader was doing. This asks a small JSON endpoint instead and reloads
+once, when the job is actually no longer pending; while it waits it keeps the
+queue position current in place. The interval backs off, because most of these
+finish in the first half-minute and the ones that do not can be checked less
+often.
+{% endcomment %}
+<script>
+(function () {
+  var url = "{% url 'vald:request_status' req.uuid %}";
+  var delay = 3000;
+  var MAX = 30000;
+
+  function schedule() {
+    delay = Math.min(delay * 1.4, MAX);
+    setTimeout(poll, delay);
+  }
+
+  function poll() {
+    fetch(url, {headers: {"Accept": "application/json"}, credentials: "same-origin"})
+      .then(function (r) {
+        // 404 is a request that is gone. An expired session is a *redirect* to
+        // the index, so what comes back is HTML: reload either way and let the
+        // page say which it was, rather than polling a dead URL forever. No
+        // loop risk - neither the login page nor a finished request polls.
+        var json = (r.headers.get("content-type") || "").indexOf("json") !== -1;
+        if (r.status === 404 || !json) { window.location.reload(); return null; }
+        if (!r.ok) { schedule(); return null; }
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data) return;
+        if (!data.pending) { window.location.reload(); return; }
+        var pos = document.getElementById("queue-position");
+        if (pos && data.queue_position) pos.textContent = "#" + data.queue_position;
+        schedule();
+      })
+      .catch(schedule);   // offline, or the server restarted: keep waiting
+  }
+
+  setTimeout(poll, delay);
+})();
+</script>
+{% endif %}
 {% endblock %}
