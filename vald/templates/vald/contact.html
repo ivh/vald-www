@@ -10,7 +10,7 @@
   </div>
 </div>
 
-<h3 style="margin-bottom: 10px;">Register as a new user</h3>
+<h2 class="sectiontitle" style="margin-top: 0;">Register as a new user</h2>
 <form name="registrationform" method="post" action="{% url 'vald:submit_request' %}">
 {% csrf_token %}
 <div class="card">
@@ -58,7 +58,7 @@
 </div>
 </form>
 
-<h3 style="margin: 28px 0 10px;">Contact a VALD manager</h3>
+<h2 class="sectiontitle">Contact a VALD manager</h2>
 <form name="contactform" method="post" action="{% url 'vald:submit_request' %}">
 {% csrf_token %}
 <div class="card">

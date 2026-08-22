@@ -84,7 +84,7 @@ stays a POST: it changes server state.
         </div>
     </aside>
 
-    <div class="site-main">
+    <main class="site-main" id="content" tabindex="-1">
 
         {% if messages %}
         <ul class="messages">
@@ -95,12 +95,11 @@ stays a POST: it changes server state.
         {% endif %}
 
 
-        <div class="site-content {% block content_class %}plain{% endblock %}"
-             id="content" tabindex="-1">
+        <div class="site-content {% block content_class %}plain{% endblock %}">
             {% block content %}{% endblock %}
         </div>
 
-    </div>
+    </main>
 </div>
 
 </body>

@@ -46,7 +46,9 @@
   --ink:         #000000;
   --ink-soft:    #202020;
   --ink-muted:   #404050;
-  --ink-faint:   #6a6a7c;
+  /* Passes AA on all three grounds it appears over, the #e4e4ee body
+     included - the sidebar labels sit directly on it. */
+  --ink-faint:   #5e5e6e;
 
   --ok-bg:    #d4edda;  --ok-line:    #c3e6cb;  --ok-ink:    #155724;
   --warn-bg:  #fff3cd;  --warn-line:  #ffeaa7;  --warn-ink:  #856404;
@@ -82,6 +84,11 @@ h1, h2, h3, h4 { margin: 0; text-wrap: pretty; }
 h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
 h2 { font-size: 20px; font-weight: 600; }
 h3 { font-size: 16px; font-weight: 600; }
+
+/* A second-level heading under the page title. h2 rather than h3 so the
+   levels descend without a gap; sized for its job rather than for its
+   rank. */
+.sectiontitle { font-size: 17px; font-weight: 600; margin: 24px 0 10px; }
 
 p { margin: 0 0 1em; }
 p:last-child { margin-bottom: 0; }
