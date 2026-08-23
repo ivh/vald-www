@@ -727,8 +727,15 @@ class RequestAdmin(admin.ModelAdmin):
 
     @admin.display(description='Submitted', ordering='created_at')
     def submitted(self, obj):
-        """Compact and sortable: the locale format is twice as wide for no gain."""
-        return timezone.localtime(obj.created_at).strftime('%Y-%m-%d %H:%M')
+        """Exists for the column header and the ordering, not the formatting.
+
+        Returns a datetime so the admin renders it through DATETIME_FORMAT
+        (vald_web/formats/en/) rather than hardcoding the format a second time.
+        The localtime() call is the part the admin will not do for a method - it
+        converts only for real model fields, so a raw aware datetime here would
+        render as UTC.
+        """
+        return timezone.localtime(obj.created_at)
 
     @admin.display(description='Duration', ordering='_duration')
     def duration(self, obj):

@@ -143,6 +143,10 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 USE_I18N = False
+# ISO dates, English language. A locale format module beats the
+# DATETIME_FORMAT setting, so overriding that setting alone does nothing -
+# see vald_web/formats/en/formats.py.
+FORMAT_MODULE_PATH = 'vald_web.formats'
 TIME_ZONE = "Europe/Stockholm"
 USE_TZ = True
 
