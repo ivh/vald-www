@@ -1,42 +1,34 @@
 {% extends "vald/base.html" %}
 
-{% block topframe %}
-<h2>Account Activation</h2>
-<p>Setting up your VALD account...</p>
-{% endblock %}
+{% block content_class %}{% endblock %}
 
 {% block content %}
-<h2>Set Your Password</h2>
-<hr>
+<div class="pagehead">
+  <div class="pagehead-titles">
+    <h1>Set your password</h1>
+    <span class="pagesub">Welcome, {{ user_name }} &mdash; this is the first login
+      for {{ email }}. Setting a password completes the activation.</span>
+  </div>
+</div>
 
-<p>Welcome, <b>{{ user_name }}</b>!</p>
-
-<p>This is your first time logging in with email address <b>{{ email }}</b>.</p>
-
-<p>Please set a password for your account to complete the activation:</p>
-
-<form method="post" action="{% url 'vald:set_password' %}">
-{% csrf_token %}
-<table border="0" cellpadding="5">
-  <tr>
-    <td><b>New Password:</b></td>
-    <td><input type="password" name="password" size="40" required></td>
-  </tr>
-  <tr>
-    <td><b>Confirm Password:</b></td>
-    <td><input type="password" name="password_confirm" size="40" required></td>
-  </tr>
-  <tr>
-    <td colspan="2"><i>Password must be at least 8 characters long</i></td>
-  </tr>
-  <tr>
-    <td colspan="2"><br><input type="submit" value="Set Password and Login"></td>
-  </tr>
-</table>
-</form>
-
-<hr>
-
-<p><a href="{% url 'vald:index' %}">← Back to Home</a></p>
-
+<div class="card" style="max-width: 520px;">
+  <form class="card-body" method="post" action="{% url 'vald:set_password' %}">
+    {% csrf_token %}
+    <div class="loginfields">
+      <label class="stacked" for="activate_password">New password
+        <input type="password" id="activate_password" name="password"
+               autocomplete="new-password" required>
+      </label>
+      <label class="stacked" for="activate_password_confirm">Confirm password
+        <input type="password" id="activate_password_confirm" name="password_confirm"
+               autocomplete="new-password" required>
+      </label>
+    </div>
+    {% include "vald/_passwordrules.html" %}
+    <div class="btn-row" style="margin-top: 14px;">
+      <button type="submit" class="btn-primary">Set password and log in</button>
+      <a class="hint" href="{% url 'vald:index' %}">Back to the front page</a>
+    </div>
+  </form>
+</div>
 {% endblock %}

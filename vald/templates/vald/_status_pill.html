@@ -1,0 +1,25 @@
+{% comment %}
+One request's status, as a pill. Included by the list and by the detail page so
+the two cannot drift apart. Expects `req`; pass detail=1 to also show the Done
+pill beside Truncated, which the list has no room for.
+
+Icons are inline SVG rather than the ✓ / ✗ / ⟳ / ⋯ characters the old page used:
+those render at whatever weight and baseline the fallback font happens to have,
+and ⟳ is missing outright on some systems.
+{% endcomment %}
+{% if req.status == 'complete' %}
+    {% if req.parameters.truncated %}
+        {% if detail %}
+        <span class="pill pill-done"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 6.3 L4.5 9 L10.2 3"/></svg>Done</span>
+        {% endif %}
+        <span class="pill pill-trunc" title="Stopped at the {{ req.parameters.truncated_at }}-line limit, so it does not reach the end of the wavelength range"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 1.5 L11.2 10.5 L0.8 10.5 Z"/><path d="M6 4.9 L6 7.3"/><path d="M6 8.9 L6 9"/></svg>Truncated</span>
+    {% else %}
+        <span class="pill pill-done"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 6.3 L4.5 9 L10.2 3"/></svg>Done</span>
+    {% endif %}
+{% elif req.status == 'failed' %}
+    <span class="pill pill-fail"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 2.6 L9.4 9.4"/><path d="M9.4 2.6 L2.6 9.4"/></svg>Failed</span>
+{% elif req.status == 'processing' %}
+    <span class="pill pill-run"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.4 6 A4.4 4.4 0 1 1 8.6 2.5"/><path d="M10.6 1.4 L10.6 4.1 L7.9 4.1"/></svg>Processing</span>
+{% else %}
+    <span class="pill pill-wait"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="4.6"/><path d="M6 3.4 L6 6 L8 7.2"/></svg>Queued</span>
+{% endif %}

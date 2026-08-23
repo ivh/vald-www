@@ -1,106 +1,112 @@
 {% extends "vald/base.html" %}
 
-{% block extra_head %}
-<script>
-
-if (document.getElementsByClassName == undefined) {
-    document.getElementsByClassName = function(className)
-    {
-        var hasClassName = new RegExp("(?:^|\\s)" + className + "(?:$|\\s)");
-        var allElements = document.getElementsByTagName("*");
-        var results = [];
-
-        var element;
-        for (var i = 0; (element = allElements[i]) != null; i++) {
-            var elementClass = element.className;
-            if (elementClass && elementClass.indexOf(className) != -1 && hasClassName.test(elementClass))
-                results.push(element);
-        }
-
-        return results;
-    }
-}
-
-function setTextColor(classname, givencolor) {
-    var objs = document.getElementsByClassName(classname);
-    for (var i = 0; (element = objs[i]) != null; i++) {
-      element.style.color = givencolor;
-    }
-}
-
-function checkConsistency() {
-  if (document.bottomform.waveunit[2].checked) {
-    document.bottomform.medium[1].checked = true;
-    document.bottomform.medium[0].disabled = true;
-    document.bottomform.medium[1].disabled = true;
-    setTextColor('medium', 'grey');
-  } else {
-    document.bottomform.medium[0].disabled = false;
-    document.bottomform.medium[1].disabled = false;
-    setTextColor('medium', 'black');
-  }
-}
-
-function sendIt() {
-  document.bottomform.medium[0].disabled = false;
-  document.bottomform.medium[1].disabled = false;
-  document.bottomform.submit();
-  return true;
-}
-
-function resetIt() {
-  document.bottomform.reset();
-}
-
-</script>
-{% endblock %}
+{% block content_class %}{% endblock %}
 
 {% block content %}
-<form name="bottomform" method="post" action="{% url 'vald:save_units' %}" onLoad="prepForm()">
+<div class="pagehead">
+  <div class="pagehead-titles">
+    <h1>Units</h1>
+    <span class="pagesub">The defaults a new request form starts from. Any single
+      request can override them without changing these.</span>
+  </div>
+</div>
+
+<form name="bottomform" method="post" action="{% url 'vald:save_units' %}">
 {% csrf_token %}
-<table border=0 cellpadding=0 width="80%">
+<div class="card">
 
-<tr><td colspan=2>
-<hr><h3>Unit selection</h3><hr>
+  <div class="formrow">
+    <div class="formlabel" id="lbl-energyunit">Energy level units</div>
+    <div class="formfield">
+      <div class="radioset" role="group" aria-labelledby="lbl-energyunit">{% for radio in form.energyunit %}{{ radio }}{% endfor %}</div>
+    </div>
+  </div>
 
-<tr><td>Energy level units :
-<td><input type="radio" name="energyunit" value="eV" {% if energyunit == 'eV' %}checked{% endif %}> eV
-<tr><td><td><input type="radio" name="energyunit" value="1/cm" {% if energyunit == '1/cm' %}checked{% endif %}> cm-1
+  <div class="formrow medium">
+    <div class="formlabel" id="lbl-medium">Give wavelengths in medium</div>
+    <div class="formfield">
+      <div class="radioset" role="group" aria-labelledby="lbl-medium">{% for radio in form.medium %}{{ radio }}{% endfor %}</div>
+    </div>
+  </div>
 
-<tr><td colspan=2><hr>
-<tr><td class="medium">Give wavelenghts in medium :
-<td class="medium"><input type="radio" name="medium" value="air" {% if medium == 'air' %}checked{% endif %}> air
-<tr><td><td class="medium"><input type="radio" name="medium" value="vacuum" {% if medium == 'vacuum' %}checked{% endif %}> vacuum
+  <div class="formrow">
+    <div class="formlabel" id="lbl-waveunit">Wavelength units</div>
+    <div class="formfield">
+      <div class="radioset" role="group" aria-labelledby="lbl-waveunit">{% for radio in form.waveunit %}{{ radio }}{% endfor %}</div>
+    </div>
+  </div>
 
-<tr><td colspan=2><hr>
-<tr><td>Wavelength units :
-<td><input type="radio" name="waveunit" value="angstrom" onChange='checkConsistency();' {% if waveunit == 'angstrom' %}checked{% endif %}> &Aring;ngstr&ouml;m
-<tr><td><td><input type="radio" name="waveunit" value="nm" onChange='checkConsistency();' {% if waveunit == 'nm' %}checked{% endif %}> nm
-<tr><td><td><input type="radio" name="waveunit" value="1/cm" onChange='checkConsistency();' {% if waveunit == '1/cm' %}checked{% endif %}> cm-1
+  <div class="formrow">
+    <div class="formlabel" id="lbl-vdwformat">Van der Waals syntax</div>
+    <div class="formfield">
+      <div class="radioset" role="group" aria-labelledby="lbl-vdwformat">{% for radio in form.vdwformat %}{{ radio }}{% endfor %}</div>
+    </div>
+  </div>
 
-<tr><td colspan=2><hr>
-<tr><td>Van der Waals syntax
-<td><input type="radio" name="vdwformat" value="default" {% if vdwformat == 'default' %}checked{% endif %}> Default
-<tr><td><td><input type="radio" name="vdwformat" value="extended" {% if vdwformat == 'extended' %}checked{% endif %}> Extended
+  <div class="formrow">
+    <div class="formlabel" id="lbl-isotopic">Isotopic scaling</div>
+    <div class="formfield">
+      <div class="radioset" role="group" aria-labelledby="lbl-isotopic">{% for radio in form.isotopic_scaling %}{{ radio }}{% endfor %}</div>
+    </div>
+  </div>
 
-<tr><td colspan=2><hr>
-<tr><td>Isotopic scaling
-<td><input type="radio" name="isotopic_scaling" value="on" {% if isotopic_scaling == 'on' %}checked{% endif %}> On
-<tr><td><td><input type="radio" name="isotopic_scaling" value="off" {% if isotopic_scaling == 'off' %}checked{% endif %}> Off
-<tr><td colspan=2><hr>
-
-<tr>
-{% if unitsupdated %}
-<tr><td colspan=2><b>Settings saved!</b><p><input type="button" value="Save again" onClick="sendIt()">
-{% else %}
-<td colspan=2><input type="button" value="Save settings" onClick="sendIt()">
-{% endif %}
-<p><i>The choices you make above are persistent and will be saved to your user profile.</i>
-
-</table>
+  <div class="card-foot">
+    <button type="submit" class="btn-primary">Save settings</button>
+    <span class="hint">Saved to your profile, so they persist between visits.</span>
+  </div>
+</div>
+</form>
 
 <script>
-  checkConsistency();
+(function () {
+  var form = document.forms["bottomform"];
+  if (!form) return;
+
+  function checkedValue(name) {
+    var inputs = document.getElementsByName(name);
+    for (var i = 0; i < inputs.length; i++) {
+      if (inputs[i].checked) return inputs[i].value;
+    }
+    return null;
+  }
+
+  function mediumRadios() {
+    return document.getElementsByName("medium");
+  }
+
+  // cm^-1 is always vacuum wavenumbers: preselect5 ignores the medium flag
+  // there, so the control is disabled rather than left to imply otherwise.
+  // Same rule as the per-request panel in _unitfields.html, keyed off the
+  // control names rather than form element indices.
+  function syncMedium() {
+    var wavenumber = checkedValue("waveunit") === "1/cm";
+    var radios = mediumRadios();
+    for (var i = 0; i < radios.length; i++) {
+      radios[i].disabled = wavenumber;
+      if (wavenumber) radios[i].checked = radios[i].value === "vacuum";
+    }
+    var rows = document.getElementsByClassName("medium");
+    for (var j = 0; j < rows.length; j++) {
+      rows[j].style.color = wavenumber ? "grey" : "";
+    }
+  }
+
+  // A disabled radio submits nothing and UserPreferencesForm requires a medium,
+  // so the POST would be rejected as an invalid unit selection. Re-enabling on
+  // the way out is what the old page needed its type="button" plus sendIt() for
+  // - which also meant the page could not be saved at all without JavaScript.
+  form.addEventListener("submit", function () {
+    var radios = mediumRadios();
+    for (var i = 0; i < radios.length; i++) {
+      radios[i].disabled = false;
+    }
+  });
+
+  var waveunits = document.getElementsByName("waveunit");
+  for (var i = 0; i < waveunits.length; i++) {
+    waveunits[i].onclick = syncMedium;
+  }
+  syncMedium();
+})();
 </script>
-</form>
 {% endblock %}

@@ -1,230 +1,766 @@
+/* VALD3 web interface.
+ *
+ * Values here are the ones the old interface used - navy #202090, the #e4e4ee
+ * ground, #f0f0f8 panels, #b0b0c0 rules, 3px control radii - so the page still
+ * reads as VALD. What changed is the layout: the outer <table> chrome became a
+ * header/nav/sidebar, and forms became labelled grid rows.
+ *
+ * IBM Plex is self-hosted in fonts/ rather than pulled from fonts.googleapis.com:
+ * hotlinking would send every visitor's IP to a third party, which this service
+ * cannot do, and it would make the page depend on a host we do not control.
+ */
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400 600;              /* one variable file covers the range */
+  font-display: swap;
+  src: url('fonts/IBMPlexSans-latin-variable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/IBMPlexMono-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/IBMPlexMono-latin-500.woff2') format('woff2');
+}
+
+:root {
+  --navy:        #202090;
+  --navy-hover:  #3030b0;
+  --ground:      #e4e4ee;
+  --surface:     #ffffff;
+  --panel:       #f0f0f8;
+  --face:        #f0f0ff;
+  --face-hover:  #e0e0ff;
+  --rule:        #b0b0c0;
+  --rule-soft:   #d2d2de;
+  --field:       #8f8fa8;
+  --ink:         #000000;
+  --ink-soft:    #202020;
+  --ink-muted:   #404050;
+  /* Passes AA on all three grounds it appears over, the #e4e4ee body
+     included - the sidebar labels sit directly on it. */
+  --ink-faint:   #5e5e6e;
+
+  --ok-bg:    #d4edda;  --ok-line:    #c3e6cb;  --ok-ink:    #155724;
+  --warn-bg:  #fff3cd;  --warn-line:  #ffeaa7;  --warn-ink:  #856404;
+  --err-bg:   #f8d7da;  --err-line:   #f5c6cb;  --err-ink:   #721c24;
+  --info-bg:  #d1ecf1;  --info-line:  #bee5eb;  --info-ink:  #0c5460;
+  --trunc-bg: #fff4e8;  --trunc-line: #ffcda0;
+  --trunc-edge: #ff9955; --trunc-ink: #9a5a00;
+
+  --sans: 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --mono: 'IBM Plex Mono', Menlo, Consolas, 'Courier New', monospace;
+  --radius: 3px;
+}
+
+/* ---------------------------------------------------------------- base ---- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
 body {
-  background-color:    #e4e4ee;
-  color:               #000000;
-  background-position: top right;
-  background-repeat:   no-repeat;
-  font-family:         Arial, Helvetica, sans-serif;
-  font-size:           14px;
-  font-style:          normal;
-  font-weight:         400;
-  background-position: top left;
-  background-image:    url('pictures/VALD3_bg-navigate.png');
-  background-repeat: no-repeat;
-  line-height:         1.5;
+  margin: 0;
+  background-color: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
-a {
-  text-decoration: none;
-  font-weight:     600;
-  color:           #202090;
+
+a { color: var(--navy); text-decoration: none; font-weight: 500; }
+a:hover { color: var(--navy-hover); text-decoration: underline; }
+
+h1, h2, h3, h4 { margin: 0; text-wrap: pretty; }
+h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 20px; font-weight: 600; }
+h3 { font-size: 16px; font-weight: 600; }
+
+/* A second-level heading under the page title. h2 rather than h3 so the
+   levels descend without a gap; sized for its job rather than for its
+   rank. */
+.sectiontitle { font-size: 17px; font-weight: 600; margin: 24px 0 10px; }
+
+p { margin: 0 0 1em; }
+p:last-child { margin-bottom: 0; }
+
+b, strong { font-weight: 600; }
+b.heading { font-size: 16px; font-weight: 600; }
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--rule-soft);
+  margin: 18px 0;
 }
-a:hover {
-  text-decoration: underline;
-  color:           #3030b0;
+
+pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.62;
+  color: var(--ink-soft);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  overflow-x: auto;
 }
-b {
-  font-size:   14px;
-  font-weight: 700;
+
+.mono { font-family: var(--mono); }
+.muted { color: var(--ink-muted); }
+.faint { color: var(--ink-faint); }
+
+/* Small caps-ish section label. Used for sidebar groups, table heads and the
+   key side of a key/value pair. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
 }
-b.heading {
-  font-size:   16px;
-  font-weight: 700;
+
+/* -------------------------------------------------------------- header ---- */
+
+.site-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+  height: 76px;
+  padding-right: 32px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
 }
-table {
-  table-layout: fixed;
-  text-align:   left;
-  font-family:  Arial, Helvetica, sans-serif;
-  font-size:    14px;
-  font-style:   normal;
-  font-weight:  400;
+
+/* The logo artwork bleeds dark to all four of its own edges, so it is run at the
+   full header height and flush left: three of those edges then coincide with the
+   header's own boundaries. The fourth would be a hard vertical cut where the
+   swoosh is still half-opaque, so the last 18% is masked to transparent. */
+.masthead { flex: 0 0 auto; display: block; line-height: 0; }
+.masthead img {
+  display: block;
+  width: 269px;
+  height: 76px;
+  -webkit-mask-image: linear-gradient(to right, #000 82%, rgba(0, 0, 0, 0) 100%);
+          mask-image: linear-gradient(to right, #000 82%, rgba(0, 0, 0, 0) 100%);
 }
-td.navigate {
-  height:              600px;
-  width:               200px;
-  text-align:          left;
-  vertical-align:      top;
-  background-position: top left;
-  background-repeat:   repeat-y;
+
+.server-id { display: flex; flex-direction: column; }
+.server-id .mono { font-size: 13px; color: var(--ink-soft); }
+
+.header-spacer { flex: 1 1 auto; }
+
+.whoami {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
-td.navigateitem {
-  height:              28px;
-  text-align:          left;
-  vertical-align:      middle;
-  background-image:    url('VALD3_td-navigate.png');
-  background-position: center left;
-  background-repeat:   no-repeat;
+.whoami-who { display: flex; flex-direction: column; align-items: flex-end; }
+.whoami-name { font-weight: 500; }
+.whoami-mail { font-size: 12px; color: var(--ink-muted); }
+
+/* ----------------------------------------------------------------- nav ---- */
+
+.site-nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+  padding: 0 32px;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  flex-wrap: wrap;
 }
-td.topframe {
-  text-align:          left;
-  vertical-align:      top;
-  background-image:    url('VALD3_logo.png');
-  background-position: top right;
-  background-repeat:   no-repeat;
-  padding-left:        10px;
+.site-nav a,
+.site-nav button {
+  height: 45px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--navy);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
 }
-td.version {
-  color:               #202090;
-  height:              150px;
-  width:               200px;
-  text-align:          left;
-  vertical-align:      top;
-  background-position: top left;
-  background-repeat:   no-repeat;
+.site-nav a:hover,
+.site-nav button:hover { background: var(--panel); text-decoration: none; }
+.site-nav a[aria-current="page"] {
+  font-weight: 600;
+  border-bottom-color: var(--navy);
 }
-td.content {
-  text-align:          left;
-  vertical-align:      top;
-  padding-left:        10px;
+.site-nav form { display: flex; margin: 0; }
+.navgap { width: 1px; margin: 12px 18px; background: var(--rule-soft); }
+
+/* ---------------------------------------------------------------- body ---- */
+
+.site-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 40px;
+  padding: 28px 32px 48px;
 }
-th {
-  text-align:          center;
-  vertical-align:      top;
+
+.site-sidebar {
+  width: 200px;
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
 }
-td.hspace   { width:  10px; }
-td.vspace   { height: 10px; }
-input {
-  font-size:    14px;
-  padding:      4px 8px;
+.side-group { display: flex; flex-direction: column; }
+.side-group .eyebrow {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
 }
-select {
-  font-size:    14px;
-  padding:      4px 8px;
+.side-group a {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  font-weight: 400;
 }
+
+.site-main { flex: 1 1 auto; min-width: 0; }
+.site-content { min-width: 0; }
+
+/* Pages that have not been given their own cards get one sheet to sit on, so
+   they still read as part of the interface rather than loose text on the
+   ground. A converted page empties the content_class block to opt out. */
+.site-content.plain {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+}
+.site-content.plain > h3:first-child,
+.site-content.plain > h2:first-child { margin-bottom: 12px; }
+
+/* Lives on the index page only; the header button links to it by anchor. */
+.login-card { max-width: 520px; margin-bottom: 20px; scroll-margin-top: 20px; }
+.login-card .card-body { display: flex; flex-direction: column; gap: 14px; }
+.loginfields { display: flex; flex-direction: column; gap: 12px; max-width: 340px; }
+label.stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+label.stacked input { width: 100%; font-size: 14px; color: var(--ink); }
+
+/* Off-screen until focused: the first tab stop on every page, past nine nav
+   items and seven sidebar links. */
+.skiplink {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  color: var(--navy);
+  border: 1px solid var(--navy);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-weight: 600;
+}
+.skiplink:focus { left: 8px; top: 8px; text-decoration: none; }
+.site-content:focus { outline: none; }
+
+.pagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+.pagehead-titles { display: flex; flex-direction: column; gap: 2px; }
+.pagesub { font-size: 14px; color: var(--ink-muted); }
+
+/* --------------------------------------------------------------- cards ---- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card + .card,
+.card + .callout,
+.callout + .card { margin-top: 20px; }
+
+.card-body { padding: 18px 20px; }
+.card-foot {
+  border-top: 1px solid var(--rule);
+  background: var(--panel);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.callout {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 14px 18px;
+}
+.callout-title { font-weight: 600; }
+.callout-warn {
+  background: var(--trunc-bg);
+  border-color: var(--trunc-line);
+  border-left-color: var(--trunc-edge);
+}
+.callout-warn .callout-title { color: var(--trunc-ink); }
+.callout-info {
+  background: var(--panel);
+  border-color: var(--rule-soft);
+  border-left-color: var(--navy);
+}
+
+/* --------------------------------------------------------- form layout ---- */
+
+/* One row of a request form: label column at the width the old <colgroup> used,
+   field column takes the rest. */
+.formrow {
+  display: grid;
+  grid-template-columns: 265px minmax(0, 1fr);
+  gap: 16px;
+  padding: 15px 20px;
+  align-items: center;
+}
+.formrow.top { align-items: start; }
+label.formlabel,
+.formlabel { display: block; gap: 0; color: var(--ink); }
+.formfield {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.formfield.stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.formsplit { height: 1px; background: var(--rule-soft); }
+/* .wavelabel2 is rewritten by the units script and is matched on its exact
+   class attribute, so it carries no second class. */
+.unit,
+.wavelabel2 { font-size: 13px; color: var(--ink-muted); }
+.hint { font-size: 12px; color: var(--ink-muted); }
+
+.radioset {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.radioset.stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.checkgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 24px;
+  max-width: 620px;
+}
+
+/* ------------------------------------------------------------ controls ---- */
+
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+select,
 textarea {
-  font-size:    14px;
-  padding:      4px 8px;
-  font-family:  Arial, Helvetica, sans-serif;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--field);
+  border-radius: var(--radius);
+  padding: 6px 10px;
 }
-input[type="submit"], input[type="button"] {
-  padding:      6px 12px;
-  cursor:       pointer;
-  border:       1px solid #202090;
-  background:   #f0f0ff;
-  color:        #202090;
-  font-weight:  600;
-  border-radius: 3px;
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+select { height: 34px; }
+textarea { padding: 8px 10px; line-height: 1.5; }
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23404050' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6.5 L8 10.5 L12 6.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
 }
-input[type="submit"]:hover, input[type="button"]:hover {
-  background:   #e0e0ff;
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 1px;
 }
-.modified_data {
-  background-color: #ff5555;
+
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--navy);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
 }
-.new_data {
-  background-color: #ff9955;
+input:disabled { accent-color: var(--field); }
+
+/* Django renders each radio/checkbox as <label><input> text</label>, so the
+   label is the flex row that keeps glyph and text on one line. */
+label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.35;
 }
+
+/* Numbers, element symbols and wavelengths line up when they are monospaced;
+   free prose in the same form does not want to be. */
+.requestcard input[type="text"],
+.requestcard textarea { font-family: var(--mono); }
+.requestcard input[name="subject"] { font-family: var(--sans); }
+
+/* The widgets carry `size` attributes ranging from 5 to 10 characters, which
+   makes a column of numeric boxes ragged. One width for all of them; the three
+   below track their cell instead. */
+.requestcard input[type="text"] { width: 160px; }
+.requestcard select { min-width: 340px; max-width: 100%; }
+.requestcard input[name="subject"],
+.requestcard textarea { width: 100%; max-width: 620px; }
+
+/* -------------------------------------------------------------- buttons --- */
+
+.btn,
+button,
+input[type="submit"],
+input[type="button"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 16px;
+  border: 1px solid var(--navy);
+  border-radius: var(--radius);
+  background: var(--face);
+  color: var(--navy);
+  cursor: pointer;
+  text-decoration: none;
+}
+.btn:hover,
+button:hover,
+input[type="submit"]:hover,
+input[type="button"]:hover {
+  background: var(--face-hover);
+  color: var(--navy);
+  text-decoration: none;
+}
+.btn-primary {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: var(--surface);
+}
+.btn-primary:hover {
+  background: var(--navy-hover);
+  border-color: var(--navy-hover);
+  color: var(--surface);
+}
+.btn-quiet {
+  border-color: var(--rule);
+  background: var(--surface);
+  font-size: 13px;
+  padding: 7px 14px;
+}
+.btn-quiet:hover { background: var(--panel); }
+.btn-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* The nav's logout button must not inherit the button chrome above. */
+.site-nav button { border: 0; border-bottom: 2px solid transparent; padding: 0 14px; font-weight: 500; }
+
+/* --------------------------------------------------------------- pills ---- */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border: 1px solid;
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+.pill svg { flex: 0 0 auto; }
+.pill-done  { background: var(--ok-bg);    border-color: var(--ok-line);    color: var(--ok-ink); }
+.pill-fail  { background: var(--err-bg);   border-color: var(--err-line);   color: var(--err-ink); }
+.pill-run   { background: var(--warn-bg);  border-color: var(--warn-line);  color: var(--warn-ink); }
+.pill-wait  { background: var(--panel);    border-color: var(--rule-soft);  color: var(--ink-muted); }
+.pill-trunc { background: var(--trunc-bg); border-color: var(--trunc-line); color: var(--trunc-ink); }
+.pill-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* --------------------------------------------------------------- table ---- */
+
+.tablescroll { overflow-x: auto; }
+
+.datatable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.datatable th {
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 11px 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+}
+.datatable td {
+  padding: 14px 20px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.datatable tbody tr:last-child td { border-bottom: 0; }
+.datatable .sep { color: var(--rule); }
+.datatable .nowrap { white-space: nowrap; }
+
+/* Key/value strip - request metadata, four across. */
+.metagrid {
+  display: grid;
+  grid-template-columns: 1.7fr 0.9fr 1fr 1fr;
+  gap: 24px;
+  padding: 18px 20px;
+}
+.metaitem { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.metaitem .mono { font-size: 13px; overflow-wrap: anywhere; }
+
+.pager {
+  border-top: 1px solid var(--rule);
+  background: var(--panel);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+}
+.pager .disabled { color: var(--ink-faint); display: inline-flex; align-items: center; gap: 6px; }
+.pager a { display: inline-flex; align-items: center; gap: 6px; }
+
+.backlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* ------------------------------------------------------ legacy classes ---- */
+/* Still used by pages whose inner markup has not been rebuilt. */
+
+.messages { margin: 0 0 20px; padding: 0; list-style: none; }
+.messages li {
+  padding: 12px 16px;
+  margin: 0 0 8px;
+  border: 1px solid;
+  border-radius: var(--radius);
+  font-weight: 500;
+}
+.messages li:last-child { margin-bottom: 0; }
+.messages .success { background: var(--ok-bg);   border-color: var(--ok-line);   color: var(--ok-ink); }
+.messages .error   { background: var(--err-bg);  border-color: var(--err-line);  color: var(--err-ink); }
+.messages .warning { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+.messages .info    { background: var(--info-bg); border-color: var(--info-line); color: var(--info-ink); }
+
 /* Which personal-configuration state the user is in. Deliberately prominent:
    a snapshot whose age is invisible is what made the old page misleading. */
 .config-state {
-  margin:           15px 0;
-  padding:          10px 15px;
-  border-left:      4px solid #8888cc;
-  background-color: #f0f0f8;
+  margin: 15px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--rule-soft);
+  border-left: 4px solid var(--navy);
+  border-radius: var(--radius);
+  background: var(--panel);
 }
 .config-state-warning {
-  border-left:      4px solid #ff9955;
-  padding-left:     11px;
-  background-color: #fff4e8;
+  border-color: var(--trunc-line);
+  border-left: 4px solid var(--trunc-edge);
+  background: var(--trunc-bg);
 }
-.messages {
-  margin: 15px 0;
-  padding: 0;
-  list-style: none;
+/* A value the user has changed from the configuration they copied. Black on
+   #ff5555 passed contrast but shouted; the error tint is the palette's red and
+   reads at 8.25:1. The page still calls it red. */
+.modified_data {
+  background-color: var(--err-bg);
+  color: var(--err-ink);
+  font-weight: 500;
 }
-.messages li {
-  padding: 12px 15px;
-  margin: 8px 0;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 14px;
-}
-.messages .success {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
-}
-.messages .error {
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
-}
-.messages .warning {
-  background-color: #fff3cd;
-  color: #856404;
-  border: 1px solid #ffeaa7;
-}
-.messages .info {
-  background-color: #d1ecf1;
-  color: #0c5460;
-  border: 1px solid #bee5eb;
-}
+.new_data { background-color: var(--trunc-edge); }
 
-/* Labels sit next to their inputs rather than a column-width apart. The label
-   column is sized by <colgroup> rather than by CSS: two cells in a full-width
-   table split it in half, and every CSS way of collapsing one column (width:1%,
-   or width:100% on its sibling) undershoots far enough that the nowrap label
-   overflows and paints over the inputs. An explicit column width cannot. */
-.requestform td:first-child:not([colspan]) {
-  padding-right: 14px;
+/* 13 columns of mostly single digits: tighten the cells so the table fits
+   without scrolling on a normal window, and keep the numbers monospaced so the
+   rank columns line up. */
+.configtable th,
+.configtable td { padding: 7px 10px; }
+.configtable td { font-family: var(--mono); font-size: 13px; }
+.configtable td:nth-child(3) { font-family: var(--sans); font-size: 14px; }
+.configtable .num { text-align: right; }
+.configtable input[type="text"] {
+  width: 42px;
+  height: 28px;
+  padding: 2px 6px;
+  font-family: var(--mono);
+  text-align: center;
 }
+.configtable .rowactions { white-space: nowrap; }
+.configtable .rowactions form { display: inline; }
+.configtable .rowactions button { padding: 4px 10px; font-size: 13px; }
 
-/* cols/size are counts of characters, so a wide input keeps its width whatever
-   the window does - and table-layout: fixed above means the column will not grow
-   to contain it, so on a narrow screen it overflows into the units column
-   instead. These two track their cell; the numeric fields stay small. */
-.requestform textarea,
-.requestform input[name="subject"] {
-  width: 100%;
-  box-sizing: border-box;   /* or the border pushes it past the cell again */
-}
-
-/* Per-request unit selection: a collapsed one-line header above the form, opening
-   into a row of the five groups. Boxed rather than ruled off, now that it is a
-   block the form sits under rather than a column beside it. */
+/* Per-request unit selection: a collapsed one-line header above the form,
+   opening into a row of the five groups. */
 .unitpanel {
   font-size: 13px;
-  border: 1px solid #b0b0c0;
-  background-color: #e4e4ee;
-  padding: 4px 8px;
-  margin-bottom: 10px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 14px 18px;
+  margin-bottom: 20px;
 }
+details.card > summary,
 .unitpanel > summary {
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-weight: 600;
+  list-style: none;
 }
+details.card > summary::-webkit-details-marker,
+.unitpanel > summary::-webkit-details-marker { display: none; }
+details.card > summary::before,
+.unitpanel > summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  background: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23404050' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3.5 L10.5 8 L6 12.5'/%3E%3C/svg%3E") no-repeat center;
+}
+details.card[open] > summary::before,
+.unitpanel[open] > summary::before {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23404050' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 6 L8 10.5 L12.5 6'/%3E%3C/svg%3E");
+}
+.unitsummary { font-style: italic; font-weight: 400; color: var(--ink-muted); }
 /* The affordance: the disclosure triangle alone reads as decoration, and most
    users will never change these. */
 .unitchange {
-  color: #202090;
+  margin-left: auto;
+  color: var(--navy);
+  font-weight: 500;
   text-decoration: underline;
-  margin-left: 6px;
-}
-.unitsummary {
-  font-style: italic;
 }
 .unitgrid {
-  margin: 6px 0 2px 14px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 20px;
+  margin: 16px 0 0;
 }
-.unitgrid td {
-  padding: 0 22px 0 0;
-  vertical-align: top;
-  white-space: nowrap;
-}
+.unitgroup { display: flex; flex-direction: column; gap: 8px; }
+.unitgroup .radioset { gap: 6px; }
 .unitnote {
-  margin-left: 14px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   max-width: 46em;
 }
+.unitnote .hint { font-style: italic; }
 
 /* The selected linelist configuration's description, with the link to its
-   contents on the end of it. The same text is the option's hover title, which
-   desktop users may never hover over. */
+   contents on the end of it. */
 .pconfdesc {
   font-size: 12px;
   font-style: italic;
-  color: #404050;
+  color: var(--ink-muted);
   max-width: 34em;
-  margin-top: 2px;
 }
-/* Inherits the size and the italic, but not a:visited's weight - the link is an
-   aside on the description, not a heading for it. */
-.pconfdesc a {
-  font-weight: 400;
+.pconfdesc a { font-weight: 400; }
+
+/* Legacy inner tables (documentation pages, account, unit selection,
+   persconf). Enough to keep them legible; .datatable overrides where a page
+   has been rebuilt. */
+table { border-collapse: collapse; }
+.site-content.plain td,
+.site-content.plain th { text-align: left; vertical-align: top; padding: 4px 10px 4px 0; }
+.site-content.plain th { font-weight: 600; }
+
+/* ---------------------------------------------------------- responsive ---- */
+
+@media (max-width: 1100px) {
+  .metagrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .unitgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  .site-header {
+    height: auto;
+    min-height: 60px;
+    padding: 0 16px 0 0;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .masthead img { width: 190px; height: 54px; }
+  .site-nav { padding: 0 8px; }
+  .site-body {
+    flex-direction: column;
+    gap: 24px;
+    padding: 20px 16px 40px;
+  }
+  .site-sidebar { width: auto; flex: none; }
+  .formrow { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .checkgrid { grid-template-columns: minmax(0, 1fr); }
+  .unitgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metagrid { grid-template-columns: minmax(0, 1fr); }
+  .pagehead { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+
+@media (max-width: 560px) {
+  .whoami-who { display: none; }
+  .unitgrid { grid-template-columns: minmax(0, 1fr); }
 }

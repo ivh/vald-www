@@ -1,30 +1,49 @@
 {% extends "vald/base.html" %}
 
+{% block content_class %}{% endblock %}
+
 {% block content %}
-<hr><h3>Account details</h3><hr>
+<div class="pagehead">
+  <div class="pagehead-titles">
+    <h1>Account</h1>
+    <span class="pagesub">Your registration details.</span>
+  </div>
+</div>
 
 <form name="accountform" method="post" action="{% url 'vald:account' %}">
-  {% csrf_token %}
-  <table border=0 cellpadding=2 width="80%">
+{% csrf_token %}
+<div class="card">
 
-    <tr><td width="25%">Full name :
-        <td><em>{{ user_name }}</em>
-    <tr><td>Email address :
-        <td><em>{{ user_email }}</em>
-    <tr><td colspan=2><i>Please contact the VALD administrator if your name or
-        email address needs to be changed.</i>
+  <div class="metagrid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+    <div class="metaitem">
+      <span class="eyebrow">Full name</span>
+      <span>{{ user_name }}</span>
+    </div>
+    <div class="metaitem">
+      <span class="eyebrow">Email address</span>
+      <span>{{ user_email }}</span>
+    </div>
+  </div>
+  <div class="formrow" style="padding-top: 0;">
+    <div></div>
+    <span class="hint">Contact the VALD administrator if your name or email
+      address needs to change.</span>
+  </div>
 
-    <tr><td colspan=2><hr>
+  <div class="formsplit"></div>
 
-    <tr><td valign="top">{{ form.affiliation.label }} :
-        <td>{{ form.affiliation }}<br>{{ form.affiliation.help_text }}
+  <div class="formrow top">
+    <label class="formlabel" for="{{ form.affiliation.id_for_label }}">{{ form.affiliation.label }}</label>
+    <div class="formfield stack">
+      {{ form.affiliation }}
+      <span class="hint">{{ form.affiliation.help_text }}</span>
+    </div>
+  </div>
 
-    <tr><td colspan=2><hr>
-
-    <tr><td colspan=2><input type="submit" value="Save details">
-    <tr><td colspan=2><p><i>Your affiliation is stored with your account and is
-        visible to the VALD administrators only.</i>
-
-  </table>
+  <div class="card-foot">
+    <button type="submit" class="btn-primary">Save details</button>
+    <span class="hint">Your affiliation is visible to the VALD administrators only.</span>
+  </div>
+</div>
 </form>
 {% endblock %}

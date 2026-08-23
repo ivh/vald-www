@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.conf import settings
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
@@ -22,6 +22,7 @@ import threading
 from .models import UNIT_KEYS, Request, User, UserEmail
 from .forms import (
     AccountDetailsForm,
+    UserPreferencesForm,
     PasswordResetRequestForm,
     PasswordResetForm,
     RegistrationForm,
@@ -1127,8 +1128,18 @@ def account(request):
 
 @require_login
 def unitselection(request):
-    """Unit selection page"""
+    """Unit selection page.
+
+    Renders UserPreferencesForm - the same form save_units validates the POST
+    with - so the five option labels come from the model's choices. Spelled out
+    in the template they had drifted: this page offered "air" and "Default"
+    where the per-request panel, which does render the form, offers
+    "Air (λ > 200nm)" and "Default (single value)" for the same settings.
+    """
     context = get_user_context(request)
+    user = get_current_user(request)
+    if user:
+        context['form'] = UserPreferencesForm(instance=user.get_preferences())
     return render(request, 'vald/unitselection.html', context)
 
 
@@ -1145,7 +1156,6 @@ def save_units(request):
 
     # Validate against the model's choices rather than trusting raw POST -
     # these values feed pres_in flag generation, so junk must not persist.
-    from .forms import UserPreferencesForm
     prefs = user.get_preferences()
     form = UserPreferencesForm(request.POST, instance=prefs)
     if not form.is_valid():
@@ -1154,9 +1164,11 @@ def save_units(request):
     form.save()
 
     messages.success(request, 'Your unit preferences have been saved successfully.')
-    context = get_user_context(request)
-    context['unitsupdated'] = True
-    return render(request, 'vald/unitselection.html', context)
+    # Rendered by the page's own view rather than assembling the context again
+    # here: it is the one place that knows what unitselection.html needs, and a
+    # second copy is how the saved page came to be missing the form entirely.
+    # A bound form would redisplay the POST; this re-reads what was stored.
+    return unitselection(request)
 
 
 def documentation(request, docpage):
@@ -1529,6 +1541,43 @@ def request_detail(request, uuid):
     except Request.DoesNotExist:
         messages.error(request, 'Request not found.')
         return redirect('vald:my_requests')
+
+
+@require_login
+def request_status(request, uuid):
+    """Whether a request is still running, as JSON, for the detail page to poll.
+
+    The detail page used to carry <meta http-equiv="refresh" content="10">,
+    which reloads whatever the user was reading every ten seconds with no way
+    to stop it - a WCAG 2.2.1 failure, and it threw away scroll position and
+    text selection each time. The page now asks this and reloads once, when
+    there is actually something new to show.
+
+    Deliberately owner-only, unlike the result downloads: those are guarded by
+    the uuid being the capability, but this is reached with the session cookie
+    from a page that already required a login, so there is no reason to widen
+    it. A request that is not yours is 404, not 403 - whether a given uuid
+    exists is not something to confirm.
+    """
+    user = get_current_user(request)
+    try:
+        req_obj = Request.objects.get(uuid=uuid, user_id=user.id)
+    except Request.DoesNotExist:
+        return JsonResponse({'error': 'not found'}, status=404)
+
+    # Recomputed the same way request_detail does; it is a count, not a promise.
+    queue_position = None
+    if req_obj.status == 'pending':
+        queue_position = Request.objects.filter(
+            status='pending',
+            created_at__lt=req_obj.created_at
+        ).count() + 1
+
+    return JsonResponse({
+        'status': req_obj.status,
+        'pending': req_obj.is_pending(),
+        'queue_position': queue_position,
+    })
 
 
 def _serve_result(request, uuid, which, filename):

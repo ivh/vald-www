@@ -1,25 +1,58 @@
 {% extends "vald/base.html" %}
 
+{% comment %}
+This page owns the login form: the header's "Log in" button links to #login here,
+and /login/ has no page of its own - every outcome of it redirects back to the
+index. Hence its own cards rather than the shared content sheet.
+{% endcomment %}
+{% block content_class %}{% endblock %}
+
 {% block content %}
 {% if not user_name %}
-{% comment %}
-Shown to logged-out visitors only: returning users arriving from the old
-interface need to know why they are being asked to activate.
-{% endcomment %}
-<p style="border: 1px solid #888; background: #f6f6f0; padding: 10px; margin-bottom: 1em;">
-    <b>Welcome to the new VALD interface.</b>
-    If you used VALD before, your account is already here &mdash; just enter 
-    your registered email address and follow the one-time activation link we send
-    you, to set a password; then log in. 
-    It only takes a minute to activate your account which will give you saved unit
-    preferences, your own linelist configuration, and a history of your requests.
-    See <a href="{% url 'vald:news_all' %}">News</a> for details.
-</p>
+<div class="card login-card" id="login">
+    <form class="card-body" method="post" action="{% url 'vald:login' %}" name="regform">
+        {% csrf_token %}
+        <h3>Log in</h3>
+        <div class="loginfields">
+            <label class="stacked" for="login_user">Email address
+                <input type="text" id="login_user" name="user" value="" autocomplete="username">
+            </label>
+            <label class="stacked" for="login_password">Password
+                <input type="password" id="login_password" name="password" value="" autocomplete="current-password">
+            </label>
+        </div>
+        <p class="hint">No password yet? Leave it blank to set one up.</p>
+        <div class="btn-row">
+            <button type="submit" class="btn-primary">Log in</button>
+            <a class="hint" href="{% url 'vald:request_password_reset' %}">Forgotten your password?</a>
+        </div>
+    </form>
+</div>
 {% endif %}
-{% if content_html %}
-{{ content_html|safe }}
-{% else %}
-<h3>About VALD</h3>
-<p>Welcome to the VALD (Vienna Atomic Line Database) web interface.
-{% endif %}
+
+<div class="card">
+    <div class="card-body">
+        {% if not user_name %}
+        {% comment %}
+        Shown to logged-out visitors only: returning users arriving from the old
+        interface need to know why they are being asked to activate.
+        {% endcomment %}
+        <div class="callout callout-info" style="margin-bottom: 20px;">
+            <div class="callout-title">Welcome to the new VALD interface.</div>
+            <div>If you used VALD before, your account is already here &mdash; just enter
+            your registered email address and follow the one-time activation link we send
+            you, to set a password; then log in.
+            It only takes a minute to activate your account which will give you saved unit
+            preferences, your own linelist configuration, and a history of your requests.
+            See <a href="{% url 'vald:news_all' %}">News</a> for details.</div>
+        </div>
+        {% endif %}
+        {% if content_html %}
+        {{ content_html|safe }}
+        {% else %}
+        <h2 class="sectiontitle" style="margin-top: 0;">About VALD</h2>
+        <p>Welcome to the VALD (Vienna Atomic Line Database) web interface.</p>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}

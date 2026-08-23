@@ -1,40 +1,64 @@
 {% extends "vald/base.html" %}
 
+{% block content_class %}{% endblock %}
+
 {% block content %}
+<div class="pagehead">
+  <div class="pagehead-titles">
+    <h1>Show Line</h1>
+    <span class="pagesub">Look up individual lines by approximate wavelength.</span>
+  </div>
+</div>
+
 <form name="bottomform" method="post" action="{% url 'vald:submit_request' %}">
 {% csrf_token %}
-<table border=0 cellpadding=0 width="100%">
 
-<tr><td colspan=3>
-<hr><h3>Show Line</h3><hr>
+<div class="card requestcard">
+  <div class="formrow">
+    <label class="formlabel" for="{{ form.wvl0.id_for_label }}">Approximate wavelength</label>
+    <div class="formfield">{{ form.wvl0 }} <span class="unit">&Aring; (air)</span></div>
+  </div>
+  <div class="formrow">
+    <label class="formlabel" for="{{ form.win0.id_for_label }}">Wavelength window</label>
+    <div class="formfield">{{ form.win0 }} <span class="unit">&Aring; (air)</span></div>
+  </div>
+  <div class="formrow">
+    <label class="formlabel" for="{{ form.el0.id_for_label }}">Element [ + ionization ]</label>
+    <div class="formfield">{{ form.el0 }}</div>
+  </div>
 
-<tr><td>Approximate wavelength<td>Wavelength window<td>Element [ +
-ionization ]
-<tr><td>{{ form.wvl0 }}  &Aring; (air)
-<td>{{ form.win0 }}  &Aring; (air)
-<td>{{ form.el0 }}
+  <div class="formsplit"></div>
 
-<tr><td colspan=3><hr>
-<tr><td>Retrieve data via
-<td colspan=2>{% for radio in form.viaftp %}<div>{{ radio }}</div>{% endfor %}
+  <div class="formrow">
+    <div class="formlabel" id="lbl-viaftp">Retrieve data via</div>
+    <div class="formfield">
+      <div class="radioset" role="group" aria-labelledby="lbl-viaftp">{% for radio in form.viaftp %}{{ radio }}{% endfor %}</div>
+    </div>
+  </div>
 
-<tr><td colspan=3><hr>
-<tr><td><a href="{% url 'vald:persconf' %}">Linelist configuration</a>
-<td colspan=2>{% include "vald/_pconf.html" %}
+  <div class="formsplit"></div>
 
-<tr><td colspan=3><hr>
-<tr><td>Isotopic scaling of oscillator strength
-<td>{% for radio in form.isotopic_scaling %}<div>{{ radio }}</div>{% endfor %}
-<td>
-<i>(Takes precendence over the default value set in the
-<a href="{% url 'vald:unitselection' %}">unit selection</a> dialog)</i>
+  <div class="formrow top">
+    <label class="formlabel" for="{{ form.pconf.id_for_label }}">Linelist configuration</label>
+    <div class="formfield stack">{% include "vald/_pconf.html" %}</div>
+  </div>
 
-<tr><td colspan=3><hr>
+  <div class="formsplit"></div>
 
-<tr>
-<input type="hidden" name="reqtype" value="showline">
-<td><input type="submit" value="Submit request">
+  <div class="formrow top">
+    <div class="formlabel" id="lbl-isotopic">Isotopic scaling of oscillator strength</div>
+    <div class="formfield stack">
+      <div class="radioset" role="group" aria-labelledby="lbl-isotopic">{% for radio in form.isotopic_scaling %}{{ radio }}{% endfor %}</div>
+      <span class="hint">Takes precedence over the default set in
+      <a href="{% url 'vald:unitselection' %}">unit selection</a>.</span>
+    </div>
+  </div>
 
-</table>
+  <div class="card-foot">
+    <input type="hidden" name="reqtype" value="showline">
+    <button type="submit" class="btn-primary">Submit request</button>
+  </div>
+</div>
+
 </form>
 {% endblock %}

@@ -75,3 +75,24 @@ def pprint_filter(value):
         return json.dumps(value, indent=2, sort_keys=True)
     except (TypeError, ValueError):
         return str(value)
+
+
+REQUEST_TYPE_LABELS = {
+    'extractall': 'Extract All',
+    'extractelement': 'Extract Element',
+    'extractstellar': 'Extract Stellar',
+    'showline': 'Show Line',
+    'showline_online': 'Show Line ONLINE',
+}
+
+
+@register.filter(name='request_type_label')
+def request_type_label(value):
+    """Human-readable name for Request.request_type.
+
+    The stored value is the one the form posts and the one 'vald:'|add:type
+    reverses against, so it cannot become a display name; the mapping lives here
+    rather than in each template. An unknown value is shown as stored rather
+    than hidden, which is what makes a bad row visible instead of blank.
+    """
+    return REQUEST_TYPE_LABELS.get(value, value)

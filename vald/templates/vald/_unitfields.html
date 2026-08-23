@@ -13,28 +13,46 @@ the summary in the collapsed header. The labels used to be written once at parse
 time from the profile, which was fine while units could only change on another
 page - with the controls here, a stale label is a request that silently means
 something else.
+
+The five groups are a grid rather than a table row, but the class names the script
+reaches for - medium, wavelabel1, wavelabel2, unitsummary - are unchanged.
 {% endcomment %}
 <details class="unitpanel">
-<summary>Units for this request:
+<summary>Units for this request
   <span class="unitsummary">{{ form.energyunit.value }}, {{ form.waveunit.value }}
   ({{ form.medium.value }}), {{ form.vdwformat.value }} vdW, isotopic scaling
   {{ form.isotopic_scaling.value }}</span>
   <span class="unitchange">change units</span></summary>
 
-<table border=0 cellpadding=0 class="unitgrid">
-<tr valign=top>
-  <td>Energy levels<br>{% for radio in form.energyunit %}<div>{{ radio }}</div>{% endfor %}
-  <td class="medium">Wavelengths in<br>{% for radio in form.medium %}<div>{{ radio }}</div>{% endfor %}
-  <td>Wavelength unit<br>{% for radio in form.waveunit %}<div>{{ radio }}</div>{% endfor %}
-  <td>Van der Waals<br>{% for radio in form.vdwformat %}<div>{{ radio }}</div>{% endfor %}
-  <td>Isotopic scaling<br>{% for radio in form.isotopic_scaling %}<div>{{ radio }}</div>{% endfor %}
-</table>
+<div class="unitgrid">
+  <div class="unitgroup">
+    <span class="eyebrow" id="lbl-energyunit">Energy levels</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-energyunit">{% for radio in form.energyunit %}{{ radio }}{% endfor %}</div>
+  </div>
+  <div class="unitgroup medium">
+    <span class="eyebrow" id="lbl-medium">Wavelengths in</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-medium">{% for radio in form.medium %}{{ radio }}{% endfor %}</div>
+  </div>
+  <div class="unitgroup">
+    <span class="eyebrow" id="lbl-waveunit">Wavelength unit</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-waveunit">{% for radio in form.waveunit %}{{ radio }}{% endfor %}</div>
+  </div>
+  <div class="unitgroup">
+    <span class="eyebrow" id="lbl-vdwformat">Van der Waals</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-vdwformat">{% for radio in form.vdwformat %}{{ radio }}{% endfor %}</div>
+  </div>
+  <div class="unitgroup">
+    <span class="eyebrow" id="lbl-isotopic_scaling">Isotopic scaling</span>
+    <div class="radioset stack" role="group" aria-labelledby="lbl-isotopic_scaling">{% for radio in form.isotopic_scaling %}{{ radio }}{% endfor %}</div>
+  </div>
+</div>
 
-<div class="unitnote"><i>Applies to this request only. Your
-<a href="{% url 'vald:unitselection' %}">saved defaults</a> are unchanged, unless
-you check this box.</i>
-<br>{{ form.save_as_default }} <label for="{{ form.save_as_default.auto_id }}">save
-as default units</label></div>
+<div class="unitnote">
+  <span class="hint">Applies to this request only. Your
+  <a href="{% url 'vald:unitselection' %}">saved defaults</a> are unchanged, unless
+  you check this box.</span>
+  <label>{{ form.save_as_default }} save as default units</label>
+</div>
 </details>
 
 <script>

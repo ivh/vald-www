@@ -39,6 +39,8 @@ urlpatterns = [
     # Request tracking
     path('my-requests/', views.my_requests, name='my_requests'),
     path('request/<uuid:uuid>/', views.request_detail, name='request_detail'),
+    # Polled by the detail page while a job runs, in place of a meta refresh.
+    path('request/<uuid:uuid>/status/', views.request_status, name='request_status'),
     # The filename forms are the canonical ones: wget names the saved file after
     # the last URL segment, so a link ending in "/download/" lands as
     # index.html. The bare forms redirect to them, which keeps links already
