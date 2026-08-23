@@ -687,8 +687,11 @@ class UserChangeForm(forms.ModelForm):
 
 @admin.register(Request)
 class RequestAdmin(admin.ModelAdmin):
-    list_display = ('uuid', 'request_type', 'get_user_email', 'status', 'created_at',
+    # No uuid column: it is 36 characters of horizontal space that reads as noise,
+    # and it stays searchable below. The timestamp is the link to the change page.
+    list_display = ('submitted', 'get_user_email', 'request_type', 'status',
                     'duration', 'has_output')
+    list_display_links = ('submitted',)
     list_filter = ('status', 'request_type', 'created_at')
     search_fields = ('uuid', 'user__name', 'user__emails__email')
     readonly_fields = ('uuid', 'created_at', 'updated_at', 'rerun_link', 'shell_recipe')
@@ -721,6 +724,11 @@ class RequestAdmin(admin.ModelAdmin):
         return super().get_queryset(request).annotate(
             _duration=ExpressionWrapper(F('completed_at') - F('created_at'),
                                         output_field=DurationField()))
+
+    @admin.display(description='Submitted', ordering='created_at')
+    def submitted(self, obj):
+        """Compact and sortable: the locale format is twice as wide for no gain."""
+        return timezone.localtime(obj.created_at).strftime('%Y-%m-%d %H:%M')
 
     @admin.display(description='Duration', ordering='_duration')
     def duration(self, obj):
