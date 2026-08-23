@@ -1,21 +1,24 @@
-# VALD Django — pre-cutover review findings
+# VALD Django — review findings
 
-Review date: 2026-08-02/03. Branch: `master` @ `f3055ee`.
+Findings from the pre-cutover review (2026-08-02/03, `master` @ `f3055ee`) and the
+second pass (2026-08-07). IDs are the numbers used in the review discussion, kept
+stable because **71 comments and tests across the codebase cite them** — a
+`(R19)` in a settings comment is only useful while this file resolves it.
 
-**Scope reviewed:** `views.py`, `backend.py`, `job_runner.py`, `models.py`, `forms.py`,
-`persconfig.py`, `utils.py`, `admin.py`, `cleanup_old_results.py`, both settings modules,
-`vald.service`, `urls.py`, and the templates cited below.
+**Pruned 2026-08-23.** Findings that were both fixed *and* uncited were removed;
+the table below still names every one of them, and the full original text is in
+git at `5db5abe`. What survives is the reasoning the code depends on: invariants
+a future change could break, decisions that were made deliberately, and the two
+items still open.
 
-**Not reviewed:** the `import_*` management commands in depth,
-templates not cited here, and whether the flag→`pres_in` mapping matches the Fortran
-source (that needs test runs against the binaries, not reading).
-
-IDs are the numbers used in the review discussion, kept stable for cross-reference.
-The document is ordered by priority, so IDs are not sequential.
+Line numbers in `**Where:**` lines are as of the review commit and have drifted.
+File and symbol names are the reliable part.
 
 ---
 
 ## Status overview
+
+Every ID, including those whose detail section was pruned.
 
 | ID | Sev | Status | Finding |
 |----|-----|--------|---------|
@@ -51,7 +54,7 @@ The document is ordered by priority, so IDs are not sequential.
 | R25 | Low | ✅ fixed `b61fa8c` | `error_message` leaks internal paths to users |
 | R26 | Low| ⏸ won't-fix (accepted) | Account enumeration in login/registration messages |
 | R33 | Low| ✅ fixed `a38d4f1` | Completion email attaches the full result file |
-| R34 | Low | open | `safe`-tagged messages render unescaped |
+| R34 | Low | **open** | `safe`-tagged messages render unescaped |
 | R20 | UX | ✅ fixed `8647f39` | My Requests: no λ range/element, no pagination |
 | R21 | UX | ✅ fixed `73de058` | Expired results still show status "Complete" |
 | R22 | UX| ✅ fixed `8079afb` | Spam filter rejects any message containing a URL |
@@ -59,7 +62,7 @@ The document is ordered by priority, so IDs are not sequential.
 | R38 | High | ✅ fixed | Sessions outlive the account state they were granted under; no key rotation on login |
 | R39 | Medium | ✅ fixed | `?modify=<non-uuid>` is an unhandled 500 on all four extraction forms |
 | R40 | Low | ✅ fixed | Out-of-range persconf rank is a 500 (sqlite `OverflowError`); supersedes R30 |
-| R41 | Medium | ✅ fixed | Django admin login unthrottled; admin-set passwords skip the validators |
+| R41 | Medium | ✅ fixed (one operational question open) | Django admin login unthrottled; admin-set passwords skip the validators |
 | R42 | Low | ✅ removed | `MAINTENANCE` was documented and configurable but read by nothing |
 | R43 | Low | ⏸ won't-fix (accepted) | No upper bound on the extraction wavelength range for download delivery |
 | R44 | Low | ✅ fixed | showline error text skipped R25's scrubbing, and failed runs were published anyway |
@@ -70,588 +73,279 @@ The document is ordered by priority, so IDs are not sequential.
 | R49 | Cosmetic | ✅ fixed | Four multi-line `{# #}` template comments rendered as visible page text |
 | R50 | — | ✅ added | Admin had no way to see a user's linelist config; the inline omits ranks and the diff |
 
-Dead schema noted under R7: `Request.completed_at` and `Request.queue_position` are
-never written.
+---
+
+## Still open
+
+### R34. `safe`-tagged messages render unescaped
+`base.html` renders `{{ message|safe }}` when `'safe' in message.tags`. Only the
+"Forgot your password?" link uses it, with a `build_absolute_uri` value, so it is
+not exploitable today — **but it becomes XSS the moment user data goes into a
+`safe`-tagged message.** Nothing enforces that it does not.
+
+### R41 (remainder). Production superusers are unaudited
+The code half is fixed (below). Still unanswered, and not a code question: which
+`django.contrib.auth` superusers exist on the production database, and whether
+any carries a development-era password.
 
 ---
 
-## P1 — fix before cutover
+## Accepted, with consequences to remember
 
-### R4. Rate limiting does not do what it says
-**Where:** `vald_web/settings_deploy.py:85-90` (`CACHES`), `:136`
-(`RATELIMIT_IP_META_KEY`), `vald.service` (`--workers 4`)
+### R37. The vhost serves the results directory directly
+Results live in `$VALD_HOME/WWW/public_html/FTP`, which the vhost serves
+directly — as legacy did, where "retrieve via ftp" meant exactly that.
 
-Two independent defects, either of which alone defeats the control:
+**Decided (Tom): kept as-is.** Result files are the user's own extraction output,
+not personal data; VALD data is shared and scientific; files are transient (48 h).
 
-1. `CACHES` is `LocMemCache`, which is **per-process**. Gunicorn runs 4 workers, so each
-   has its own buckets: `5/m` on login is really up to 20/m, and which bucket you hit
-   depends on which worker gunicorn picks.
-2. `RATELIMIT_IP_META_KEY = 'HTTP_X_FORWARDED_FOR'` uses the **raw** header. A reverse
-   proxy *appends*, so a client sending `X-Forwarded-For: <random>` produces
-   `<random>, realip` — a fresh bucket per request. Rotating the prefix bypasses every
-   limit in the app.
+The consequence to keep in mind: `download_request`'s auth/ownership/containment
+checks therefore gate **only the in-app download button, not the raw URL**.
+Result files are reachable by anyone who knows the filename —
+`{ClientName}.{6-digit}.gz`, the 6-digit a SHA256-derived hash of the request
+UUID. Since the raw path is public anyway, those two views no longer require a
+session or check ownership: the uuid4 is the capability. That is what makes a
+link copied out of the completion email work under `wget` — before, those clients
+had no cookie, followed the login redirect and saved the landing page as the
+"download". Failures on both views are status codes with a plain-text body, never
+redirects, so a failed fetch fails loudly.
 
-**Fix:** move to a shared cache (`DatabaseCache` is fine here — no Redis needed), and
-either use a callable key that takes the **rightmost** XFF entry, or have the proxy
-overwrite a dedicated header it fully controls. Worth confirming what the nginx/Apache
-vhost currently sets.
+### R31. A deliberate rank of 3 cannot be expressed
+`ConfigLinelist.save()` treats `3` as "unset" and replaces it with the linelist
+default on create. `None` would be the right sentinel for "inherit". Left alone.
 
-### R5. No submit rate limit and no per-user in-flight cap
-**Where:** `vald/views.py:563` (`submit_request`), `:716` (`handle_extract_request`),
-`vald/backend.py:142` (`check_queue_capacity`)
+### R43. No upper bound on the wavelength range
+`ExtractAllForm` accepts `stwvl=0.01, endwvl=1e30`. `VALD_MAX_LINES_PER_REQUEST`
+and `VALD_JOB_TIMEOUT` bound the work, so the ceiling is 5 in-flight jobs × 1 h
+per user. **Left alone: the existing caps do their job.** Note this is also a
+deliberate match to legacy, which validated only `wlleft > wlright || wlleft <= 0`
+(`parserequest.c:650-655`) — wide ranges are legitimate science and were always
+allowed. An early draft of this document called for a range cap; that was wrong.
 
-The `@ratelimit` decorators cover contact/registration/auth only — the extraction
-submission path has none, and there is no per-user concurrency limit
-(`check_queue_capacity` counts globally). One user can therefore hold all 10 admission
-slots indefinitely and every other user gets "Server is busy".
+### R26. Account enumeration
+`login` distinguishes "not imported yet" from "not registered", and
+`RegistrationForm` says "already registered". Acceptable for this user base —
+recorded as a conscious choice, not an oversight.
 
-**This is a genuine regression, and it is about rate, not size.** Legacy VALD took
-requests by email and ran them through `at`, so submissions were inherently serialized and
-you could not fire them in a loop. The interactive path removes that, and R9's 20
-concurrent pipelines amplify it. R5 and R9 are the same problem from two directions and
-should be fixed together.
+### R46. Result filenames cannot collide — but the guard costs disk
+`{ClientName}.{6-digit}` is not unique by construction: two users whose
+alphanumeric-reduced names match could collide. `submit_request_direct` checks
+`working/NNNNNN/.uuid` and increments on mismatch, and `cleanup_old_results`
+sweeps job directories and result files from a **single** `cutoff_time` — so the
+guard is live exactly as long as the file it protects. No collision window
+exists.
 
-**Fix:** rate-limit the submit path; cap in-flight requests per user; derive the admission
-check from the queue it is meant to guard.
-
-**Explicitly _not_ a fix: capping the wavelength range.** Legacy applied no maximum either
-— `parserequest.c:650-655` validates only `wlleft > wlright || wlleft <= 0` → "Bad
-wavelength range". Wide ranges are legitimate science and were always allowed. An earlier
-draft of this document called for a range cap; that was wrong.
-
-### R8. Job timeouts don't bound the pipeline, and children are never killed
-**Where:** `vald/job_runner.py:209`, `:213`, `:273`, `:277`, `:353-375`
-
-Only the **last** process in each pipeline gets `communicate(timeout=3600)`. The upstream
-`preselect_proc.wait()` / `select_proc.wait()` calls have **no timeout**, so a hung
-`preselect5` parks a worker thread permanently — 5 of those and the queue is dead. And on
-`TimeoutExpired` the handlers just return an error string without killing the children,
-leaving orphaned Fortran processes holding CPU and file handles.
-
-**Fix:** wrap the whole pipeline in one deadline; `kill()` + `wait()` every process in a
-`finally`; log what was killed.
-
-### R7. Background jobs die with the worker; nothing reconciles
-**Where:** `vald/views.py:961` (`thread.start()`), `vald.service` (`--timeout 60`,
-`--workers 4`)
-
-Each request spawns a plain daemon `threading.Thread` inside a sync gunicorn worker. Any
-worker recycle, timeout kill on an unrelated request, or deploy kills in-flight jobs, and
-the `Request` row stays `processing` **forever** — there is no startup sweep.
-
-Related dead schema: `Request.completed_at` and `Request.queue_position` are declared
-(`models.py:30,39`) and shown in the admin, but **never written** anywhere. The detail
-template's "Completed:" row therefore never renders, and the view recomputes queue
-position on the fly.
-
-**Fix:** on startup, mark orphaned `processing` rows as failed (or requeue). Set
-`completed_at` when a job finishes. Consider dropping `queue_position` from the model.
-
-### R13. No logging configuration at all
-**Where:** both settings modules — no `LOGGING`, no `ADMINS`
-
-With `DEBUG=False`, unhandled 500s and the several `logger.exception` calls in
-`process_request_background` have no configured destination beyond whatever gunicorn
-happens to capture on stderr. This is what makes R14 silent, and it will make every
-post-cutover incident guesswork.
-
-**Fix:** a small `LOGGING` dict to journald/file at INFO, plus `ADMINS` so `django.request`
-ERROR mails out.
-
-### R11. Disk grows without bound, two ways
-**Where:** `vald/job_runner.py:567` (`_finalize_output`),
-`vald/management/commands/cleanup_old_results.py:85`
-
-1. `_finalize_output` gzips into the FTP dir but leaves the **uncompressed** original in
-   the job dir, so every extraction costs roughly 2× until the job dir is swept.
-2. The FTP sweep only globs `*.gz` and `*.bib.gz`. Showline results are written as
-   `.txt` (`job_runner.py:452`) and are therefore **never deleted**. Observed rather than
-   inferred: the local `public_html/FTP/` still holds `ThomasMarquart.042215.txt` dated
-   2025-12-03, eight months on.
-
-**Fix:** delete the uncompressed output after gzip; add `*.txt` to the FTP patterns.
-(Minor: `*.gz` already matches `*.bib.gz`, so that pattern is redundant.)
-
-### R12. `manage.py` defaults to the dev settings
-**Where:** `manage.py:9` (`vald_web.settings`) vs `vald_web/wsgi.py`
-(`vald_web.settings_deploy`)
-
-`wsgi.py` correctly defaults to deploy, but `manage.py` does not. So
-`manage.py cleanup_old_results` on the server without an explicit
-`DJANGO_SETTINGS_MODULE` uses dev paths — `VALD_HOME=/home/tom/VALD3`,
-`VALD_FTP_DIR=BASE_DIR/public_html/FTP` — cleans the **wrong** directory, reports "no old
-files found", and the real FTP dir fills up. Same hazard for any import command.
-
-**Fix:** make `manage.py` default to `settings_deploy` (with dev opting in), or hard-fail
-when `VALD_HOME` doesn't exist. Also confirm a systemd timer or cron actually runs the
-cleanup — none is present in the repo, and the completion email promises 48 hours.
-
-### R10. SQLite in `journal_mode=delete` with no busy timeout
-**Where:** `DATABASES` in both settings modules (no `OPTIONS`); verified on the current db:
-`PRAGMA journal_mode` → `delete`
-
-With R9's concurrency (up to 20 job threads across 4 processes) all writing status
-updates, writer contention past the 5 s default surfaces as `database is locked`. When the
-status save fails, the outer handler's own save can fail too, leaving the row stuck
-(feeds back into R7).
-
-**Fix:**
-```python
-"OPTIONS": {"timeout": 20, "init_command": "PRAGMA journal_mode=WAL;"}
-```
+The coupling is the thing to remember: **job directories are retained for the
+full period only because the collision guard reads them**, though their contents
+are dead on completion. In one dev tree `TMP.LIST` intermediates were 71% of
+106 MB in `working/` against 3.9 MB of delivered results — peak disk runs 20-30×
+the delivered size. Sweeping sooner requires moving the guard to look at
+`VALD_FTP_DIR` instead. **Decided (Tom):** leave it, the array is large.
 
 ---
 
-## P2 — cutover mechanics and correctness
+## Security fixes with regression tests
+
+The tests in `tests/test_security.py` are named for these; do not weaken them
+without reading the finding.
+
+### R1, R2, R3. The three exploitable ones
+- **R1** (`tests/test_security.py:44`): `is_active` was never checked, so admin
+  approval was bypassable. See R38 for the half this missed — the login gate was
+  fixed here, established sessions were not.
+- **R2** (`tests/test_security.py:90`, `vald/persconfig.py:263`): IDOR — any user
+  could rewrite the *system default* linelist config. The system default owns
+  low, guessable pks, which is why the tests probe the id space rather than a
+  fixed pk (see also R47, which made the whole class unrepresentable by keying
+  the form on `Linelist` rather than `ConfigLinelist`).
+- **R3** (`tests/test_validation.py:28`): `elmion` / `chemcomp` were injected
+  straight into Fortran control files.
+
+### R4. Rate limiting did not do what it said
+**Where:** `settings_deploy.py` (`CACHES`, `RATELIMIT_IP_META_KEY`), `vald.service`
+
+Two independent defects, either alone defeating the control:
+1. `LocMemCache` is **per-process**; 4 gunicorn workers meant `5/m` was really up
+   to 20/m, depending on which worker you landed on.
+2. `RATELIMIT_IP_META_KEY = 'HTTP_X_FORWARDED_FOR'` used the **raw** header. A
+   proxy *appends*, so a client sending its own value got a fresh bucket per
+   request — rotating the prefix bypassed every limit.
+
+The live invariant: use the **rightmost** XFF entry, never the raw header. This is
+why `settings.py` sets `RATELIMIT_CLIENT_IP_HEADER` for `vald.ratelimit.client_ip`
+and warns against `RATELIMIT_IP_META_KEY` in a comment.
+
+### R5. No submit rate limit, no per-user in-flight cap
+**Where:** `views.py` (`handle_extract_request`), `backend.py` (`check_queue_capacity`)
+
+The `@ratelimit` decorators covered contact/registration/auth only; the extraction
+path had none, and `check_queue_capacity` counted globally. One user could hold
+every admission slot and everyone else got "Server is busy".
+
+**A genuine regression, and about rate, not size.** Legacy took requests by email
+through `at`, so submissions were inherently serialized — you could not fire them
+in a loop. R5 and R9 were the same problem from two directions and were fixed
+together. Cited by both settings modules at `VALD_MAX_QUEUE_SIZE`.
 
 ### R6. Password and token hygiene
-**Where:** `vald/models.py:156-159`, `vald/views.py` (`request_password_reset`,
-`reset_password`), `vald/forms.py:43-44`, `vald/views.py` (`set_password`)
+Reset tokens had **no expiry field and no expiry check** while the email promised
+7 days; `AUTH_PASSWORD_VALIDATORS` was configured but `validate_password` was
+**never called** (`User.set_password` went straight to `make_password`); the
+minimum length was 6 in `forms.py` and 8 in the activation view. All three fixed.
+The token lifetime setting in both settings modules cites this.
 
-- Reset tokens have **no expiry field and no expiry check**, while the email promises
-  "expire in 7 days". A leaked link works until used.
-- `AUTH_PASSWORD_VALIDATORS` is configured in both settings modules but
-  `validate_password` is **never called** — `User.set_password` goes straight to
-  `make_password`. The validators are decorative.
-- Minimum length is inconsistent: 6 in `forms.py`, 8 in the activation view.
+### R38. A session outlived the account state it was granted under
+**Where:** `views.py` — `require_login`, `get_current_user`, `login`, `set_password`
 
-**Fix:** add `token_created_at` and reject stale tokens; call `validate_password` in both
-password-setting paths; settle on one minimum.
+R1 fixed `is_active` *at the login gate*; nothing rechecked it for an established
+session. Three things that ought to end a session did not:
+- **Suspension.** Unticking `is_active` left the user fully functional until the
+  cookie expired — two weeks by default. The admin help said the opposite.
+- **Password reset.** A stolen session survived the victim's own recovery.
+- **Login itself.** No `cycle_key()`, so a session id fixed before login became
+  an authenticated one (fixation).
 
-### R14. Contact form 500s on a message containing `\` + digit
-**Where:** `vald/utils.py:153`
+**Fixed:** `User.session_auth_hash()` — a salted HMAC of the password field,
+mirroring `django.contrib.auth` — is stored at login and compared on every
+request alongside a fresh `is_active` check, in `get_current_user()`, now the
+single choke point and cached per request. `start_session()` / `end_session()`
+replace the ad-hoc session writes and add `cycle_key()`. `SESSION_COOKIE_AGE`
+dropped from two weeks to one.
 
-`render_request_template` uses `re.sub` with a **user-controlled replacement string**, so
-backslash escapes are interpreted. Verified:
+This is why a forged session needs `auth_hash` and not just `user_id`.
 
-```
-'my format string is (F8.3\2X) and it fails'
-→ PatternError: invalid group reference 2 at position 30
-```
+### R39. `?modify=` was raw query string, not a validated UUID
+`Request.objects.get(uuid=...)` caught only `DoesNotExist`, but a non-UUID value
+raises `ValidationError` from the field — so any hand-edited URL was a 500, and
+with R13's `ADMINS` wired up, an email per hit. **Fixed:** one
+`modify_initial_data()` helper catching the full set, shared by the four views
+that were 95% duplicated. The ownership check was already sound.
 
-The call sits outside the `try/except` in `handle_contact_request`, so it is an uncaught
-500 — and silent, per R13. Astronomers pasting Fortran formats, LaTeX or Windows paths
-will hit this.
+### R40. Out-of-range rank weights were a 500, not just bad config
+Supersedes the **R30** won't-fix, which was accepted because the blast radius is
+the user's own extractions. True of the *values*, not of the crash: `int()` accepts
+arbitrary precision and sqlite raises `OverflowError` past 2^63, so
+`edit-val-0=9999…` (25 digits) was an unhandled 500 on `/persconf/`.
 
-**Fix:** `str.replace`, or pass a lambda replacement to `re.sub`.
+**Fixed:** `persconfig.clamp_rank()`, applied both where the POST is parsed **and**
+in `update_config_linelist()` — the latter being the choke point that persists, so
+nothing downstream has to trust the view.
 
-### R17. `/new` is hardcoded in four places
-**Where:** `vald_web/settings_deploy.py:120` (`FORCE_SCRIPT_NAME`), `:123`
-(`CSRF_COOKIE_PATH`), `:124` (`SESSION_COOKIE_PATH`), `:141` (`STATIC_URL`)
+### R41. The admin is a public login form too
+- `/admin/login/` had no throttle while the VALD login next door was 5/min, so
+  staff passwords were guessable at full speed. **Fixed:** `admin.site.login`
+  wrapped in `django-ratelimit`, `VALD_ADMIN_LOGIN_RATE` (default `10/h`),
+  `block=True` — there is no admin template in which to render a friendly retry,
+  so 403 is the honest answer.
+- `user_change_password` enforced `len >= 6` only, bypassing the validators R6
+  wired into every other path — the one password an admin set by hand was the
+  weakest the site allowed. **Fixed:** `validate_password(password, user)`.
 
-All four must change together at cutover. Note that changing the cookie paths
-**invalidates every live session and CSRF token** — users mid-form will get a CSRF
-failure. Worth doing at a quiet hour with a note on the page.
+### R27. `save_units` wrote unvalidated POST values
+Assigned `request.POST.get(...)` straight onto the model. Django does not enforce
+`choices` on `.save()` and SQLite ignores `max_length`, so arbitrary strings
+persisted and then fed flag generation in `create_job_config`. Now a `ModelForm`.
 
-R16 (fixed) was the sharpest edge here: deleting the `FORCE_SCRIPT_NAME` line would have
-put a literal `None` in every emailed link. The fix now coerces it, so removing the line
-is safe.
+### R25 / R44. Internal paths must not reach users
+**R25:** `request_detail.html` rendered raw Fortran stderr and Python exception
+text, absolute server paths included.
 
-### R18. `output_file` stores absolute paths
-**Where:** `vald/models.py:33`, `:72` (`output_exists`)
+**R44:** `summarise_stage_error()` — which strips gfortran backtrace frames and
+reduces absolute paths to a basename — was reached from exactly one place,
+`_stage_error()`. showline ran its own subprocess loop and never called it, so raw
+stderr went to two destinations: `Request.error_message` and **the result file
+itself**. Worse, `_run_showline` moved the `.txt` into `VALD_FTP_DIR` and chmod
+644'd it *before* checking `failures` — so on failure a backtrace sat for 48 h in
+a directory the vhost serves directly (R37), referenced by no `Request` row.
 
-If `VALD_FTP_DIR` moves at cutover, every historical request silently reports
-"Output file not found" — `output_exists()` just returns `False`, so there is no
-distinction between "moved", "expired" and "never produced" (see R21).
-
-**Fix:** store the basename and resolve against `VALD_FTP_DIR` at read time.
-
-### R19. `collectstatic` could publish result files — DEV-ONLY, N/A on server
-
-`collectstatic` copies everything under `STATICFILES_DIRS` into `STATIC_ROOT`,
-served publicly with no auth. The finding: if the results dir sits inside a
-`STATICFILES_DIRS` tree, results get published.
-
-**This was a dev-config problem only.** In dev, `VALD_FTP_DIR` was
-`BASE_DIR/public_html/FTP`, inside `BASE_DIR/public_html` (a static dir) — and
-this machine's `public_html/FTP/` held 16 real result files, so a dev
-`collectstatic` would have published them.
-
-**On the server it does not apply** because deploy `VALD_FTP_DIR` is
-`$VALD_HOME/WWW/public_html/FTP` (`/home/vald/VALD3/...`), a completely different
-tree from the static dirs under `BASE_DIR` (`/home/vald/vald-www.git/...`).
-Verified: results are inside neither `STATICFILES_DIRS` entry.
-
-> **Corrected 2026-08-23.** This finding originally gave a second reason - that
-> the deployment never runs `collectstatic`, making `STATIC_ROOT` unused. That is
-> wrong: the deploy *does* run it, and the web server serves the `staticfiles/`
-> snapshot rather than `style/`, so a CSS change needs
-> `bin/vald-manage collectstatic` or it silently does nothing. The deploy
-> checklist in the admin help is authoritative.
-
-**Fixed `77492d1`** for dev hygiene: moved dev `VALD_FTP_DIR` to
-`BASE_DIR/ftp_results` (outside `public_html`), documented the invariant in both
-settings, and added a test asserting `VALD_FTP_DIR` is inside no
-`STATICFILES_DIRS`. No server action needed. Earlier advice to "check
-`public_html/FTP` on the server before collectstatic" was over-cautious and does
-not apply — retracted.
-
-### R37. Does the reverse proxy serve the FTP results dir directly? — server/proxy config, needs check
-
-**Not a code finding — flagged while re-examining R19.** The results directory
-is `$VALD_HOME/WWW/public_html/FTP` — a web-served path by design. In legacy VALD,
-"retrieve via ftp/download" worked because the web server served that directory
-*directly* (results were reachable by guessable URL, no auth).
-
-The Django app instead serves downloads through the authenticated
-`download_request` view (with the ownership + path-containment checks from R18).
-So the open question for the takeover: **does the nginx/Apache vhost still expose
-`$VALD_HOME/WWW/public_html/FTP` directly?**
-
-- If yes, result files remain downloadable by URL without the new login/ownership
-  checks — same as legacy. May be intended (backward compatibility), or may be
-  something to gate now that there is auth.
-- If no, downloads go only through the app, and the direct path is dead.
-
-Purely a reverse-proxy configuration question, outside this codebase. Worth a look
-at the vhost during cutover; no code change implied either way.
-
-**Decided (Tom):** the vhost does serve the FTP directory directly, kept as-is.
-Rationale: result files are the user's own extraction output (not personal data),
-VALD data is shared/scientific, files are transient (48 h cleanup), and it matches
-the long-standing legacy download model. Consequence to be aware of: the
-auth/ownership/containment checks on `download_request` (R18) therefore gate only
-the in-app download button, not the raw URL — result files are reachable by anyone
-who knows the filename (`{ClientName}.{6-digit}.gz`, the 6-digit a SHA256-derived
-hash of the request UUID). Accepted.
-
-**Follow-up:** since the raw path is public anyway, `download_request` /
-`download_bib_request` no longer require a session or check ownership — the uuid4
-is the capability. A link copied off the results page or out of the completion
-email now works with `wget`/`curl` on another machine; before, those clients had
-no session cookie, followed the login redirect and saved the landing page HTML as
-the "download". Failures on those two views are status codes with a plain-text
-body, never redirects, so a failed fetch fails loudly.
-
-### R28. `chemcomp` may be written in the wrong format — needs checking
-**Where:** `vald/job_runner.py:479-499` (`_write_select_input`)
-
-The abundances are written **unquoted**, followed by a quoted `'END'`. But the abundance
-block echoed in `documentation/reqextstar.txt` is quoted Fortran strings —
-`'H :  0.91','He: -1.05',` … `'Es:-20.00','END'`. If `select5` expects quoted entries,
-non-solar abundances may be **silently ignored** and stellar extractions would return
-solar-abundance results without complaint.
-
-Not touched by the R3 fix, which deliberately preserved the existing byte format.
-
-**Fix:** run one stellar extraction with e.g. `Fe: -3.0` and check whether the echoed
-abundance table in the output reflects it. Correct the quoting if not.
-
-### R9. Effective concurrency is 4× configured; admission check is decoupled
-**Where:** `vald/backend.py:99-116` (`get_job_queue`), `:142-160`
-(`check_queue_capacity`), `:36`
-
-`_job_queue` is a **per-process** singleton, so 4 gunicorn workers × `VALD_MAX_THREADS=5`
-gives up to **20** concurrent Fortran pipelines, not 5. Separately,
-`check_queue_capacity()` counts DB rows in a 30-minute window against
-`VALD_MAX_QUEUE_SIZE`, which is a different mechanism from the real
-`queue.Queue(maxsize=10)` — the admission check and the actual queue can disagree in both
-directions, and the 30-minute window means stuck rows stop counting while still occupying
-the real queue.
-
-**Fix:** the honest options are a shared broker, or `--workers 1 --threads N` so there is
-one queue. At minimum, derive the admission check from the queue it is supposed to guard.
-
-### R23. Failed showline queries are reported as success
-**Where:** `vald/job_runner.py:448-449`
-
-The per-query `except` writes `Error processing query: …` **into the result file** and
-`_run_showline` still returns `(True, …)`, so the request shows Complete with an error
-inside it. Related fragility at `:439-443`: if the `Which data base information file`
-sentinel is absent, `data_start` stays 0 and the raw interactive prompts land in the
-user's output.
-
-### R36. HFS failure: gfortran -std=legacy comma-termination (local VALD build)
-
-Not an app bug - a Fortran toolchain issue in ~/VALD3, diagnosed and fixed
-locally. Recorded here because the fix lives outside the git repo and is not
-committed to VALD's SVN.
-
-**Definitive check.** Tom's own request - extract all, 1000-1000.9 A, cm-1,
-vacuum, HFS on - produced job.021685 for him but failed on this dev machine with
-identical parameters. Same request, opposite outcome: the software is not at
-fault, the local Fortran build is.
-
-**Root cause.** In HFS mode presformat5 reads each line with a fixed format
-ending A16,9I4 (16-char reference comment, then 9 integer reference IDs). Built
-with -std=legacy on modern gfortran (>=13), a comma inside the A16 comment -
-e.g. the reference "CNO, Na 1, Mg 1" on a nitrogen line near 1000 A - is treated
-as an input field terminator. The A16 read stops at the comma, the following 9I4
-reads from the wrong column, and the record fails with "FORMAT ERROR IN LINE #".
-Lines whose reference has no comma are unaffected, so it looked region-dependent.
-Minimal reproducer - read "CNO, Na 1, Mg 1:1220..." with format (A16,9I4):
-default gfortran gives ios=0 (correct); -std=legacy gives ios=5010 (fails).
-Reproduces on gfortran 13 and 16. "Worked before" = previously built with an
-older gfortran that did not comma-terminate A-fields under -std=legacy.
-
-**The trap.** Simply dropping -std=legacy breaks the other direction: presformat5.f
-has 9 output FORMAT statements with a deliberately missing comma between an A14
-descriptor and a following quote literal, a legacy extension that needs the flag.
-So the flag is required for the writes but poisons the reads.
-
-**Fix applied (local, uncommitted) - both halves:**
-1. ~/VALD3/SOURCE/SELECT/presformat5.f: the 9 spots where an A14 descriptor is
-   followed directly by a quote literal now have a comma inserted between them
-   (the standard-required comma, removing the only need for -std=legacy).
-2. ~/VALD3/SOURCE/SELECT/Makefile: target-specific
-   presformat5: F77FLAG := $(filter-out -std=legacy,$(F77FLAG))
-   so make builds just this binary without the flag; everything else keeps it.
-
-Only presformat5 needed rebuilding - post_hfs_format5 reads presformat5's
-reformatted output, not the raw comma-comment, so the bug was isolated there.
-Verified: Tom's exact request returns 145 lines through the app, and
-tests/test_backend_binaries.py is 15 passed + 1 xpass (the previously-xfailed
-HFS-extract-all now passes).
-
-**Not committed to SVN** per instruction. That working copy's svn pristine store
-is incomplete (pre-existing), so svn revert will not work; the change is the two
-edits above and is trivially reversible by hand.
-
-**Upstream.** The missing-comma formats violate the standard and bite any modern
-gfortran; worth reporting to whoever maintains VALD so mirrors rebuilding with a
-current compiler do not hit it.
-
-### R35. Every rate-limit message was dead code
-**Where:** `vald/views.py` (all `@ratelimit` decorators), django-ratelimit 4.1.0
-
-`@ratelimit` defaults to `block=True`, which raises `Ratelimited` (a
-`PermissionDenied` subclass) before the view body runs. So all six
-`if getattr(request, 'limited', False):` branches - each with a carefully worded
-message like "Too many login attempts. Please try again in 1 minute." - could never
-execute, and a rate-limited user got a bare 403 page instead. Found while testing R5.
-
-`reset_password` had no `limited` branch at all, so it needed one adding before
-`block=False` could be applied without silently dropping its limit.
-
-### R15. Effectively no test coverage
-**Where:** `tests/` — only `test_config.py` (config generation)
-
-Nothing covers auth, the request pipeline, or the views. The scratch tests I wrote for
-R1/R2/R3 are throwaway; worth promoting them into `tests/` as regression tests, since all
-three were exploitable and nothing would catch a regression.
+**The invariant now:** every path that reaches a user is scrubbed, not just the
+pipeline stages — including the three generic `except Exception` handlers, which
+returned `str(e)` (a missing binary reports its full path that way). Failed
+showline runs stay in the job directory next to the stage `.err` files.
 
 ---
 
-## P3 — smaller correctness issues
+## Data and configuration
+
+### R18. `output_file` stored absolute paths
+If `VALD_FTP_DIR` moved, every historical request silently reported "Output file
+not found" — `output_exists()` just returned `False`, with no distinction between
+"moved", "expired" and "never produced". **Fixed:** store the basename, resolve
+against `VALD_FTP_DIR` at read time. Absolute values are still honoured so
+existing rows keep working.
+
+### R19. Results must never sit inside a `STATICFILES_DIRS` tree
+`collectstatic` copies everything under `STATICFILES_DIRS` into `STATIC_ROOT`,
+which is served publicly with no auth. If the results directory sits inside one,
+results get published.
+
+**This was a dev-config problem only.** Dev had `VALD_FTP_DIR` at
+`BASE_DIR/public_html/FTP`, inside a static dir, and that machine held 16 real
+result files. On the server it does not apply: deploy `VALD_FTP_DIR` is
+`$VALD_HOME/WWW/public_html/FTP` (`/home/vald/VALD3/...`), a different tree
+entirely from the static dirs under `BASE_DIR` (`/home/vald/vald-www.git/...`).
+
+**The live invariant**, documented in both settings modules and asserted by
+`tests/test_finds_batch.py`: `VALD_FTP_DIR` is inside no `STATICFILES_DIRS` entry.
+Dev is safe with results under `public_html/FTP` *only* because dev's
+`STATICFILES_DIRS` is just `style/`; deploy adds `public_html` and therefore keeps
+results under `VALD_HOME` instead. Adding `public_html` to dev re-opens this.
+
+> **Corrected 2026-08-23.** This finding used to claim, as a second reason, that
+> the deployment never runs `collectstatic` and `STATIC_ROOT` is unused. That is
+> **wrong**: the deploy does run it, and the web server serves the `staticfiles/`
+> snapshot rather than `style/` — so a CSS change needs
+> `bin/vald-manage collectstatic` or it silently does nothing. The deploy
+> checklist at `/admin/help/` is authoritative. The same wrong claim was in the
+> admin help's "things that surprise people" and was removed at the same time.
 
 ### R29. The output line cap lost its delivery-method distinction
-`vald/job_runner.py:609` reads `VALD_MAX_LINES_PER_REQUEST` via `getattr(..., 500000)`,
-but it is defined in **neither** settings module, so the fallback always wins and the
-number is invisible and untunable.
+`VALD_MAX_LINES_PER_REQUEST` was read via `getattr(..., 500000)` but defined in
+neither settings module, so the fallback always won and the number was invisible
+and untunable.
 
 More substantially, legacy had **two** caps chosen by delivery method
 (`parserequest.c:659-663`, `:830-834`, `:1163-1164`):
-
-```c
-if(FTPretrieval)  fprintf(fo1, "...%d\n", ..., MAX_LINES_PER_FTP);
-else              fprintf(fo1, "...%d\n", ..., MAX_LINES_PER_REQUEST);
-```
 
 | delivery | legacy | now |
 |---|---|---|
 | download | 100 000 | 500 000 |
 | email | 1 000 | 500 000 |
 
-The values live in `valdems.h` / `valdems_local.h` on the server, not in this repo; the
-100 000 / 1 000 figures come from the comment the pre-jobrunner Python left behind, so
-**confirm them with `grep MAX_LINES_PER $VALD_HOME/**/valdems*.h`** before acting.
+The real values live in `valdems.h` / `valdems_local.h` on the server, not in this
+repo; those figures come from a comment the pre-jobrunner Python left behind, so
+confirm with `grep MAX_LINES_PER $VALD_HOME/**/valdems*.h` before acting on them.
 
-Two consequences: the email path lost the 1 000-line cap that made attaching results safe
-(see R33), and the download cap was raised 5× — note that legacy's 100 000 may have been
-sized to match a fixed array dimension inside `preselect5`, so raising it is the direction
-that carries risk. Worth one wide-range test extraction to see whether the binary warns on
-truncation or just stops; nothing in `documentation/errors.html` documents either.
+**Decided:** a single 500 000 for both, cited at the setting in both modules. Note
+legacy's 100 000 may have been sized to match a fixed array dimension inside
+`preselect5`, so raising it is the direction that carries risk; nothing in
+`documentation/errors.html` says whether the binary warns on truncation or just
+stops. The email path's safety now comes from R33's byte cap instead.
 
-**Fix:** define the setting explicitly and restore the per-delivery distinction.
+### R33. The completion email attached the full result file
+Attached results **and** included download links. Legacy capped email at 1 000
+lines (R29), which is what made attaching safe; without that cap a dense 50 Å
+region is plausibly a few hundred thousand lines — a multi-MB attachment. Some
+mail servers bounce it, and a bounce means **no notification at all despite the
+files being ready**.
 
-### R30. Rank weights are not range-checked
-`vald/views.py:1136` coerces `edit-val-{j}` with `int()` and a fallback of 3, but never
-bounds the result. Values outside 1–9 flow into the generated `.cfg` and thence
-to the Fortran parser. Now user-scoped after R2, so blast radius is the user's own
-extractions.
+**Fixed:** the attachment is conditional on `VALD_MAX_EMAIL_ATTACH_BYTES`; over
+that the mail carries links only. The old 50 Å form check was removed as
+redundant once the size guard existed — it was rejecting requests the backend
+handles fine.
 
-### R31. `ConfigLinelist.save()` silently overrides a deliberate rank of 3
-`vald/models.py:579-601` treats `3` as "unset" and replaces it with the linelist default
-on create. A user who genuinely wants rank 3 cannot express it. Use `None` for "inherit".
+### R32. Multiple system default configs were possible
+The `UniqueConstraint` on `('user', 'is_default')` does not apply when
+`user IS NULL`, because NULLs don't compare equal in a unique index. So several
+system defaults could coexist and `get_default_config()` picked by name.
 
-### R32. Multiple system default configs are possible
-`vald/models.py:468-474`: the `UniqueConstraint` on `('user', 'is_default')` does not
-apply when `user IS NULL`, because NULLs don't compare equal in a unique index. So several
-system defaults can coexist and `get_default_config()` (`.first()` under
-`ordering = ['user','name']`) picks by name. Add a partial constraint for the
-`user IS NULL` case.
-
-### R27. `save_units` writes unvalidated POST values
-`vald/views.py:976-1000` assigns `request.POST.get(...)` straight onto the model. Django
-does not enforce `choices` on `.save()`, and SQLite ignores `max_length`, so arbitrary
-strings persist and then feed flag generation in `create_job_config`. Use a `ModelForm`.
-
-### R25. `error_message` leaks internal paths
-`request_detail.html:64` renders raw Fortran stderr and Python exception text, including
-absolute server paths. Show a generic message; log the detail (needs R13).
-
-### R26. Account enumeration
-`login` distinguishes "not imported yet" from "not registered", and `RegistrationForm`
-says "already registered". Probably acceptable for this user base — noting it as a
-conscious choice rather than an oversight.
-
-### R33. Completion email attaches the full result file
-`vald/views.py:922-927` attaches results **and** includes download links. The 50 Å form
-check bounds the size, but only loosely: the f2py comparison measured ~30 000 lines from
-6 Å at H-alpha, so 50 Å in a dense region is plausibly a few hundred thousand — a
-multi-MB attachment. Legacy capped email at 1 000 lines (R29), which is what made
-attaching safe in the first place. Some mail servers will bounce it, and a bounce means
-the user gets no notification at all despite the files being ready.
-
-**Fix:** restore the email line cap (R29), or drop the attachment and rely on the links.
-
-**Done:** the attachment is now conditional on `VALD_MAX_EMAIL_ATTACH_BYTES`; over that
-the mail carries the links only. The 50 Å form check was removed as redundant once the
-size guard existed — it was rejecting requests the backend handles fine.
-
-### R34. `safe`-tagged messages render unescaped
-`base.html:85` renders `{{ message|safe }}` when `'safe' in message.tags`. Currently only
-used for the "Forgot your password?" link with a `build_absolute_uri` value, so it is not
-exploitable today — but it becomes XSS the moment user data goes into a `safe`-tagged
-message.
-
----
-
-## Second pass — 2026-08-07
-
-Review of the same tree after the P1/P2 work, looking for what the first pass
-missed. All five were confirmed by test before fixing; the regression tests live
-in `tests/test_security.py`.
-
-### R38. A session outlives the account state it was granted under
-**Where:** `vald/views.py` — `require_login`, `get_current_user`, `login`, `set_password`
-
-R1 fixed the `is_active` check *at the login gate*. Nothing rechecked it for an
-already-established session, so three things that ought to end a session did not:
-
-- **Suspension.** Unticking `is_active` left the user fully functional —
-  submitting jobs, downloading, editing config — until the cookie expired,
-  two weeks out by Django's default. The admin help page (`admin.py:94`)
-  told the operator the opposite.
-- **Password reset.** A stolen session survived the victim's own recovery.
-- **Login itself.** No `cycle_key()`, so a session id fixed before login became
-  an authenticated one (fixation).
-
-**Fixed:** `User.session_auth_hash()` (a salted HMAC of the password field,
-mirroring `django.contrib.auth`) is stored at login and compared on every
-request, alongside a fresh `is_active` check, in `get_current_user()` — now the
-single choke point, cached per request. `start_session()`/`end_session()`
-replace the ad-hoc session writes and add `cycle_key()`. `SESSION_COOKIE_AGE`
-also dropped from Django's two-week default to one week.
-
-### R39. `?modify=` is raw query string, not a validated UUID
-**Where:** `vald/views.py` — the four extraction form views
-
-`Request.objects.get(uuid=...)` caught only `DoesNotExist`, but a value that is
-not a UUID at all raises `ValidationError` from the field. Any hand-edited URL
-was a 500 — and with R13's `ADMINS` wired up, an email per hit.
-
-**Fixed:** one `modify_initial_data()` helper catching the full set, shared by
-all four views, which were 95% duplicated. The ownership check itself was sound
-and is now covered by a test.
-
-### R40. Out-of-range rank weights are a 500, not just bad config
-Supersedes the R30 won't-fix, which was accepted on the reasoning that the blast
-radius is the user's own extractions. That holds for the *values*, but not for
-the crash: `int()` accepts arbitrary precision and sqlite raises `OverflowError`
-past 2^63, so `edit-val-0=9999…` (25 digits) was an unhandled 500 on
-`/persconf/`. Moderate values persisted and reached the Fortran config parser.
-
-**Fixed:** `persconfig.clamp_rank()`, applied both where the POST is parsed and
-in `update_config_linelist()` — the latter being the choke point that persists,
-so nothing downstream has to trust the view.
-
-### R41. The admin is a public login form too
-- `/admin/login/` had no throttle of its own while the VALD login next door is
-  limited to 5/min, so staff passwords were guessable at full speed.
-  **Fixed:** `admin.site.login` wrapped in `django-ratelimit`, `VALD_ADMIN_LOGIN_RATE`
-  (default `10/h`), `block=True` — there is no admin template in which to render
-  a friendly retry message, so 403 is the honest answer.
-- `user_change_password` enforced `len >= 6` only, bypassing the
-  `AUTH_PASSWORD_VALIDATORS` that R6 wired into every other path — the one
-  password an admin sets by hand was the weakest the site allowed.
-  **Fixed:** `validate_password(password, user)`.
-
-Still open, and not a code question: which `django.contrib.auth` superusers exist
-on the production database, and whether any carries a development-era password.
-
-### R42. `MAINTENANCE` was a setting that did nothing
-Defined in both settings modules and documented in `secrets.txt.example` as
-"Show a maintenance notice instead of serving requests". No middleware, view or
-template read it. Flipping it on cutover day would have appeared to work.
-**Removed** rather than implemented — the dangerous state was the one where it
-looked available.
-
-### R43. No upper bound on the extraction wavelength range — accepted
-`ExtractAllForm` accepts `stwvl=0.01, endwvl=1e30`; there is no range check at all
-now that the 50 Å email cap is gone. `VALD_MAX_LINES_PER_REQUEST` and `VALD_JOB_TIMEOUT` bound the
-work, so the cost ceiling is 5 in-flight jobs × 1 h per user.
-**Decided (Tom):** leave it. The existing caps do their job.
-
----
-
-### R44. showline missed both halves of R25
-**Where:** `vald/job_runner.py` — `_run_showline`, and the generic handlers in
-`run` / `_run_extract` / `_run_stellar`
-
-`summarise_stage_error()` — which strips gfortran backtrace frames and reduces
-absolute source paths to a basename — was reached from exactly one place,
-`_stage_error()`. showline runs its own subprocess loop and never called it, so
-raw stderr went to two destinations: `Request.error_message` (R25's target) and
-the result file itself.
-
-The result file made it worse. `_run_showline` moved the `.txt` into
-`VALD_FTP_DIR` and chmod 644'd it *before* checking `failures`. On failure no
-`Request` row ever points at that file, so it sat in a directory the vhost
-serves directly (R37) for 48 h, containing a backtrace, referenced by nothing.
-
-**Fixed:** scrub showline stderr through `summarise_stage_error()`; publish only
-on success, keeping the file in the job directory next to the stage `.err` files
-otherwise. The same scrubbing was extended to the three generic
-`except Exception` handlers, which returned `str(e)` — a missing binary reports
-its full path that way — so the invariant now holds for every path that reaches
-a user, not just the pipeline stages.
-
-### R45. Expired sessions are never deleted
-Django ignores expired session rows on read but only deletes them when told to,
-and nothing was telling it. Pure table growth, one row per login, in the same
-sqlite file as everything else. **Fixed:** second `ExecStart=` in
-`vald-cleanup.service` running `manage.py clearsessions`.
-
-### R46. Result filename collisions — not a defect
-Raised and withdrawn. `{ClientName}.{6-digit}` is not unique by construction:
-two users whose alphanumeric-reduced names match could in principle collide.
-But `submit_request_direct` checks `working/NNNNNN/.uuid` and increments the ID
-on a mismatch, and `cleanup_old_results` sweeps job directories and result files
-from a single `cutoff_time` — so the guard is live for exactly as long as the
-file it protects. No collision window exists.
-
-The coupling is worth remembering: job directories are kept for the full
-retention period *only* because the collision guard reads them, though their
-contents are dead on completion. In one dev tree, `TMP.LIST` intermediates were
-71% of 106 MB in `working/` against 3.9 MB of delivered results — peak disk
-runs 20-30x the delivered size. Sweeping job directories sooner would reclaim
-that, but requires moving the guard to look at `VALD_FTP_DIR` instead.
-**Decided (Tom):** leave it, the array is large.
-
----
-
-### R32 (fixed). Partial constraint for the system default
-Migration `0010_system_default_config_unique` adds
-`UniqueConstraint(fields=['is_default'], condition=Q(user__isnull=True, is_default=True))`,
-which the original constraint could not express because `user IS NULL` makes it
-vacuous.
-
+**Fixed** by migration `0010_system_default_config_unique`:
+`UniqueConstraint(fields=['is_default'], condition=Q(user__isnull=True, is_default=True))`.
 A `RunPython` step precedes it, because the constraint cannot be applied to a
 database that already has the problem. It keeps the row `get_default_config()`
-was *already* returning - `.first()` under `Meta.ordering = ['user', 'name']`,
-so lowest name then pk - and demotes the rest to `is_default=False` rather than
-deleting them, since they own `ConfigLinelist` rows.
+was *already* returning — `.first()` under `Meta.ordering = ['user', 'name']`, so
+lowest name then pk — and demotes the rest rather than deleting them, since they
+own `ConfigLinelist` rows.
 
 Verified against a copy of the real database with two extra system defaults
 inserted by raw SQL, one sorting before `'Default'` and one after: the migration
@@ -659,27 +353,25 @@ kept the row the app had been using, demoted the other two, and the constraint
 then rejected a third.
 
 **Operational note:** on a database that has this problem, the config that
-survives is whichever one the app was already using - which is not necessarily
-the one named `Default`. That is the safe choice (applying the migration cannot
-silently change anyone's linelist selection), but it is worth checking
-afterwards that the surviving system default is the intended one.
-
----
+survives is whichever the app was already using — **not necessarily the one named
+`Default`**. That is the safe choice, since applying the migration cannot silently
+change anyone's linelist selection, but check afterwards that the survivor is the
+intended one.
 
 ### R47. The personal config could only ever freeze
-**Where:** `vald/persconfig.py`, `vald/views.py` (`persconf`), `persconf.html`
+**Where:** `vald/persconfig.py`, `views.py` (`persconf`), `persconf.html`
 
-A personal config is a *snapshot* of the default, and `import_default_config`
-only ever rebuilds the system config's rows - nothing reconciles user configs.
-So a personal config never sees a linelist added by a later VALD release.
-Measured on a three-linelist default: after adding a fourth, the user's
-generated `.cfg` still had three.
+A personal config is a *snapshot* of the default, and `import_default_config` only
+rebuilds the system config's rows — nothing reconciled user configs, so a personal
+config never saw a linelist added by a later VALD release. Measured on a
+three-linelist default: after adding a fourth, the user's generated `.cfg` still
+had three.
 
 The state "no personal config, follow the VALD default" existed in the code but
-was unreachable, because opening `/persconf/` created a config as a side effect
-of a GET (the original R24). Net effect: **clicking Personal Config once,
-changing nothing, silently froze the user at that day's linelists** - with
-nothing in the interface saying so.
+was **unreachable**, because opening `/persconf/` created a config as a side
+effect of a GET (the original R24). Net effect: clicking Personal Config once and
+changing nothing silently froze the user at that day's linelists, with nothing in
+the interface saying so.
 
 **Fixed** by making both states reachable and each action mean one thing:
 
@@ -695,72 +387,127 @@ nothing in the interface saying so.
 - **Remove** deletes the config, returning the user to tracking the default.
 - **Set to current VALD default** re-snapshots: stay frozen, pinned to today.
 - The page states which state you are in, when the snapshot was taken, and which
-  linelists have been added to the default since - without that the snapshot is
+  linelists have been added to the default since — without that the snapshot is
   the same trap with better buttons.
 
 Two consequences worth recording:
 
-*The form now names a `Linelist`, not a `ConfigLinelist`.* It had to: a user
-who tracks the default is shown the *system* config's rows, so a pk posted back
-would name a row they do not own - exactly R2. Keying by linelist leaves the
-choice of junction row to the view, always inside the poster's own config, so
-that whole class of mistake became unrepresentable rather than guarded against.
+*The form names a `Linelist`, not a `ConfigLinelist`.* It had to: a user who
+tracks the default is shown the *system* config's rows, so a pk posted back would
+name a row they do not own — exactly R2. Keying by linelist leaves the choice of
+junction row to the view, always inside the poster's own config, making that whole
+class of mistake unrepresentable rather than guarded against.
 
 *Migration `0011` deletes personal configs byte-identical to the default.* Under
-the two-state model, holding a config means "do not follow the VALD default",
-and the users who got one from a bare GET never asked for that. Configs
-differing anywhere - including in fields the web UI cannot edit, which is how
-the imported legacy persconf files differ - are left alone. Verified against a
-copy of the real database: the one user config there differs in four entries
-(one disabled list, one rank, one replacement window) and was correctly kept.
+the two-state model, holding a config means "do not follow the VALD default", and
+users who got one from a bare GET never asked for that. Configs differing anywhere
+— including in fields the web UI cannot edit, which is how the imported legacy
+persconf files differ — are left alone. Verified against a copy of the real
+database: the one user config there differs in four entries (one disabled list,
+one rank, one replacement window) and was correctly kept.
 
-R24's second half dissolves rather than being fixed: `pconf=personal` with no
-personal config returns the default, which under this model is the correct
-answer rather than a silent fallback.
+**R24 dissolves rather than being fixed:** `pconf=personal` with no personal
+config returns the default, which under this model is the correct answer rather
+than a silent fallback.
 
-### R48. `Linelist.is_active` was decorative
-Declared as "whether this linelist is currently available", never read by
-`generate_cfg_content()` and never written by `import_default_config`. An admin
-unticking it had no effect.
-
-This is the mechanism a snapshot model needs most: a personal config can outlive
-the linelists in it by years, and a retired linelist means a `.cfg` naming a
-data file that may have left the SVN tree, which surfaces as an opaque
-preselect5 failure. **Fixed:** generation skips inactive linelists, and
-re-importing `default.cfg` retires anything absent from it (and reactivates
-anything that returns).
-
-### R49. Four template comments were rendering as page text
-`{# #}` does not span lines - Django emits the remainder as content. Three
-predated this work (`admin/index.html`, and the user changelist and change form)
-and were visible on live admin pages. Found by looking at the rendered output
-rather than the template. `tests/test_templates.py` now scans every template for
-it.
+### R50. The admin could not see a user's linelist config
+Added a read-only view: the stock inline omits ranks and the diff against the
+system default, which are the two things you actually need when a user reports
+wrong extraction results.
 
 ---
 
-## P4 — UX, low-hanging
+## The backend and the binaries
 
-### R20. My Requests is unusable at scale
-`my_requests.html` shows type / status / date only — no wavelength range or element, so
-40 requests are indistinguishable without opening each one. `req.parameters.stwvl` etc.
-are already available in the template. Also no pagination, and each row triggers 3–4
-filesystem stat calls via `output_exists` / `output_is_empty` / `bib_output_exists`.
+### R28. `chemcomp` was written unquoted into `select.input`
+**Where:** `job_runner.py` (`_write_select_input`)
 
-**Highest value-per-line fix in this document.**
+Abundances were written unquoted, followed by a quoted `'END'`, while the block
+echoed in `documentation/reqextstar.txt` is quoted Fortran strings —
+`'H :  0.91','He: -1.05',` … `'Es:-20.00','END'`. If `select5` expects quoted
+entries, non-solar abundances would be **silently ignored** and stellar
+extractions would return solar-abundance results without complaint. Not touched by
+the R3 fix, which deliberately preserved the existing byte format. Fixed and
+covered by `tests/test_backend_binaries.py`.
 
-### R21. Expired results still show "Complete"
-`cleanup_old_results` deletes files without touching the DB, so after 48 h the row still
-says Complete with a `—` download cell. Say "Expired — results are kept 48 h". Needs R18
-to distinguish expired from missing.
+### R36. HFS failure: gfortran `-std=legacy` comma-termination
+Not an app bug — a Fortran toolchain issue in `~/VALD3`, diagnosed and fixed
+locally. **Recorded here because the fix lives outside this git repo and is not
+committed to VALD's SVN.**
 
-### R22. The spam filter rejects legitimate bug reports
-`vald/utils.py:58-82` rejects any message containing `http://` or `https://`, and anything
-under 10 characters, both reported to the user as "classed as spam". Someone linking a
-paper or a screenshot cannot contact you at all. Verified.
+**Definitive check.** Tom's own request — extract all, 1000-1000.9 Å, cm⁻¹,
+vacuum, HFS on — produced `job.021685` for him but failed on the dev machine with
+identical parameters. Same request, opposite outcome: the software is not at
+fault, the local Fortran build is.
 
-### R24. "Custom" config falls back silently; persconf mutates on GET
-Selecting Custom when you have no personal config silently uses the system default
-(`Config.get_user_config` fallback) with no notice. Conversely, merely **visiting**
-`/persconf/` calls `get_user_config()`, which creates a personal config and 377
-`ConfigLinelist` rows as a side effect of a GET.
+**Root cause.** In HFS mode `presformat5` reads each line with a fixed format
+ending `A16,9I4` (16-char reference comment, then 9 integer reference IDs). Built
+with `-std=legacy` on modern gfortran (≥13), a comma **inside** the A16 comment —
+e.g. the reference `CNO, Na 1, Mg 1` on a nitrogen line near 1000 Å — is treated
+as an input field terminator. The A16 read stops at the comma, the following `9I4`
+reads from the wrong column, and the record fails with "FORMAT ERROR IN LINE #".
+Lines whose reference has no comma are unaffected, so it looked region-dependent.
+Minimal reproducer — read `"CNO, Na 1, Mg 1:1220..."` with format `(A16,9I4)`:
+default gfortran gives `ios=0`, `-std=legacy` gives `ios=5010`. Reproduces on
+gfortran 13 and 16. "Worked before" = built with an older gfortran that did not
+comma-terminate A-fields under the flag.
+
+**The trap.** Simply dropping `-std=legacy` breaks the other direction:
+`presformat5.f` has 9 output FORMAT statements with a deliberately missing comma
+between an A14 descriptor and a following quote literal — a legacy extension that
+needs the flag. **The flag is required for the writes but poisons the reads.**
+
+**Fix applied (local, uncommitted), both halves:**
+1. `~/VALD3/SOURCE/SELECT/presformat5.f`: the 9 spots where an A14 descriptor is
+   followed directly by a quote literal now have the standard-required comma
+   inserted, removing the only need for `-std=legacy`.
+2. `~/VALD3/SOURCE/SELECT/Makefile`: target-specific
+   `presformat5: F77FLAG := $(filter-out -std=legacy,$(F77FLAG))`, so make builds
+   just this binary without the flag and everything else keeps it.
+
+Only `presformat5` needed rebuilding — `post_hfs_format5` reads its reformatted
+output, not the raw comma-comment, so the bug was isolated there. Verified: Tom's
+exact request returns 145 lines through the app.
+
+**Not committed to SVN** per instruction. That working copy's svn pristine store
+is incomplete (pre-existing), so `svn revert` will not work; the change is the two
+edits above and is trivially reversible by hand.
+
+**Upstream.** The missing-comma formats violate the standard and bite any modern
+gfortran; worth reporting to whoever maintains VALD so mirrors rebuilding with a
+current compiler do not hit it.
+
+### R7. Background jobs died with the worker
+Each request spawned a plain daemon `threading.Thread` inside a gunicorn worker.
+Any worker recycle, unrelated timeout kill, or deploy killed in-flight jobs and
+left the `Request` row at `processing` **forever** — there was no startup sweep.
+Fixed; `reconcile_stuck_requests` is the sweep, and `completed_at` is now written.
+
+This is why a restart during extraction is still worth avoiding, and why the
+deploy checklist says to deploy when nothing is in flight.
+
+---
+
+## UX findings that shaped the current pages
+
+### R20. My Requests was unusable at scale
+Showed type / status / date only — no wavelength range or element, so 40 requests
+were indistinguishable without opening each one. Also no pagination, and each row
+triggered 3-4 filesystem stat calls. Fixed; `Request.describe()` is the summary
+that came out of it, and `tests/test_my_requests.py` covers the page.
+
+### R21. Expired results still showed "Complete"
+`cleanup_old_results` deletes files without touching the database, so after the
+retention window the row still said Complete with a `—` download cell — which
+reads as a bug. Needed R18 to tell expired apart from missing. `results_expired()`
+is the result; the retention setting in both modules cites this.
+
+### R22. The spam filter rejected legitimate bug reports
+`utils.py` rejected any message containing `http://` or `https://`, and anything
+under 10 characters, both reported as "classed as spam". Someone linking a paper
+or a screenshot could not contact you at all. Verified, then fixed.
+
+### R15. There was effectively no test coverage
+Only `test_config.py` existed — nothing covered auth, the request pipeline or the
+views, and the exploits for R1/R2/R3 had no regression tests. The suite grew out
+of this finding.
