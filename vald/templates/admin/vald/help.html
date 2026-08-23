@@ -407,10 +407,6 @@ Verify with <code>systemctl list-timers 'vald*'</code>.
 <h3>Things that surprise people</h3>
 
 <dl>
-  <dt>There is no <code>collectstatic</code> step</dt>
-  <dd>Static files are served by the reverse proxy directly from the checkout.
-      <code>STATIC_ROOT</code> is declared but unused.</dd>
-
   <dt>Some deploys sign everyone out</dt>
   <dd>Sessions are revalidated against the database on every request, so a change
       to how they are keyed invalidates existing ones. Changing

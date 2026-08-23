@@ -35,7 +35,7 @@ The document is ordered by priority, so IDs are not sequential.
 | R14 | Medium| ✅ fixed `d0243f3` | Contact form 500s on a message containing `\` + digit |
 | R17 | Medium| ✅ fixed `41537f7` | `/new` hardcoded in 4 places; cutover invalidates all sessions |
 | R18 | Medium| ✅ fixed `37d36fd` | `output_file` stores absolute paths |
-| R19 | Medium | ✅ dev-only `77492d1`; N/A on server | `collectstatic` could publish result files — deploy trees separate + collectstatic unused |
+| R19 | Medium | ✅ dev-only `77492d1`; N/A on server | `collectstatic` could publish result files — deploy trees are separate |
 | R37 | — | ✓ accepted by design | Proxy serves result files directly (no download auth) — kept, matches legacy; results are the user's own output |
 | R28 | Medium | ✅ fixed `557d101` | `chemcomp` written unquoted into `select.input` |
 | R9 | Medium | ✅ fixed `f0671c8` | Effective concurrency 4× configured; per-user cap (a0f0442) + single threaded worker (f0671c8) |
@@ -267,14 +267,17 @@ served publicly with no auth. The finding: if the results dir sits inside a
 this machine's `public_html/FTP/` held 16 real result files, so a dev
 `collectstatic` would have published them.
 
-**On the server it does not apply**, for two independent reasons:
-1. Deploy `VALD_FTP_DIR` is `$VALD_HOME/WWW/public_html/FTP`
-   (`/home/vald/VALD3/...`), a completely different tree from the static dirs
-   under `BASE_DIR` (`/home/vald/vald-www.git/...`). Verified: results are inside
-   neither `STATICFILES_DIRS` entry.
-2. The deployment does not run `collectstatic` at all (static assets are served
-   by the reverse proxy directly). `STATIC_ROOT` is declared in
-   `settings_deploy.py` but unused.
+**On the server it does not apply** because deploy `VALD_FTP_DIR` is
+`$VALD_HOME/WWW/public_html/FTP` (`/home/vald/VALD3/...`), a completely different
+tree from the static dirs under `BASE_DIR` (`/home/vald/vald-www.git/...`).
+Verified: results are inside neither `STATICFILES_DIRS` entry.
+
+> **Corrected 2026-08-23.** This finding originally gave a second reason - that
+> the deployment never runs `collectstatic`, making `STATIC_ROOT` unused. That is
+> wrong: the deploy *does* run it, and the web server serves the `staticfiles/`
+> snapshot rather than `style/`, so a CSS change needs
+> `bin/vald-manage collectstatic` or it silently does nothing. The deploy
+> checklist in the admin help is authoritative.
 
 **Fixed `77492d1`** for dev hygiene: moved dev `VALD_FTP_DIR` to
 `BASE_DIR/ftp_results` (outside `public_html`), documented the invariant in both
