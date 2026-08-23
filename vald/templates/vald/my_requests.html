@@ -18,21 +18,23 @@
   <table class="datatable">
     <thead>
       <tr>
-        <th scope="col">Request type</th>
-        <th scope="col">Details</th>
+        <th scope="col">Request</th>
         <th scope="col">Status</th>
-        <th scope="col">Submitted</th>
         <th scope="col">Download</th>
-        <th scope="col">Actions</th>
+        <th scope="col">Submitted</th>
+        <th scope="col">Details</th>
       </tr>
     </thead>
     <tbody>
       {% for req in requests %}
       <tr>
-        <td class="nowrap">{{ req.request_type|request_type_label }}</td>
-        <td class="mono">{{ req.describe|default:"—" }}</td>
+        <td>
+          <a class="reqlink" href="{% url 'vald:request_detail' req.uuid %}">
+            <span class="reqtype">{{ req.request_type|request_type_label }}</span>
+            {% if req.comment %}<span class="reqcomment">{{ req.comment }}</span>{% endif %}
+          </a>
+        </td>
         <td>{% include "vald/_status_pill.html" %}</td>
-        <td class="mono nowrap muted">{{ req.created_at|date:"Y-m-d H:i" }}</td>
         <td class="nowrap">
           {% if req.is_complete and req.output_exists %}
             {% if req.output_is_empty %}
@@ -52,11 +54,8 @@
           <span class="faint">—</span>
           {% endif %}
         </td>
-        <td class="nowrap">
-          <a href="{% url 'vald:request_detail' req.uuid %}">Details</a>
-          <span class="sep">|</span>
-          <a href="{% url 'vald:'|add:req.request_type %}?modify={{ req.uuid }}">Modify</a>
-        </td>
+        <td class="mono nowrap muted">{{ req.created_at|date:"Y-m-d H:i" }}</td>
+        <td class="mono">{{ req.describe|default:"—" }}</td>
       </tr>
       {% endfor %}
     </tbody>

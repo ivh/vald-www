@@ -558,6 +558,23 @@ input[type="button"]:hover {
 .datatable .sep { color: var(--rule); }
 .datatable .nowrap { white-space: nowrap; }
 
+/* First column of My Requests: type on top, the user's own comment beneath.
+   The whole block is the link to the detail page, which is what let the
+   separate Actions column go. */
+.reqlink { display: block; font-weight: 500; }
+.reqlink:hover { text-decoration: none; }
+.reqlink:hover .reqtype { text-decoration: underline; }
+.reqtype { display: block; white-space: nowrap; }
+.reqcomment {
+  display: block;
+  margin-top: 2px;
+  max-width: 22ch;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
 /* Key/value strip - request metadata, four across. */
 .metagrid {
   display: grid;

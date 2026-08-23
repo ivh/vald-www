@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.crypto import constant_time_compare
+from django.utils.text import Truncator
 from datetime import timedelta
 from functools import wraps
 from django_ratelimit.decorators import ratelimit
@@ -1027,6 +1028,14 @@ def handle_extract_request(request):
                     from django.core.mail import EmailMessage
 
                     subject = f"VALD {req_obj.request_type} results ready"
+                    # The user's own label last, as the legacy backend did with
+                    # "Subject: Re: <comment>": it is what lets someone match
+                    # twenty result mails to the twenty ranges they submitted.
+                    comment = req_obj.comment()
+                    if comment:
+                        # Legacy capped it at 68 chars (parserequest.c:1280); the
+                        # form allows 200, which makes an unreadable subject line.
+                        subject = f"{subject}: {Truncator(comment).chars(68)}"
 
                     body = render_to_string('vald/email/results_ready.txt', {
                         'request_type': req_obj.request_type,

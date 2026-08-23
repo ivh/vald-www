@@ -73,6 +73,17 @@ class Request(models.Model):
         """Check if request is still pending"""
         return self.status in ['pending', 'processing']
 
+    def comment(self):
+        """The user's optional free-text label for this request.
+
+        Stored under the legacy name 'subject': in the email era it became the
+        Subject: header of the result mail, which is how a user matched twenty
+        results to twenty wavelength ranges. It still reaches a mail header, so
+        collapse whitespace rather than just stripping it - a CR or LF in here is
+        header injection, which is why the PHP did the same (old/vald.php:169).
+        """
+        return ' '.join(((self.parameters or {}).get('subject') or '').split())
+
     # Wavelength unit symbol keyed by the value stored in parameters['waveunit'].
     _WAVEUNIT_SYMBOLS = {'angstrom': 'Å', 'nm': 'nm', '1/cm': 'cm⁻¹'}
 
