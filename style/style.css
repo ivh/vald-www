@@ -57,6 +57,8 @@
   --trunc-bg: #fff4e8;  --trunc-line: #ffcda0;
   --trunc-edge: #ff9955; --trunc-ink: #9a5a00;
 
+  color-scheme: light dark;
+
   --sans: 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   --mono: 'IBM Plex Mono', Menlo, Consolas, 'Courier New', monospace;
   --radius: 3px;
@@ -702,6 +704,10 @@ details.card[open] > summary::before,
   background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23404050' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 6 L8 10.5 L12.5 6'/%3E%3C/svg%3E");
 }
 .unitsummary { font-style: italic; font-weight: 400; color: var(--ink-muted); }
+/* The medium group under cm-1: disabled, and said so by the script toggling
+   this rather than writing an inline colour. */
+.is-muted,
+.is-muted .formlabel { color: var(--ink-faint); }
 /* The affordance: the disclosure triangle alone reads as decoration, and most
    users will never change these. */
 .unitchange {
@@ -780,4 +786,71 @@ table { border-collapse: collapse; }
 @media (max-width: 560px) {
   .whoami-who { display: none; }
   .unitgrid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ----------------------------------------------------------- dark mode ---- */
+
+/* Follows the operating system; there is no switch. Only the tokens change,
+   plus the four places a colour is baked into something other than a token:
+   the three chevron data URIs and the logo.
+ *
+ * The relationships are kept rather than the values: in daylight the body is
+ * the darkest surface and cards sit lighter on it, so here the body is darkest
+ * too and cards sit lighter still. Navy inverts role - #202090 scores 12.57:1
+ * on white precisely because it is dark, so text and links take a light tint of
+ * the same hue and the dark navy survives only as a fill behind light text.
+ *
+ * Every pair below was checked against AA: text >= 4.5:1, field borders >= 3:1.
+ * Card and row rules stay decorative and under 3:1, as they are in daylight. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground:      #15151d;
+    --surface:     #20202c;
+    --panel:       #292936;
+    --face:        #2b2b4a;
+    --face-hover:  #35355c;
+    --rule:        #3d3d4e;
+    --rule-soft:   #2f2f3d;
+    --field:       #757590;
+
+    --ink:         #e9e9f1;
+    --ink-soft:    #dcdce7;
+    --ink-muted:   #b6b6c6;
+    --ink-faint:   #9b9bae;
+
+    --navy:        #a2a2f0;
+    --navy-hover:  #b8b8f7;
+
+    --ok-bg:    #16301f;  --ok-line:    #2a613a;  --ok-ink:    #a8e0b8;
+    --warn-bg:  #332810;  --warn-line:  #6b5518;  --warn-ink:  #f0d48a;
+    --err-bg:   #351519;  --err-line:   #6e2830;  --err-ink:   #f2b3ba;
+    --info-bg:  #102b33;  --info-line:  #22596a;  --info-ink:  #a5dae8;
+    --trunc-bg: #33220f;  --trunc-line: #6b4a1a;  --trunc-ink: #f0c184;
+  }
+
+  /* The primary button is the light accent carrying dark text, the reverse of
+     daylight - a dark navy fill would vanish into the card behind it. */
+  .btn-primary { color: var(--ground); }
+  .btn-primary:hover { color: var(--ground); }
+
+  /* Chevrons: the stroke colour is inside the data URI, so these three rules
+     are restated rather than tokenised. */
+  select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23b6b6c6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6.5 L8 10.5 L12 6.5'/%3E%3C/svg%3E");
+  }
+  details.card > summary::before,
+  .unitpanel > summary::before {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23b6b6c6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3.5 L10.5 8 L6 12.5'/%3E%3C/svg%3E");
+  }
+  details.card[open] > summary::before,
+  .unitpanel[open] > summary::before {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23b6b6c6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 6 L8 10.5 L12.5 6'/%3E%3C/svg%3E");
+  }
+
+  /* The wordmark is dark navy artwork on transparency, so on a dark ground it
+     disappears. invert() alone sends navy to a pale yellow; the hue-rotate puts
+     the hue back, leaving a tonal inversion - a light lavender wordmark. The
+     white starburst inverts to near-black and sinks into the page, which loses
+     it but leaves no edge behind. */
+  .masthead img { filter: invert(1) hue-rotate(180deg); }
 }

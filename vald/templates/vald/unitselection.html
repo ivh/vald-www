@@ -87,7 +87,9 @@
     }
     var rows = document.getElementsByClassName("medium");
     for (var j = 0; j < rows.length; j++) {
-      rows[j].style.color = wavenumber ? "grey" : "";
+      // A class, not an inline colour: "grey" is invisible on a dark ground,
+      // and the stylesheet is where the theme lives.
+      rows[j].classList.toggle("is-muted", wavenumber);
     }
   }
 

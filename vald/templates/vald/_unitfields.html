@@ -94,7 +94,9 @@ reaches for - medium, wavelabel1, wavelabel2, unitsummary - are unchanged.
     }
     var cells = document.getElementsByClassName("medium");
     for (var j = 0; j < cells.length; j++) {
-      cells[j].style.color = wavenumber ? "grey" : "";
+      // A class, not an inline colour: "grey" is invisible on a dark ground,
+      // and the stylesheet is where the theme lives.
+      cells[j].classList.toggle("is-muted", wavenumber);
     }
 
     setText("wavelabel1", label.quantity);
