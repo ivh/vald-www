@@ -1,7 +1,7 @@
 {% comment %}
 Everything the three extract forms have in common below their own fields:
-output format, delivery, the line requirements, the linelist configuration and
-the comment. One copy, so the three forms cannot drift apart.
+output format, the line requirements, the linelist configuration, the comment
+and the email-notify checkbox. One copy, so the three forms cannot drift apart.
 
 A radio or checkbox group cannot use <label for>: each control already carries
 its own label, and what is missing is a name for the group. role="group" plus
@@ -12,12 +12,6 @@ the two-column grid row.
   <div class="formlabel" id="lbl-format">Extraction format</div>
   <div class="formfield">
     <div class="radioset" role="group" aria-labelledby="lbl-format">{% for radio in form.format %}{{ radio }}{% endfor %}</div>
-  </div>
-</div>
-<div class="formrow">
-  <div class="formlabel" id="lbl-viaftp">Retrieve data via</div>
-  <div class="formfield">
-    <div class="radioset" role="group" aria-labelledby="lbl-viaftp">{% for radio in form.viaftp %}{{ radio }}{% endfor %}</div>
   </div>
 </div>
 
@@ -53,4 +47,11 @@ the two-column grid row.
 <div class="formrow">
   <label class="formlabel" for="{{ form.subject.id_for_label }}">Optional comment for request</label>
   <div class="formfield">{{ form.subject }}</div>
+</div>
+
+<div class="formsplit"></div>
+
+<div class="formrow">
+  <div class="formlabel">Notification</div>
+  <div class="formfield"><label>{{ form.email_notify }} {{ form.email_notify.label }}</label></div>
 </div>

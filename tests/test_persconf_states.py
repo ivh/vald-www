@@ -366,7 +366,7 @@ FORM_PAGES = ['/extractall/', '/extractelement/', '/extractstellar/',
               '/showline/', '/showline-online/']
 
 EXTRACT_BASE = {'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5002',
-                'format': 'short', 'viaftp': 'via ftp'}
+                'format': 'short'}
 
 
 def personal_option(body):

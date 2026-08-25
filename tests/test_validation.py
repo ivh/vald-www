@@ -17,11 +17,11 @@ from vald.forms import (
 pytestmark = pytest.mark.django_db
 
 ELEMENT_BASE = {'stwvl': '5700', 'endwvl': '5720', 'format': 'short',
-                'viaftp': 'via ftp', 'pconf': 'default'}
+                'pconf': 'default'}
 STELLAR_BASE = {'stwvl': '5700', 'endwvl': '5703', 'dlimit': '0.05', 'micturb': '2',
                 'teff': '8000', 'logg': '4.5', 'format': 'short',
-                'viaftp': 'via ftp', 'pconf': 'default'}
-SHOWLINE_BASE = {'wvl0': '5000', 'win0': '0.5', 'viaftp': 'via ftp',
+                'pconf': 'default'}
+SHOWLINE_BASE = {'wvl0': '5000', 'win0': '0.5',
                  'pconf': 'default', 'isotopic_scaling': 'on'}
 
 

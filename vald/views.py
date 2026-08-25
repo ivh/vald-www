@@ -579,11 +579,16 @@ def modify_initial_data(request, user):
     return req_obj.parameters or {}
 
 
-def last_used_units(user, reqtype):
-    """Unit choices from this user's most recent request of the same type.
+STICKY_KEYS = UNIT_KEYS + ('email_notify',)
+
+
+def last_used_choices(user, reqtype):
+    """Sticky choices from this user's most recent request of the same type:
+    the units, and whether they asked to be emailed.
 
     Units are per-request now, so without this a user who works in nm would pick
-    nm again on every single form. Read back rather than written to
+    nm again on every single form; email_notify rides along so "always email me"
+    (or never) carries forward the same way. Read back rather than written to
     UserPreferences deliberately: the profile keeps exactly one writer (the Units
     page, as an explicit default), and habit is inferred from the request log.
 
@@ -594,7 +599,7 @@ def last_used_units(user, reqtype):
                   .filter(user=user, request_type=reqtype)
                   .values_list('parameters', flat=True)
                   .first()) or {}
-    return {key: parameters[key] for key in UNIT_KEYS if key in parameters}
+    return {key: parameters[key] for key in STICKY_KEYS if key in parameters}
 
 
 def extract_form_view(name, form_class, template):
@@ -610,7 +615,7 @@ def extract_form_view(name, form_class, template):
         # The floor comes out of the context get_user_context already resolved
         # rather than a second get_preferences(), which is a get_or_create.
         initial = {**{key: context[key] for key in UNIT_KEYS},
-                   **last_used_units(user, name),
+                   **last_used_choices(user, name),
                    **modify}
         context['form'] = form_class(initial=initial, user=user)
         return render(request, template, context)
@@ -991,9 +996,9 @@ def handle_extract_request(request):
                     logger.exception(f"Failed to save complete status for request {req_obj.uuid}: {save_error}")
                     raise  # Re-raise to be caught by outer exception handler
 
-                # Send email if user selected email delivery
-                viaftp = req_obj.parameters.get('viaftp', 'email')
-                if viaftp == 'email':
+                # Email is an optional extra now, not a delivery choice: the
+                # download links exist either way. Absent key means unchecked.
+                if req_obj.parameters.get('email_notify'):
                     # Build URLs for email
                     request_path = reverse('vald:request_detail', kwargs={'uuid': req_obj.uuid})
                     # Filename in the URL, so wget/curl save the result under

@@ -29,15 +29,6 @@
 
   <div class="formsplit"></div>
 
-  <div class="formrow">
-    <div class="formlabel" id="lbl-viaftp">Retrieve data via</div>
-    <div class="formfield">
-      <div class="radioset" role="group" aria-labelledby="lbl-viaftp">{% for radio in form.viaftp %}{{ radio }}{% endfor %}</div>
-    </div>
-  </div>
-
-  <div class="formsplit"></div>
-
   <div class="formrow top">
     <label class="formlabel" for="{{ form.pconf.id_for_label }}">Linelist configuration</label>
     <div class="formfield stack">{% include "vald/_pconf.html" %}</div>
@@ -52,6 +43,13 @@
       <span class="hint">Takes precedence over the default set in
       <a href="{% url 'vald:unitselection' %}">unit selection</a>.</span>
     </div>
+  </div>
+
+  <div class="formsplit"></div>
+
+  <div class="formrow">
+    <div class="formlabel">Notification</div>
+    <div class="formfield"><label>{{ form.email_notify }} {{ form.email_notify.label }}</label></div>
   </div>
 
   <div class="card-foot">

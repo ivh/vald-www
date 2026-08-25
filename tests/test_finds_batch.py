@@ -77,7 +77,7 @@ def _email_request(client, monkeypatch, settings, tmp_path, size_bytes):
                         lambda req: (True, str(gz)))
     client.post('/submit/', {
         'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5010',
-        'format': 'short', 'viaftp': 'email', 'pconf': 'default',
+        'format': 'short', 'email_notify': 'on', 'pconf': 'default',
     })
 
 
@@ -98,6 +98,25 @@ def test_oversize_result_is_not_attached_but_links_remain(logged_in_client, monk
     assert len(mail.attachments) == 0
     assert 'too large to attach' in mail.body
     assert 'download' in mail.body.lower()          # links still offered
+
+
+@pytest.mark.django_db(transaction=True)
+def test_no_email_when_the_box_is_unticked(logged_in_client, monkeypatch, tmp_path,
+                                           mailoutbox, settings):
+    """Email is opt-in now: an unchecked box submits no email_notify key, and the
+    download links carry the result instead."""
+    import os
+    settings.VALD_FTP_DIR = tmp_path
+    gz = tmp_path / 'TestUser.000001.gz'
+    gz.write_bytes(os.urandom(500))
+    monkeypatch.setattr('vald.backend.submit_request_direct',
+                        lambda req: (True, str(gz)))
+    logged_in_client.post('/submit/', {
+        'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5010',
+        'format': 'short', 'pconf': 'default',
+    })
+    time.sleep(0.5)
+    assert mailoutbox == []
 
 
 # --- R19: results directory must never sit inside a static tree -------------

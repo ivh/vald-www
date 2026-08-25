@@ -13,7 +13,7 @@ from vald.models import Request, UNIT_KEYS
 pytestmark = pytest.mark.usefixtures('no_background_worker')
 
 EXTRACT = {'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5002',
-           'format': 'short', 'viaftp': 'via ftp', 'pconf': 'default'}
+           'format': 'short', 'pconf': 'default'}
 
 NM_VACUUM = {'energyunit': '1/cm', 'medium': 'vacuum', 'waveunit': 'nm',
              'vdwformat': 'extended', 'isotopic_scaling': 'off'}
@@ -57,7 +57,7 @@ def test_show_line_isotopic_scaling_reaches_the_request(logged_in_client, approv
 
     logged_in_client.post('/submit/', {
         'reqtype': 'showline', 'wvl0': '5000', 'win0': '0.5', 'el0': 'Fe 1',
-        'viaftp': 'via ftp', 'pconf': 'default', 'isotopic_scaling': 'off'})
+        'pconf': 'default', 'isotopic_scaling': 'off'})
 
     assert Request.objects.latest('created_at').parameters['isotopic_scaling'] == 'off'
 
@@ -97,6 +97,19 @@ def test_the_next_form_starts_from_the_last_request_of_that_type(logged_in_clien
 
     assert form.initial['waveunit'] == 'nm', 'last request of this type ignored'
     assert form.initial['medium'] == 'vacuum'
+
+
+@pytest.mark.django_db
+def test_the_email_choice_is_sticky_like_the_units(logged_in_client, approved_user):
+    """Option B: "email me" is a per-request habit read back from the last
+    request, not a stored preference. Off by default, remembered once used."""
+    form = logged_in_client.get('/extractall/').context['form']
+    assert not form.initial.get('email_notify'), 'should start unticked'
+
+    submitted(logged_in_client, email_notify='on')
+
+    form = logged_in_client.get('/extractall/').context['form']
+    assert form.initial['email_notify'] is True, 'last request ignored'
 
 
 @pytest.mark.django_db
@@ -299,7 +312,7 @@ def test_show_line_has_no_box_and_still_submits(logged_in_client, approved_user)
 
     response = logged_in_client.post('/submit/', {
         'reqtype': 'showline', 'wvl0': '5000', 'win0': '0.5', 'el0': 'Fe 1',
-        'viaftp': 'via ftp', 'pconf': 'default', 'isotopic_scaling': 'on'})
+        'pconf': 'default', 'isotopic_scaling': 'on'})
 
     assert response.status_code in (200, 302)
     assert Request.objects.filter(request_type='showline').exists()

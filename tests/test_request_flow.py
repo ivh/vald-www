@@ -10,7 +10,7 @@ import pytest
 
 EXTRACT = {
     'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5010',
-    'format': 'short', 'viaftp': 'via ftp', 'pconf': 'default',
+    'format': 'short', 'pconf': 'default',
 }
 
 
