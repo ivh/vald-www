@@ -309,6 +309,17 @@ def test_extended_vdw_flag_changes_output(run_job):
     assert extended.text != default.text, 'extended van der Waals flag had no effect'
 
 
+def test_long_format_wavenumbers_run(run_job):
+    """presformat5 FORMAT 301 (long format + cm^-1 energy + default vdW) had a
+    missing comma between two repeat groups. Harmless under -std=legacy, it
+    became a hard runtime error once presformat5 dropped that flag - so any
+    long/cm^-1 extract crashed. fmt=4 is exactly that branch."""
+    run = run_job(request_type='extractall', max_lines=500000,
+                  format_flags=flags(fmt=4))
+    assert run.ok, run.result
+    assert data_rows(run.text), 'no lines formatted on the long/cm^-1 path'
+
+
 # --- HFS ------------------------------------------------------------------
 
 def test_hfs_works_for_an_element_filtered_request(run_job):
