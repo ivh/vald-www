@@ -11,6 +11,11 @@ To activate your account you need to set a password by clicking the link below:
 
 {{ activation_url }}
 
+By clicking this link and setting a password you give us permission to process
+and store your personal data to comply with your request. Your name, email
+address and affiliation are stored on our servers, which are distributed around
+the world.
+
 This link will expire in {{ token_max_age_days }} days.
 {% if not approved %}
 If you did not request this, please ignore this email.
