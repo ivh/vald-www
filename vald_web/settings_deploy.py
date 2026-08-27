@@ -223,7 +223,6 @@ if not VALD_HOME.exists():
     )
 
 PERSCONFIG_DIR = BASE_DIR / 'config' / 'personal_configs'
-DOCUMENTATION_DIR = BASE_DIR / 'documentation'
 NEWS_DIR = BASE_DIR / 'news'
 SITENAME = os.environ.get('VALD_SITENAME', 'VALD Uppsala')
 # Base URL without the sub-path prefix; completion emails append

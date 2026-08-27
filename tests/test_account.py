@@ -102,7 +102,7 @@ def test_saving_does_not_end_the_session(logged_in_client):
 
 @pytest.mark.django_db
 def test_registration_no_longer_offers_a_position_field():
-    content = Client().get('/doc/contact.html').content.decode()
+    content = Client().get('/contact/').content.decode()
     assert 'name="position"' not in content
     assert 'name="affiliation"' in content
 

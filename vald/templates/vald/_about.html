@@ -1,0 +1,44 @@
+{% comment %}
+The About text, included both on the index page and at /about/. It was
+old/documentation/about_vald.html until the doc/ file server was retired; it
+lives here so the two places cannot drift apart.
+{% endcomment %}
+<h2 class="sectiontitle" style="margin-top: 0;">About VALD</h2>
+
+<p>The Vienna Atomic Line Database (VALD) is a collection of atomic and molecular
+transition parameters of astronomical interest. VALD offers tools for selecting
+subsets of lines for typical astrophysical applications: line identification,
+preparing for spectroscopic observations, chemical composition and radial
+velocity measurements, model atmosphere calculations etc.</p>
+
+<p>This web portal is the main user interface to VALD and it offers full
+functionality of the extraction tools and flexibility of data access. Noteworthy
+concepts that may help you using VALD in the most efficient way:</p>
+
+<ul>
+<li>VALD extraction tools are constructed for intelligent selection of data
+relevant for specific astronomical problem. For background information on each
+extraction method, see <a href="http://www.astro.uu.se/valdwiki">the
+documentation wiki</a>.</li>
+
+<li>Bulk data transfer via remote access is highly inefficient. For massive data
+extractions (e.g. for computing opacity tables) you should consider hosting a
+mirror site. <a href="{% url 'vald:contact' %}">Contact the VALD
+administrator</a> if you are interested.</li>
+
+<li>VALD is regularly updated with critically evaluated data sets. The VALD
+project team experts investigate the statistical properties of the data,
+extensively compare the results obtained with different data sources, and
+establish the quality rating for each new source which is a basis for data
+selection. This portal offers you a possibility to create and save an
+alternative ranking table that would also ensures reproducibility of the
+extraction.</li>
+
+<li>VALD data access is free but requires registration. Registration helps us
+rejecting spam, collecting statistics and informing you about updates. We do not
+share your registration information with anyone.</li>
+</ul>
+
+<p>If you have any comments about VALD, or would like to register as a client,
+please contact us through our <a href="{% url 'vald:contact' %}">contact
+pages</a>.</p>

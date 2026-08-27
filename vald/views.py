@@ -163,13 +163,6 @@ def index(request):
         if page in page_map:
             return redirect(page_map[page])
 
-    # Show about_vald.html content
-    doc_file = settings.DOCUMENTATION_DIR / 'about_vald.html'
-    if doc_file.exists():
-        with open(doc_file, 'r') as f:
-            content_html = f.read()
-        context['content_html'] = content_html
-
     return render(request, 'vald/index.html', context)
 
 
@@ -1185,42 +1178,33 @@ def save_units(request):
     return unitselection(request)
 
 
-def documentation(request, docpage):
-    """Display documentation pages"""
+def about(request):
+    """The About VALD page."""
+    return render(request, 'vald/about.html', get_user_context(request))
+
+
+def contact(request):
+    """Registration and contact form.
+
+    The POST goes to submit_request with reqtype=contact, not back here.
+    """
     context = get_user_context(request)
+    context['registration_form'] = RegistrationForm()
+    context['form'] = ContactForm()
+    return render(request, 'vald/contact.html', context)
 
-    # Special handling for contact.html
-    if docpage == 'contact.html':
-        context['registration_form'] = RegistrationForm()
-        context['form'] = ContactForm()
-        return render(request, 'vald/contact.html', context)
 
-    # Path traversal protection: ensure no '..' in path and not absolute
-    docpage_path = Path(docpage)
-    if '..' in docpage_path.parts or docpage_path.is_absolute():
-        context['error'] = 'Invalid documentation page.'
-        return render(request, 'vald/error.html', context)
+def rewrite_news_links(text):
+    """Point a stored news item's links at the URLs that exist today.
 
-    # Resolve full path and verify it's within DOCUMENTATION_DIR
-    doc_file = (settings.DOCUMENTATION_DIR / docpage).resolve()
-    doc_dir_resolved = settings.DOCUMENTATION_DIR.resolve()
-
-    # Security check: ensure resolved path is within documentation directory
-    try:
-        doc_file.relative_to(doc_dir_resolved)
-    except ValueError:
-        # Path is outside DOCUMENTATION_DIR
-        context['error'] = 'Invalid documentation page.'
-        return render(request, 'vald/error.html', context)
-
-    if doc_file.exists() and doc_file.is_file():
-        with open(doc_file, 'r') as f:
-            content_html = f.read()
-        context['content_html'] = content_html
-        return render(request, 'vald/documentation.html', context)
-
-    context['error'] = f'Documentation page "{docpage}" not found.'
-    return render(request, 'vald/error.html', context)
+    News files are kept verbatim as they were published, so they still carry
+    links written for the PHP interface and for the doc/ file server that
+    replaced it. Both named the contact page; neither resolves any more.
+    """
+    contact_url = reverse('vald:contact')
+    for dead in ('doc/contact.html', '$thisscript?docpage=contact.html'):
+        text = text.replace(f'href="{dead}"', f'href="{contact_url}"')
+    return text
 
 
 def news(request, newsitem=None):
@@ -1237,15 +1221,12 @@ def news(request, newsitem=None):
     # Build file list for navigation
     file_list = [Path(f).name for f in news_files]
 
-    # Base URL for resolving relative links in news content
-    base_url = reverse('vald:index')
-
     # If newsitem is None, show all news items
     if newsitem is None:
         all_news = []
         for news_file in news_files:
             with open(news_file, 'r') as f:
-                content = f.read().replace('href="doc/', f'href="{base_url}doc/')
+                content = rewrite_news_links(f.read())
                 all_news.append({
                     'filename': Path(news_file).name,
                     'content': content
@@ -1264,7 +1245,7 @@ def news(request, newsitem=None):
 
         # Read news content
         with open(news_files[newsitem], 'r') as f:
-            news_content = f.read().replace('href="doc/', f'href="{base_url}doc/')
+            news_content = rewrite_news_links(f.read())
 
         context.update({
             'show_all': False,

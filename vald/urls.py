@@ -1,4 +1,6 @@
 from django.urls import path
+from django.views.generic import RedirectView
+
 from . import views
 
 app_name = 'vald'
@@ -51,8 +53,19 @@ urlpatterns = [
     path('request/<uuid:uuid>/download-bib/', views.download_bib_request, name='download_bib_request'),
     path('request/<uuid:uuid>/download-bib/<str:filename>', views.download_bib_request, name='download_bib_request'),
 
-    # Documentation and news
-    path('doc/<str:docpage>', views.documentation, name='documentation'),
+    # Info pages and news
+    path('about/', views.about, name='about'),
+    path('contact/', views.contact, name='contact'),
+
+    # The doc/ file server served a documentation tree that the wiki replaced;
+    # it is now old/documentation/ and nothing reads it. These two were its only
+    # linked pages, so they are the only ones worth redirecting - the rest were
+    # already unreachable. pattern_name, not a literal path, because deployment
+    # sets FORCE_SCRIPT_NAME.
+    path('doc/contact.html', RedirectView.as_view(
+        pattern_name='vald:contact', permanent=True)),
+    path('doc/about_vald.html', RedirectView.as_view(
+        pattern_name='vald:about', permanent=True)),
     path('news/', views.news, name='news_all'),
     path('news/<int:newsitem>/', views.news, name='news'),
 ]
