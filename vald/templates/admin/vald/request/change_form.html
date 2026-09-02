@@ -1,0 +1,27 @@
+{% extends "admin/change_form.html" %}
+
+{% comment %}
+Two reruns, deliberately different. The link in the fieldset above opens the
+front-end form and makes a new request owned by whoever this browser is logged
+in as on the front end. The button here re-runs *this* row on the server, for
+its own owner, so the uuid and the URLs the user already holds keep working.
+{% endcomment %}
+{% block submit_buttons_bottom %}
+{{ block.super }}
+{% if not add %}
+<div class="submit-row">
+    <input type="submit" name="_rerun_now" value="Re-run now, for the original user">
+</div>
+<p class="help" style="margin: 1em 0;">
+    Runs this request again on the server, keeping the same uuid and download
+    links, and emails the owner on completion if they asked to be. Its status,
+    error message and output file are reset first.
+    {% if original.status == 'processing' %}
+    <br><strong>This request says “processing”.</strong> If no job is actually
+    running - the usual cause is the service being restarted mid-job, which
+    strands the row - this is the button that finishes it. A request that really
+    is running will refuse to start a second time.
+    {% endif %}
+</p>
+{% endif %}
+{% endblock %}

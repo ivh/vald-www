@@ -10,7 +10,7 @@ from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import User as StaffUser
 from django.test import Client
 
-from vald.models import User, UserEmail
+from vald.models import Request, User, UserEmail
 
 
 @pytest.fixture
@@ -1336,3 +1336,110 @@ def test_the_admin_config_view_names_the_copied_configuration(staff_client):
 
     assert 'Atoms only' in body
     assert 'copy of the VALD default' not in body
+
+
+# --- re-running a request in place, for its owner ---------------------------
+
+@pytest.fixture
+def captured_reruns(monkeypatch):
+    """Collect what the admin rerun would run, instead of running it.
+
+    The real worker writes to the row from another thread, which inside a
+    transaction-wrapped test cannot get the sqlite lock (see
+    conftest.no_background_worker).
+    """
+    started = []
+    monkeypatch.setattr('vald.views.start_background_worker',
+                        lambda target: started.append(target))
+    return started
+
+
+@pytest.mark.django_db
+def test_rerun_resets_the_row_and_keeps_its_owner(staff_client, captured_reruns):
+    """The point of this rerun rather than the form link: same row, same uuid,
+    same owner, so the URLs the user already holds still lead to the result."""
+    user = make_user('Stranded', is_active=True)
+    req = make_request(user, local(2026, 8, 1), status='processing')
+    Request.objects.filter(pk=req.pk).update(
+        error_message='preselect5 failed with code 2', output_file='Old.000001.gz')
+
+    staff_client.post(f'/admin/vald/request/{req.pk}/change/',
+                      {'_rerun_now': '1'}, follow=True)
+
+    req.refresh_from_db()
+    assert (req.status, req.error_message, req.output_file) == ('pending', None, None)
+    assert req.completed_at is None
+    assert req.user == user
+    assert len(captured_reruns) == 1
+
+
+@pytest.mark.django_db
+def test_rerun_refuses_a_request_that_really_is_running(staff_client, captured_reruns):
+    """Two runs of one request share a job directory and an output file."""
+    import vald.backend
+
+    user = make_user('Busy', is_active=True)
+    req = make_request(user, local(2026, 8, 1), status='processing')
+    vald.backend._active_uuids.add(str(req.uuid))
+    try:
+        body = staff_client.post(f'/admin/vald/request/{req.pk}/change/',
+                                 {'_rerun_now': '1'}, follow=True).content.decode()
+    finally:
+        vald.backend._active_uuids.discard(str(req.uuid))
+
+    req.refresh_from_db()
+    assert req.status == 'processing'          # untouched
+    assert not captured_reruns
+    assert 'queued or running right now' in body
+
+
+@pytest.mark.django_db
+def test_rerun_is_also_a_changelist_action(staff_client, captured_reruns):
+    """After a restart there is rarely just one stranded row."""
+    user = make_user('Several', is_active=True)
+    reqs = [make_request(user, local(2026, 8, 1), status='processing') for _ in range(3)]
+
+    staff_client.post('/admin/vald/request/', {
+        'action': 'rerun_for_user',
+        '_selected_action': [str(r.pk) for r in reqs],
+    }, follow=True)
+
+    assert [Request.objects.get(pk=r.pk).status for r in reqs] == ['pending'] * 3
+    assert len(captured_reruns) == 3
+
+
+@pytest.mark.django_db
+def test_the_two_rerun_buttons_are_both_offered_and_distinguishable(staff_client):
+    user = make_user('Reader', is_active=True)
+    req = make_request(user, local(2026, 8, 1), status='processing')
+
+    body = staff_client.get(f'/admin/vald/request/{req.pk}/change/').content.decode()
+    assert 'name="_rerun_now"' in body                  # server-side, same row
+    assert f'modify={req.uuid}' in body                 # front-end form, new row
+    assert 'says “processing”' in body           # the stranded-row hint
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rerun_carries_a_stranded_row_through_to_complete(staff_client, wait_for_worker,
+                                                          monkeypatch, tmp_path):
+    """End to end: the button runs the same worker a submission does.
+
+    Which is the whole reason it dispatches into views.process_request rather
+    than repeating the status transitions - a row stranded at 'processing' by a
+    restart has to finish exactly as if it had never been interrupted.
+    """
+    gz = tmp_path / 'Stranded.000001.gz'
+    gz.write_bytes(b'\x1f\x8b' + b'0' * 200)
+    monkeypatch.setattr('vald.backend.submit_request_direct',
+                        lambda req_obj: (True, str(gz)))
+
+    user = make_user('Stranded', is_active=True)
+    req = make_request(user, local(2026, 8, 1), status='processing')
+
+    staff_client.post(f'/admin/vald/request/{req.pk}/change/', {'_rerun_now': '1'})
+    wait_for_worker()
+
+    req.refresh_from_db()
+    assert req.status == 'complete', f'error_message: {req.error_message}'
+    assert req.output_file == 'Stranded.000001.gz'
+    assert req.completed_at is not None

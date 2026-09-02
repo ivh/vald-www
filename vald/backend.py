@@ -96,6 +96,23 @@ class JobQueue:
         return result
 
 
+# Requests this process has handed to the queue and not yet finished - queue
+# wait included, since "is anything working on this row" is the question. The
+# queue lives in this process's memory (one gunicorn worker, deliberately), so
+# this set is authoritative for the whole site, and empty after a restart -
+# which is exactly the state that strands a row at 'processing' with nothing
+# running, and what the admin rerun checks before starting a second job over the
+# same job directory and output files.
+_active_uuids = set()
+_active_lock = threading.Lock()
+
+
+def is_request_active(uuid_obj) -> bool:
+    """Whether this process is currently queueing or running that request."""
+    with _active_lock:
+        return str(uuid_obj) in _active_uuids
+
+
 # Global job queue instance
 _job_queue = None
 _queue_lock = threading.Lock()
@@ -271,6 +288,8 @@ def submit_request_direct(request_obj):
         return runner.run(job_config)
     
     # Submit job to queue
+    with _active_lock:
+        _active_uuids.add(str(request_obj.uuid))
     try:
         job_queue = get_job_queue()
         success, result = job_queue.submit(execute_job)
@@ -287,6 +306,9 @@ def submit_request_direct(request_obj):
         return (False, str(e))
     except Exception as e:
         return (False, f"Error executing job: {e}")
+    finally:
+        with _active_lock:
+            _active_uuids.discard(str(request_obj.uuid))
 
 
 def format_request_file(request_obj):

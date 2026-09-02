@@ -807,6 +807,164 @@ def start_background_worker(target):
     threading.Thread(target=target, daemon=True).start()
 
 
+def process_request(req_obj):
+    """Run one request to completion, then record it and notify.
+
+    Module level, and taking the row rather than closing over it, so the
+    admin's rerun can reach the same code. Everything a finished job needs
+    to have happened - status, output_file, the completion email - is in
+    here, and duplicating any of it for a second caller is how the two
+    would drift.
+
+    Runs in a worker thread, so it never raises at its caller: every
+    failure ends up on the row as status=failed.
+    """
+    from django import db
+
+    # Close inherited DB connections from parent thread
+    db.connections.close_all()
+
+    try:
+        # Import here to avoid circular imports
+        from .backend import submit_request_direct
+
+        # Update status to processing
+        req_obj.status = 'processing'
+        try:
+            req_obj.save()
+        except Exception as save_error:
+            logger.exception(f"Failed to save processing status for request {req_obj.uuid}: {save_error}")
+            raise  # Re-raise to be caught by outer exception handler
+
+        # Submit directly to backend
+        success, result = submit_request_direct(req_obj)
+
+        if success:
+            # Update request with output file
+            req_obj.status = 'complete'
+            # Store the filename only; Request.output_path resolves it
+            # against the current VALD_FTP_DIR (R18).
+            req_obj.output_file = Path(result).name
+            req_obj.completed_at = timezone.now()
+            try:
+                req_obj.save()
+            except Exception as save_error:
+                logger.exception(f"Failed to save complete status for request {req_obj.uuid}: {save_error}")
+                raise  # Re-raise to be caught by outer exception handler
+
+            # Email is an optional extra now, not a delivery choice: the
+            # download links exist either way. Absent key means unchecked.
+            if req_obj.parameters.get('email_notify'):
+                # Build URLs for email
+                request_path = reverse('vald:request_detail', kwargs={'uuid': req_obj.uuid})
+                # Filename in the URL, so wget/curl save the result under
+                # its own name instead of index.html.
+                download_path = reverse('vald:download_request',
+                                        kwargs={'uuid': req_obj.uuid,
+                                                'filename': req_obj.output_filename})
+                # No bib companion for showline results, and reverse() has
+                # no filename to build from in that case.
+                bib_download_path = reverse(
+                    'vald:download_bib_request',
+                    kwargs={'uuid': req_obj.uuid,
+                            'filename': req_obj.bib_output_filename}
+                ) if req_obj.bib_output_exists() else None
+                my_requests_path = reverse('vald:my_requests')
+
+                # Use SITE_URL as base for email links (no request object in background)
+                base_url = getattr(settings, 'SITE_URL', settings.SITENAME)
+                # Add FORCE_SCRIPT_NAME prefix if configured (e.g., /new).
+                # Django's global_settings defines it as None, so the getattr
+                # default never fires - coerce it or the URLs grow a "None".
+                # reverse() omits the prefix here because script_prefix is a
+                # thread-local that this background thread never had set.
+                script_name = getattr(settings, 'FORCE_SCRIPT_NAME', '') or ''
+                request_url = f"{base_url}{script_name}{request_path}"
+                download_url = f"{base_url}{script_name}{download_path}"
+                bib_download_url = (f"{base_url}{script_name}{bib_download_path}"
+                                    if bib_download_path else None)
+                my_requests_url = f"{base_url}{script_name}{my_requests_path}"
+
+                # Send email
+                from django.core.mail import EmailMessage
+
+                subject = f"VALD {req_obj.request_type} results ready"
+                # The user's own label last, as the legacy backend did with
+                # "Subject: Re: <comment>": it is what lets someone match
+                # twenty result mails to the twenty ranges they submitted.
+                comment = req_obj.comment()
+                if comment:
+                    # Legacy capped it at 68 chars (parserequest.c:1280); the
+                    # form allows 200, which makes an unreadable subject line.
+                    subject = f"{subject}: {Truncator(comment).chars(68)}"
+
+                body = render_to_string('vald/email/results_ready.txt', {
+                    'request_type': req_obj.request_type,
+                    'submitted': req_obj.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    'download_url': download_url,
+                    'bib_download_url': bib_download_url if req_obj.bib_output_exists() else None,
+                    'request_url': request_url,
+                    'my_requests_url': my_requests_url,
+                    'retention': req_obj.retention_description(),
+                    'sitename': settings.SITENAME,
+                })
+
+                # Create email with attachments
+                email = EmailMessage(
+                    subject=subject,
+                    body=body,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[req_obj.user_email]
+                )
+
+                # Attach the results, but only if small enough that mail
+                # servers won't bounce them; otherwise the links above are
+                # the fallback (R33).
+                max_attach = getattr(settings, 'VALD_MAX_EMAIL_ATTACH_BYTES', 5 * 1024 * 1024)
+                output_path = req_obj.output_path
+                total = 0
+                if output_path and output_path.exists():
+                    total += output_path.stat().st_size
+                if req_obj.bib_output_exists():
+                    total += req_obj.bib_output_path.stat().st_size
+
+                if total <= max_attach:
+                    if output_path and output_path.exists():
+                        email.attach_file(str(output_path))
+                    if req_obj.bib_output_exists():
+                        email.attach_file(str(req_obj.bib_output_path))
+                else:
+                    body += ("\n\nNote: the results were too large to attach "
+                             "to this email - please use the download links above.")
+                    email.body = body
+
+                # Send email with logging on failure
+                try:
+                    email.send(fail_silently=False)
+                except Exception as email_error:
+                    logger.error(f"Failed to send completion email for request {req_obj.uuid}: {email_error}")
+
+        else:
+            # Processing failed
+            req_obj.status = 'failed'
+            req_obj.error_message = result
+            req_obj.completed_at = timezone.now()
+            try:
+                req_obj.save()
+            except Exception as save_error:
+                logger.exception(f"Failed to save failed status for request {req_obj.uuid}: {save_error}")
+
+    except Exception as e:
+        # Mark request as failed
+        req_obj.status = 'failed'
+        req_obj.error_message = str(e)
+        req_obj.completed_at = timezone.now()
+        try:
+            req_obj.save()
+        except Exception as save_error:
+            logger.exception(f"Failed to save exception status for request {req_obj.uuid}: {save_error}")
+
+
 @ratelimit(key='vald.ratelimit.session_user',
            rate='vald.ratelimit.submit_rate', method='POST', block=False)
 def handle_extract_request(request):
@@ -954,154 +1112,7 @@ def handle_extract_request(request):
     )
 
     # Start background processing
-    def process_request_background():
-        """Process request in background thread"""
-        from django import db
-
-        # Close inherited DB connections from parent thread
-        db.connections.close_all()
-
-        try:
-            # Import here to avoid circular imports
-            from .backend import submit_request_direct
-
-            # Update status to processing
-            req_obj.status = 'processing'
-            try:
-                req_obj.save()
-            except Exception as save_error:
-                logger.exception(f"Failed to save processing status for request {req_obj.uuid}: {save_error}")
-                raise  # Re-raise to be caught by outer exception handler
-
-            # Submit directly to backend
-            success, result = submit_request_direct(req_obj)
-
-            if success:
-                # Update request with output file
-                req_obj.status = 'complete'
-                # Store the filename only; Request.output_path resolves it
-                # against the current VALD_FTP_DIR (R18).
-                req_obj.output_file = Path(result).name
-                req_obj.completed_at = timezone.now()
-                try:
-                    req_obj.save()
-                except Exception as save_error:
-                    logger.exception(f"Failed to save complete status for request {req_obj.uuid}: {save_error}")
-                    raise  # Re-raise to be caught by outer exception handler
-
-                # Email is an optional extra now, not a delivery choice: the
-                # download links exist either way. Absent key means unchecked.
-                if req_obj.parameters.get('email_notify'):
-                    # Build URLs for email
-                    request_path = reverse('vald:request_detail', kwargs={'uuid': req_obj.uuid})
-                    # Filename in the URL, so wget/curl save the result under
-                    # its own name instead of index.html.
-                    download_path = reverse('vald:download_request',
-                                            kwargs={'uuid': req_obj.uuid,
-                                                    'filename': req_obj.output_filename})
-                    # No bib companion for showline results, and reverse() has
-                    # no filename to build from in that case.
-                    bib_download_path = reverse(
-                        'vald:download_bib_request',
-                        kwargs={'uuid': req_obj.uuid,
-                                'filename': req_obj.bib_output_filename}
-                    ) if req_obj.bib_output_exists() else None
-                    my_requests_path = reverse('vald:my_requests')
-
-                    # Use SITE_URL as base for email links (no request object in background)
-                    base_url = getattr(settings, 'SITE_URL', settings.SITENAME)
-                    # Add FORCE_SCRIPT_NAME prefix if configured (e.g., /new).
-                    # Django's global_settings defines it as None, so the getattr
-                    # default never fires - coerce it or the URLs grow a "None".
-                    # reverse() omits the prefix here because script_prefix is a
-                    # thread-local that this background thread never had set.
-                    script_name = getattr(settings, 'FORCE_SCRIPT_NAME', '') or ''
-                    request_url = f"{base_url}{script_name}{request_path}"
-                    download_url = f"{base_url}{script_name}{download_path}"
-                    bib_download_url = (f"{base_url}{script_name}{bib_download_path}"
-                                        if bib_download_path else None)
-                    my_requests_url = f"{base_url}{script_name}{my_requests_path}"
-
-                    # Send email
-                    from django.core.mail import EmailMessage
-
-                    subject = f"VALD {req_obj.request_type} results ready"
-                    # The user's own label last, as the legacy backend did with
-                    # "Subject: Re: <comment>": it is what lets someone match
-                    # twenty result mails to the twenty ranges they submitted.
-                    comment = req_obj.comment()
-                    if comment:
-                        # Legacy capped it at 68 chars (parserequest.c:1280); the
-                        # form allows 200, which makes an unreadable subject line.
-                        subject = f"{subject}: {Truncator(comment).chars(68)}"
-
-                    body = render_to_string('vald/email/results_ready.txt', {
-                        'request_type': req_obj.request_type,
-                        'submitted': req_obj.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                        'download_url': download_url,
-                        'bib_download_url': bib_download_url if req_obj.bib_output_exists() else None,
-                        'request_url': request_url,
-                        'my_requests_url': my_requests_url,
-                        'retention': req_obj.retention_description(),
-                        'sitename': settings.SITENAME,
-                    })
-
-                    # Create email with attachments
-                    email = EmailMessage(
-                        subject=subject,
-                        body=body,
-                        from_email=settings.DEFAULT_FROM_EMAIL,
-                        to=[req_obj.user_email]
-                    )
-
-                    # Attach the results, but only if small enough that mail
-                    # servers won't bounce them; otherwise the links above are
-                    # the fallback (R33).
-                    max_attach = getattr(settings, 'VALD_MAX_EMAIL_ATTACH_BYTES', 5 * 1024 * 1024)
-                    output_path = req_obj.output_path
-                    total = 0
-                    if output_path and output_path.exists():
-                        total += output_path.stat().st_size
-                    if req_obj.bib_output_exists():
-                        total += req_obj.bib_output_path.stat().st_size
-
-                    if total <= max_attach:
-                        if output_path and output_path.exists():
-                            email.attach_file(str(output_path))
-                        if req_obj.bib_output_exists():
-                            email.attach_file(str(req_obj.bib_output_path))
-                    else:
-                        body += ("\n\nNote: the results were too large to attach "
-                                 "to this email - please use the download links above.")
-                        email.body = body
-
-                    # Send email with logging on failure
-                    try:
-                        email.send(fail_silently=False)
-                    except Exception as email_error:
-                        logger.error(f"Failed to send completion email for request {req_obj.uuid}: {email_error}")
-
-            else:
-                # Processing failed
-                req_obj.status = 'failed'
-                req_obj.error_message = result
-                req_obj.completed_at = timezone.now()
-                try:
-                    req_obj.save()
-                except Exception as save_error:
-                    logger.exception(f"Failed to save failed status for request {req_obj.uuid}: {save_error}")
-
-        except Exception as e:
-            # Mark request as failed
-            req_obj.status = 'failed'
-            req_obj.error_message = str(e)
-            req_obj.completed_at = timezone.now()
-            try:
-                req_obj.save()
-            except Exception as save_error:
-                logger.exception(f"Failed to save exception status for request {req_obj.uuid}: {save_error}")
-
-    start_background_worker(process_request_background)
+    start_background_worker(lambda: process_request(req_obj))
 
     # Immediately redirect to request detail page
     messages.success(request, 'Your request has been submitted and is being processed.')

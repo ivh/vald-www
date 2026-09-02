@@ -1,7 +1,7 @@
 """The background request handler in handle_extract_request.
 
 This is the code path R15's other tests skipped: they exercised JobRunner and the
-model layer directly, but never process_request_background - the daemon thread
+model layer directly, but never process_request - the daemon thread
 that records the outcome. An UnboundLocalError there marked every successful
 extraction as Failed, and nothing caught it.
 """
@@ -19,7 +19,7 @@ def test_successful_extraction_is_recorded_complete(logged_in_client, wait_for_w
                                                     monkeypatch, tmp_path):
     """A job that succeeds must end up 'complete' with the output filename stored.
 
-    Regression: process_request_background did `output_file = Path(result).name`
+    Regression: the worker did `output_file = Path(result).name`
     while a nested `from pathlib import Path` later in the same function made Path
     a local, so this raised UnboundLocalError and the request was marked Failed.
     """

@@ -4,7 +4,7 @@ import os
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.contrib.auth.password_validation import validate_password
@@ -720,6 +720,77 @@ class RequestAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at', 'completed_at')
         }),
     )
+
+    change_form_template = 'admin/vald/request/change_form.html'
+
+    actions = ['rerun_for_user']
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        """Dispatch the rerun button to the changelist action of the same name.
+
+        Ahead of the form rather than in response_change, which UserAdmin's
+        buttons use: the button is an operation on the row, not a save. Going
+        through the form would make a rerun depend on every field validating,
+        and the rows this exists for are the damaged ones - and it would
+        quietly save whatever was typed into the form along the way.
+        """
+        from django.contrib.admin.utils import unquote
+
+        if request.method == 'POST' and '_rerun_now' in request.POST:
+            obj = self.get_object(request, unquote(object_id))
+            if obj is not None:
+                self.rerun_for_user(request, self.model.objects.filter(pk=obj.pk))
+                return HttpResponseRedirect(request.get_full_path())
+        return super().change_view(request, object_id, form_url, extra_context)
+
+    @admin.action(description='Re-run now, for the original user')
+    def rerun_for_user(self, request, queryset):
+        """Run the selected requests again on the server, in place.
+
+        The other rerun button opens the front-end form, which makes a *new*
+        request owned by whoever the admin's browser is logged in as. This one
+        keeps the row, so the uuid, the download URLs the user already has, and
+        the completion email all stay pointed at the same request.
+
+        The case it exists for: gunicorn was restarted mid-job. The queue and its
+        threads live in that process's memory, so a job in flight dies with it
+        and its row is stranded at 'processing' with nothing running - nothing
+        reconciles those at boot.
+
+        Refuses a request this process is genuinely working on. Two runs of one
+        request share a job directory and an output file, and would interleave
+        their writes.
+        """
+        from .backend import is_request_active
+        # Lazily, and from the view layer on purpose: process_request is where
+        # the status transitions and the completion email live, and a second copy
+        # here is what would go stale.
+        from .views import process_request, start_background_worker
+
+        started, skipped = 0, []
+        for obj in queryset:
+            if is_request_active(obj.uuid):
+                skipped.append(obj)
+                continue
+            # Back to the state a fresh submission starts in, so the detail page
+            # stops reporting a stale failure or an output file that is gone.
+            obj.status = 'pending'
+            obj.error_message = None
+            obj.output_file = None
+            obj.completed_at = None
+            obj.save()
+            start_background_worker(lambda o=obj: process_request(o))
+            started += 1
+
+        if started:
+            self.message_user(request, f'Re-running {started} request(s) for their owners.',
+                              messages.SUCCESS)
+        for obj in skipped:
+            self.message_user(
+                request,
+                f'Request {obj.uuid} is queued or running right now - not re-run. '
+                'Wait for it to finish, or restart the service if it is wedged.',
+                messages.WARNING)
 
     def changelist_view(self, request, extra_context=None):
         """Add queue stats to the changelist view."""
