@@ -73,3 +73,16 @@ def test_reference_links_open_the_wiki_in_a_new_tab():
     assert 'href="https://www.astro.uu.se/valdwiki/linelistRefs#K14"' in polished
     assert 'target="_blank" rel="noopener"' in polished
     assert 'http://' not in polished
+
+
+def test_unclosed_divs_are_balanced():
+    """showline opens a div it never closes; unbalanced, the browser parses the
+    rest of the page into it - .showline's font size and scroll container then
+    swallow everything below the results."""
+    polished = polish_showline_html('<div><table><tr><td>Fe 1</td></tr></table>')
+    assert polished.count('</div>') == polished.lower().count('<div')
+
+
+def test_balanced_fragments_are_left_alone():
+    polished = polish_showline_html('<div>done</div>')
+    assert polished == '<div>done</div>'

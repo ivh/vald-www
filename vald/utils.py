@@ -120,4 +120,14 @@ def polish_showline_html(fragment):
     fragment = re.sub(r'\n{3,}', '\n\n', fragment)
     fragment = re.sub(r'(<PRE>)\s+', r'\1', fragment, flags=re.IGNORECASE)
     fragment = re.sub(r'\s+(</PRE>)', r'\1', fragment, flags=re.IGNORECASE)
+
+    # showline opens one <div> more than it closes - it wraps the first table in
+    # a div it never ends. Left as it comes, the browser keeps that div open and
+    # parses the whole rest of the page into it, so everything below the results
+    # (the request details box, the Modify request button) becomes a descendant
+    # of .showline and picks up its font size and scroll container.
+    unclosed = (len(re.findall(r'<div\b', fragment, re.IGNORECASE))
+                - len(re.findall(r'</div\s*>', fragment, re.IGNORECASE)))
+    fragment += '</div>' * max(unclosed, 0)
+
     return fragment.strip()

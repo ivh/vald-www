@@ -100,9 +100,6 @@ their own choice of browser configuration that selects it.
   {% endif %}
 </div>
 
-<h2 class="sectiontitle">Request file</h2>
-<pre>{{ request_file_content }}</pre>
-
 {% if output_html %}
 <h2 class="sectiontitle">Results</h2>
 {% comment %}
@@ -117,10 +114,21 @@ restricted to an element and an ionization stage.
 <pre style="font-size: 12px;">{{ output_content }}</pre>
 {% endif %}
 
+{% comment %}
+The request file used to sit open above the results, under a heading of its own.
+It is the email-format copy of the request, which matters only to someone
+submitting by mail or reporting a problem - so it lives in here with the raw
+parameters, which are the same thing for the same audience.
+{% endcomment %}
 <details class="card" style="margin-top: 20px;">
-  <summary class="card-body" style="cursor: pointer; font-weight: 500;">Request parameters</summary>
+  <summary class="card-body" style="cursor: pointer; font-weight: 500;">Request details</summary>
   <div style="border-top: 1px solid var(--rule-soft); padding: 0 20px 18px;">
-    <pre style="margin-top: 18px;">{{ req.parameters|pprint }}</pre>
+    <h3 class="eyebrow" style="margin: 18px 0 6px;">Request file</h3>
+    <p class="hint" style="margin: 0 0 10px;">The same request in the email
+      format, for submitting it by mail or quoting in a problem report.</p>
+    <pre>{{ request_file_content }}</pre>
+    <h3 class="eyebrow" style="margin: 18px 0 6px;">Request parameters</h3>
+    <pre>{{ req.parameters|pprint }}</pre>
   </div>
 </details>
 
