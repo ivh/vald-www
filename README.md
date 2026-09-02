@@ -59,7 +59,7 @@ maintenance:
 
 | file | purpose |
 |------|---------|
-| `vald-cleanup.timer` / `.service` | daily at 02:23 - delete expired result files, then expired sessions |
+| `vald-cleanup.timer` / `.service` | daily at 02:23 - delete expired result files, then expired sessions, and report any request stuck in `processing` |
 | `vald-backup.timer` / `.service` | daily at 03:17 - snapshot the database, tagged with the git revision |
 | `bin/vald-manage` | run any management command with the production environment (not a timer) |
 | `vald.caddy` | Caddy site body for the vhost - `import` it from the site block in `/etc/caddy/Caddyfile` |
@@ -67,6 +67,29 @@ maintenance:
 **The step-by-step deploy procedure lives on the admin help page**
 (`/admin/help/`), where the install path and unit file list are read from the
 running instance instead of being written down here.
+
+### Requests a restart interrupted
+
+The job queue and its worker threads live in the gunicorn process, so restarting
+the service ends any extraction in flight and leaves its row saying `processing`
+forever — the pipeline timeout is a deadline held by a thread that no longer
+exists, and nothing scans the table.
+
+`vald/startup.py` resolves those when the app next starts, called from
+`vald_web/wsgi.py` (which gunicorn loads and management commands do not). Up to
+`VALD_STRANDED_RERUN_MAX` are re-run for their owners, keeping the same uuid so
+links their owners already hold still work; above that they are marked failed and
+the webmaster is mailed, because replaying a flood on boot would fill
+`VALD_MAX_QUEUE_SIZE` and start rejecting live users.
+
+**This assumes one worker process and one instance per host** — which is what
+`vald.service` runs, deliberately, since the queue is in-process. Raising
+`--workers` above 1 would make the sweep mark another live worker's jobs as dead.
+
+Anything still `processing` while the process stayed up is a different fault (a
+wedged pipeline, a failed status write); the cleanup timer reports those daily
+past `VALD_STUCK_JOB_TIMEOUT_FACTOR × VALD_JOB_TIMEOUT`. Either way the fix is
+the same: **Re-run now, for the original user** in the request admin.
 
 ### Why not cron
 

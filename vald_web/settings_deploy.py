@@ -276,6 +276,18 @@ SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 1 week
 # once per rejected submission, and a full queue produces those in bursts.
 VALD_QUEUE_FULL_COOLDOWN = 1800  # 30 minutes
 
+# Requests left unfinished by a restart, re-run for their owners when the
+# application next starts (vald/startup.py). Above this many, they are failed
+# and the webmaster is mailed instead: replaying a flood on boot would fill
+# VALD_MAX_QUEUE_SIZE and start rejecting live users.
+VALD_STRANDED_RERUN_MAX = 5
+
+# A request still 'processing' this many times VALD_JOB_TIMEOUT is stuck: the
+# pipeline deadline has passed several times over. Reported by
+# cleanup_old_results, which runs in its own process and so cannot ask the queue
+# what is really running - age is all it has, hence the generous multiple.
+VALD_STUCK_JOB_TIMEOUT_FACTOR = 2
+
 # Completion emails attach the result file. Above this size, skip the
 # attachment and rely on the download links in the body - some mail servers
 # bounce large attachments, which would leave the user with no notification at

@@ -1,0 +1,8 @@
+{% autoescape off %}{{ requests|length }} requests were unfinished when {{ sitename }} last started, which is more than the {{ limit }} that are re-run automatically, so they have been marked failed instead.
+
+The job queue lives in the application process, so a restart ends any job in flight. This many at once is worth a look: a crash loop, or a restart during a busy spell.
+
+{% for req in requests %}  {{ req.created_at }}  {{ req.request_type }}  {{ req.user_email }}  {{ req.uuid }}
+{% endfor %}
+Re-run any of them from the admin: select the rows and choose "Re-run now, for the original user". That keeps the uuid, so links their owners already have keep working.
+{% endautoescape %}

@@ -148,6 +148,14 @@ def admin_help(request):
          'the download links in the body are the fallback.'),
         ('VALD_QUEUE_FULL_COOLDOWN', settings.VALD_QUEUE_FULL_COOLDOWN,
          'Minimum gap between "job queue full" alerts to the webmaster.'),
+        ('VALD_STRANDED_RERUN_MAX', getattr(settings, 'VALD_STRANDED_RERUN_MAX', 5),
+         'Requests left unfinished by a restart are re-run for their owners when '
+         'the app starts, up to this many. Above it they are marked failed and '
+         'the webmaster is mailed.'),
+        ('VALD_STUCK_JOB_TIMEOUT_FACTOR',
+         getattr(settings, 'VALD_STUCK_JOB_TIMEOUT_FACTOR', 2),
+         'A request still "processing" after this many times VALD_JOB_TIMEOUT is '
+         'reported to the webmaster by the daily cleanup timer.'),
         ('VALD_ADMIN_EMAIL', settings.VALD_ADMIN_EMAIL,
          'Recipient of new-registration and queue-full notifications.'),
         ('SITE_URL', settings.SITE_URL,
@@ -762,24 +770,17 @@ class RequestAdmin(admin.ModelAdmin):
         their writes.
         """
         from .backend import is_request_active
-        # Lazily, and from the view layer on purpose: process_request is where
-        # the status transitions and the completion email live, and a second copy
+        # Lazily, and from the view layer on purpose: rerun_request is where the
+        # status transitions and the completion email live, and a second copy
         # here is what would go stale.
-        from .views import process_request, start_background_worker
+        from .views import rerun_request
 
         started, skipped = 0, []
         for obj in queryset:
             if is_request_active(obj.uuid):
                 skipped.append(obj)
                 continue
-            # Back to the state a fresh submission starts in, so the detail page
-            # stops reporting a stale failure or an output file that is gone.
-            obj.status = 'pending'
-            obj.error_message = None
-            obj.output_file = None
-            obj.completed_at = None
-            obj.save()
-            start_background_worker(lambda o=obj: process_request(o))
+            rerun_request(obj)
             started += 1
 
         if started:

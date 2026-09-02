@@ -965,6 +965,26 @@ def process_request(req_obj):
             logger.exception(f"Failed to save exception status for request {req_obj.uuid}: {save_error}")
 
 
+def rerun_request(req_obj):
+    """Put a request back to how a fresh submission starts, and run it again.
+
+    Keeps the row, so the uuid stays valid and the download links the user
+    already holds - in a completion email, in a bookmark - lead to the new
+    result. Callers are the admin's rerun button and the startup sweep for
+    requests a restart stranded.
+
+    Says nothing about whether the request is safe to run: only the process
+    holding the queue knows that (backend.is_request_active), and the startup
+    sweep runs when there is nothing to know.
+    """
+    req_obj.status = 'pending'
+    req_obj.error_message = None
+    req_obj.output_file = None
+    req_obj.completed_at = None
+    req_obj.save()
+    start_background_worker(lambda: process_request(req_obj))
+
+
 @ratelimit(key='vald.ratelimit.session_user',
            rate='vald.ratelimit.submit_rate', method='POST', block=False)
 def handle_extract_request(request):

@@ -1,0 +1,10 @@
+{% autoescape off %}These {{ sitename }} requests have been "processing" for longer than {{ max_age }}, which is several times the pipeline timeout. Something is wrong with them.
+
+A restart ending a job in flight is handled automatically when the application next starts, so that is not the cause here. What is left is a job wedged inside the pipeline, or a status update that failed to reach the database after the work had finished.
+
+{% for req in requests %}  {{ req.created_at }}  {{ req.request_type }}  {{ req.user_email }}  {{ req.uuid }}
+{% endfor %}
+Check the job directory and the stage .err files first, then re-run from the admin if the request itself is fine: select the rows and choose "Re-run now, for the original user".
+
+Their owners see a page that says the job is still running, and it will say that until one of you acts.
+{% endautoescape %}

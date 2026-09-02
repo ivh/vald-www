@@ -243,11 +243,77 @@ class Command(BaseCommand):
                     self.style.SUCCESS(f"\n{action} {deleted_dirs} job director{'y' if deleted_dirs == 1 else 'ies'}")
                 )
 
+        self.report_stuck_requests(dry_run)
+
         self.stdout.write("\n" + "="*50)
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN complete - no files were deleted"))
         else:
             self.stdout.write(self.style.SUCCESS("Cleanup complete"))
+
+    def report_stuck_requests(self, dry_run):
+        """Mail the webmaster about requests that have been 'processing' too long.
+
+        The startup sweep (vald/startup.py) handles the common cause, a restart
+        ending a job in flight. What is left for this to catch is a request stuck
+        while the process stayed up: a job wedged inside the pipeline, or a
+        database write that failed after the work had finished.
+
+        Age is the only signal available here. This runs as its own process, so
+        backend.is_request_active() - the one authoritative answer about what is
+        running - would report nothing regardless. Hence a generous multiple of
+        the pipeline timeout: 'processing' is set before the job is queued, so a
+        legitimately slow request has both its queue wait and its whole timeout
+        inside that window.
+
+        Reports on every run rather than keeping a cooldown: the timer is daily,
+        which is its own rate limit, and a request still stuck tomorrow is still
+        worth saying so.
+        """
+        from django.core.mail import send_mail
+        from django.template.loader import render_to_string
+        from vald.models import Request
+
+        self.stdout.write("\n=== Checking for stuck requests ===")
+
+        timeout = getattr(settings, 'VALD_JOB_TIMEOUT', 3600)
+        factor = getattr(settings, 'VALD_STUCK_JOB_TIMEOUT_FACTOR', 2)
+        max_age = datetime.timedelta(seconds=timeout * factor)
+        cutoff = timezone.now() - max_age
+
+        stuck = list(Request.objects.filter(status='processing', created_at__lt=cutoff)
+                     .order_by('created_at'))
+        if not stuck:
+            self.stdout.write("  None")
+            return
+
+        for req in stuck:
+            age = timezone.now() - req.created_at
+            self.stdout.write(self.style.WARNING(
+                f"  {req.uuid} ({req.request_type}, {req.user_email}) "
+                f"processing for {age}"
+            ))
+
+        webmaster_email = getattr(settings, 'VALD_WEBMASTER_EMAIL', None)
+        if dry_run or not webmaster_email:
+            self.stdout.write("  (no notification sent)")
+            return
+
+        try:
+            send_mail(
+                subject=f'[VALD] {len(stuck)} request(s) stuck in processing',
+                message=render_to_string('vald/email/stuck_requests.txt', {
+                    'requests': stuck,
+                    'max_age': max_age,
+                    'sitename': settings.SITENAME,
+                }),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[webmaster_email],
+                fail_silently=True,
+            )
+            self.stdout.write(f"  Notified {webmaster_email}")
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"  Could not notify: {e}"))
 
     def format_size(self, size_bytes):
         """Format file size in human-readable format"""
