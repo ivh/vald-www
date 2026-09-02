@@ -204,6 +204,25 @@ def test_download_failures_are_status_codes_not_html(approved_user, ftp_dir):
     assert b'expired' in response.content
 
 
+@pytest.mark.django_db
+def test_a_failed_filename_download_is_not_slash_redirected(approved_user, ftp_dir):
+    """APPEND_SLASH must not turn a download 404 back into a redirect.
+
+    CommonMiddleware rewrites a 404 into a "/" redirect when the slashed path
+    resolves. It cannot here - <str:filename> is [^/]+, so nothing matches
+    ".../download/Name.gz/" - which is what keeps the plain-text body above
+    reaching wget instead of a 302 it would report as success.
+    """
+    from django.test import Client
+    import uuid as uuid_mod
+
+    client = Client()
+    response = client.get(f'/request/{uuid_mod.uuid4()}/download/Result.000001.gz')
+    assert response.status_code == 404
+    assert 'Location' not in response
+    assert response.content == b'No such request.\n'
+
+
 # --- the tab title tracks the job, so a background tab reports it finishing ---
 
 def title_of(html):
