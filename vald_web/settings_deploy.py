@@ -161,7 +161,12 @@ USE_TZ = True
 FORCE_SCRIPT_NAME = os.environ.get('VALD_URL_PREFIX', '/new')
 
 USE_X_FORWARDED_HOST = True
-APPEND_SLASH = False  # Avoid redirect issues with reverse proxy
+# Every route in vald/urls.py ends in a slash, so with this off a typed /about
+# or /admin is a bare 404 - which mattered little under /new/ but is how people
+# reach a site root. The "redirect issues with reverse proxy" this was set for
+# do not arise: CommonMiddleware redirects to request.get_full_path(), a path
+# that already carries FORCE_SCRIPT_NAME, and never to a host it guessed.
+APPEND_SLASH = True
 CSRF_COOKIE_PATH = FORCE_SCRIPT_NAME or '/'
 SESSION_COOKIE_PATH = FORCE_SCRIPT_NAME or '/'
 CSRF_TRUSTED_ORIGINS = _env_list('VALD_CSRF_TRUSTED_ORIGINS', 'https://vald.astro.uu.se')
