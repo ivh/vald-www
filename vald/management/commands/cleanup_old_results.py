@@ -96,8 +96,11 @@ class Command(BaseCommand):
             deleted_size = 0
 
             # Result files. '*.gz' already covers '*.bib.gz'; '*.txt' is the
-            # showline output, which was previously never swept at all.
-            for pattern in ['*.gz', '*.txt']:
+            # showline output, which was previously never swept at all, and
+            # '*.html' its companion fragment - which must go with it, or the
+            # detail page keeps rendering tables for a download that has
+            # expired.
+            for pattern in ['*.gz', '*.txt', '*.html']:
                 for file_path in ftp_dir.glob(pattern):
                     if file_path.is_file():
                         # Check modification time

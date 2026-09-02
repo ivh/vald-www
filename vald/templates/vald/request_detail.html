@@ -103,7 +103,16 @@ their own choice of browser configuration that selects it.
 <h2 class="sectiontitle">Request file</h2>
 <pre>{{ request_file_content }}</pre>
 
-{% if output_content %}
+{% if output_html %}
+<h2 class="sectiontitle">Results</h2>
+{% comment %}
+showline's own -html output, as the PHP interface displayed it. Marked safe
+because the markup is the binary's, not anyone's input: the only user-supplied
+value it echoes is the species, which clean_element_ionization() has already
+restricted to an element and an ionization stage.
+{% endcomment %}
+<div class="showline">{{ output_html|safe }}</div>
+{% elif output_content %}
 <h2 class="sectiontitle">Results</h2>
 <pre style="font-size: 12px;">{{ output_content }}</pre>
 {% endif %}

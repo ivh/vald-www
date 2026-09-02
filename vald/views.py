@@ -36,6 +36,7 @@ from .forms import (
 )
 from .utils import (
     add_form_errors,
+    polish_showline_html,
     spam_check,
     render_request_template,
 )
@@ -1531,14 +1532,27 @@ def request_detail(request, uuid):
         bib_output_ready = req_obj.bib_output_exists()
         bib_output_size = req_obj.get_bib_output_size() if bib_output_ready else None
 
-        # For showline requests, read and display output content inline
+        # For showline requests, read and display output content inline. The
+        # .html companion is showline's own -html rendering of the same query:
+        # tables with linked reference keys, which is what the PHP interface
+        # showed. Requests that ran before it existed - or whose binary cannot
+        # produce it - still have only the .txt, hence both branches.
         output_content = None
+        output_html = None
         if req_obj.request_type == 'showline' and output_ready:
-            try:
-                with open(req_obj.output_path, 'r') as f:
-                    output_content = f.read()
-            except Exception:
-                pass
+            html_path = req_obj.html_output_path
+            if html_path and html_path.exists():
+                try:
+                    output_html = polish_showline_html(html_path.read_text())
+                except Exception:
+                    logger.exception("Could not read showline HTML for %s",
+                                     req_obj.uuid)
+            if output_html is None:
+                try:
+                    with open(req_obj.output_path, 'r') as f:
+                        output_content = f.read()
+                except Exception:
+                    pass
 
         # Calculate queue position (rough estimate)
         if req_obj.status == 'pending':
@@ -1560,6 +1574,7 @@ def request_detail(request, uuid):
             'bib_output_size': bib_output_size,
             'queue_position': queue_position,
             'output_content': output_content,
+            'output_html': output_html,
         })
 
         return render(request, 'vald/request_detail.html', context)

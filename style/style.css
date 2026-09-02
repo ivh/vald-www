@@ -753,6 +753,82 @@ table { border-collapse: collapse; }
 .site-content.plain th { text-align: left; vertical-align: top; padding: 4px 10px 4px 0; }
 .site-content.plain th { font-weight: 600; }
 
+/* --------------------------------------------------------- show line ---- */
+
+/* The Show Line result page renders the HTML that showline4.1 -html emits, so
+   the markup here is the binary's: border/cellpadding attributes, align=center
+   rows, <sup> holding each value's VALD ranking, and a stray unclosed <div> or
+   two. Nothing below changes it, only overrides its 2005 defaults. The tables
+   are ~18 columns wide including two 88-character level designations, so the
+   whole block scrolls sideways rather than each table separately - one
+   scrollbar for a page that is really one wide listing. */
+.showline {
+  overflow-x: auto;
+  font-size: 13px;
+}
+.showline pre { font-size: 12px; margin-bottom: 18px; }
+.showline table {
+  border-collapse: collapse;
+  border: 1px solid var(--rule);
+  margin-bottom: 6px;
+  background: var(--surface);
+}
+.showline th {
+  padding: 7px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink-faint);
+  background: var(--panel);
+  border: 1px solid var(--rule-soft);
+  /* Vertical for the wide value columns, so a 3-line header does not push the
+     first data row off the screen. */
+  vertical-align: bottom;
+}
+.showline td {
+  padding: 6px 9px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: nowrap;
+  vertical-align: top;
+  border: 1px solid var(--rule-soft);
+}
+.showline tbody tr:nth-child(even) td,
+.showline tr:nth-child(even) td { background: var(--panel); }
+/* The ranking weight under each value: present on nearly every cell, so it has
+   to stay quiet or it doubles the visual weight of the table. */
+.showline sup {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-faint);
+}
+.showline sup a { font-weight: 400; }
+/* The reference key is the one table showline emits without the border
+   attributes, and the only one whose cells hold prose - full citations, which
+   must wrap rather than widen the block. */
+.showline table:not([border]) { border: 0; }
+.showline table:not([border]) td {
+  white-space: normal;
+  font-family: var(--sans);
+  font-size: 13px;
+  border: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  max-width: 60em;
+}
+.showline table:not([border]) td:first-child { text-align: right; color: var(--ink-faint); }
+.showline table:not([border]) thead td {
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+.showline table:not([border]) tr:nth-child(even) td { background: none; }
+
+/* showline's prose between the two tables. */
+.showline div { max-width: 60em; }
+.showline hr { margin: 26px 0; border-top: 1px solid var(--rule); }
+
 /* ---------------------------------------------------------- responsive ---- */
 
 @media (max-width: 1100px) {

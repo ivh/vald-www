@@ -270,6 +270,43 @@ def test_showline_result_file_has_no_absolute_paths(showline):
 def test_showline_success_is_still_published(showline):
     ok, result, ftp, _ = showline('echo "Fe 1  5000.000  -1.234"')
     assert ok, result
+    assert 'Tester.000001.txt' in [p.name for p in ftp.iterdir()]
+
+
+# --- showline -html: what the detail page renders inline --------------------
+
+# Answers -html with markup and anything else with text, the way the real
+# binary does.
+HTML_AWARE = (
+    'case "$1" in -html) echo "<table><tr><td>Fe 1</td></tr></table>";;'
+    '              *) echo "Fe 1  5000.000  -1.234";; esac'
+)
+
+
+def test_showline_publishes_html_companion(showline):
+    ok, result, ftp, _ = showline(HTML_AWARE)
+    assert ok, result
+    assert sorted(p.name for p in ftp.iterdir()) == ['Tester.000001.html',
+                                                     'Tester.000001.txt']
+    assert '<table>' in (ftp / 'Tester.000001.html').read_text()
+    # The text file stays the plain output - it is what gets downloaded
+    assert '<table>' not in (ftp / 'Tester.000001.txt').read_text()
+
+
+def test_showline_html_queries_are_separated(showline):
+    _, _, ftp, _ = showline(HTML_AWARE, queries=[(5000.0, 1.0, 'Fe 1'),
+                                                 (6000.0, 1.0, 'Ca 1')])
+    assert (ftp / 'Tester.000001.html').read_text().count('<hr>') == 1
+
+
+def test_showline_html_failure_does_not_fail_the_request(showline):
+    """A binary whose -html mode is broken - every build before the missing
+    comma in showline4.1.f90's row FORMAT was fixed - must still give a
+    result, rendered as plain text."""
+    body = ('case "$1" in -html) echo "Fortran runtime error" >&2; exit 2;;'
+            '              *) echo "Fe 1  5000.000  -1.234";; esac')
+    ok, result, ftp, _ = showline(body)
+    assert ok, result
     assert [p.name for p in ftp.iterdir()] == ['Tester.000001.txt']
 
 

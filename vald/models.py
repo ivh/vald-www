@@ -164,6 +164,19 @@ class Request(models.Model):
         return main.with_suffix('.bib.gz')
 
     @property
+    def html_output_path(self):
+        """Absolute path to the showline HTML companion file, or None.
+
+        Not offered as a download: it is the same data as the .txt, in
+        showline's own markup, and exists only so the detail page can show
+        tables instead of a <pre>. Older showline results have no such file.
+        """
+        main = self.output_path
+        if main is None or main.suffix != '.txt':
+            return None
+        return main.with_suffix('.html')
+
+    @property
     def output_filename(self):
         """Basename of the result file, or None.
 

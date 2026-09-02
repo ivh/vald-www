@@ -621,14 +621,22 @@ class JobRunner:
         """Run showline query (no extraction, just line info)."""
         
         output_file = config.job_dir / f"result.{config.job_id:06d}"
-        
+
         # Generate show_in files for each query
         queries = self._parse_showline_queries(config)
-        
+
         # A query that fails must not be reported as a completed request: the
         # error text used to be written into the result file while run() still
         # returned success, so the user saw "Complete" with an error inside.
         failures = []
+
+        # showline's own -html mode, which the PHP interface used for the whole
+        # of its Show Line page. Collected alongside the plain text rather than
+        # instead of it: the text file is what the user downloads, the fragment
+        # is only what the detail page renders. A second run costs about as much
+        # as the first (well under a second), and a failing one is not fatal -
+        # see _showline_html().
+        html_fragments = []
 
         with open(output_file, 'w') as out:
             for i, (wl_center, wl_window, element) in enumerate(queries):
@@ -689,7 +697,13 @@ class JobRunner:
                     # Write the actual data (skip prompts)
                     for line in lines[data_start:]:
                         out.write(line + '\n')
-                    
+
+                    fragment = self._showline_html(config, show_in_path, i,
+                                                   wl_center, element)
+                    if fragment:
+                        html_fragments.append(fragment)
+
+
                 except subprocess.TimeoutExpired:
                     logger.error("showline query %d (%s %s) timed out",
                                  i, element, wl_center)
@@ -716,8 +730,49 @@ class JobRunner:
         shutil.move(str(output_file), str(final_output))
         os.chmod(final_output, 0o644)
 
+        if html_fragments:
+            html_output = final_output.with_suffix('.html')
+            html_output.write_text('\n<hr>\n'.join(html_fragments))
+            os.chmod(html_output, 0o644)
+
         return (True, str(final_output))
-    
+
+    def _showline_html(self, config: JobConfig, show_in_path: Path, i: int,
+                       wl_center: float, element: str) -> str:
+        """One query's output again, in showline's own HTML markup.
+
+        Returns '' rather than raising if the run fails. The text output is the
+        result; this only decides whether the detail page shows tables or a
+        <pre>, so a binary whose -html mode is broken - as every build before
+        the missing comma in showline4.1.f90's row FORMAT was fixed - must
+        degrade to the plain text, not fail the request.
+        """
+        try:
+            with open(show_in_path, 'r') as show_in:
+                result = subprocess.run(
+                    [str(self.showline)] + self.showline_args(config, html=True),
+                    stdin=show_in,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=config.job_dir,
+                    timeout=600,
+                )
+        except Exception:
+            logger.exception("showline -html query %d (%s %s) errored",
+                             i, element, wl_center)
+            return ''
+
+        if result.returncode != 0:
+            logger.warning("showline -html query %d (%s %s) failed rc=%s: %s",
+                           i, element, wl_center, result.returncode,
+                           result.stderr.decode('utf-8', 'replace').strip())
+            return ''
+
+        # No banner or prompts to skip here: showline prints those only in text
+        # mode, so its HTML output starts at the first tag.
+        return result.stdout.decode('utf-8', 'replace')
+
+
     # The _*_text() methods exist separately from the _write_*() ones so the
     # admin can show the exact stdin a job was given without writing anything.
 
@@ -786,9 +841,11 @@ class JobRunner:
         """Write show_in file for showline."""
         path.write_text(self._show_in_text(config, wl_center, wl_window, element))
 
-    def showline_args(self, config: JobConfig) -> List[str]:
+    def showline_args(self, config: JobConfig, html: bool = False) -> List[str]:
         """Command-line switches showline gets for this job."""
         args = []
+        if html:
+            args.append('-html')
         if config.format_flags[12] == 1:
             args.append('-HFS')
         if config.format_flags[11] == 0:

@@ -96,3 +96,28 @@ def render_request_template(reqtype, context):
     content = re.sub(r'\$\w+', '', content)
 
     return content
+
+
+# showline writes its reference links to the wiki over plain http, which the
+# site redirects; asking for https directly saves the round trip and keeps the
+# results page from mixing schemes.
+_SHOWLINE_WIKI_LINK = re.compile(r'<a href="http://www\.astro\.uu\.se/')
+
+
+def polish_showline_html(fragment):
+    """Tidy the HTML fragment showline -html produces, for inline display.
+
+    The markup is showline's, from 2005: border/cellpadding attributes on the
+    tables and align="center" on the rows. Those are left alone - style/style.css
+    overrides them under .showline - and only the links are touched, so that a
+    reference key opens the wiki in a new tab rather than replacing the results
+    the reader is comparing it against.
+    """
+    fragment = _SHOWLINE_WIKI_LINK.sub('<a target="_blank" rel="noopener" '
+                                       'href="https://www.astro.uu.se/', fragment)
+    # Fortran pads its header with WRITE(*,'(/)') either side, which inside the
+    # <PRE> is a hand's width of empty box above and below the parameters.
+    fragment = re.sub(r'\n{3,}', '\n\n', fragment)
+    fragment = re.sub(r'(<PRE>)\s+', r'\1', fragment, flags=re.IGNORECASE)
+    fragment = re.sub(r'\s+(</PRE>)', r'\1', fragment, flags=re.IGNORECASE)
+    return fragment.strip()
