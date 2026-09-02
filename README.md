@@ -62,6 +62,7 @@ maintenance:
 | `vald-cleanup.timer` / `.service` | daily at 02:23 - delete expired result files, then expired sessions |
 | `vald-backup.timer` / `.service` | daily at 03:17 - snapshot the database, tagged with the git revision |
 | `bin/vald-manage` | run any management command with the production environment (not a timer) |
+| `vald.caddy` | Caddy site body for the vhost - `import` it from the site block in `/etc/caddy/Caddyfile` |
 
 **The step-by-step deploy procedure lives on the admin help page**
 (`/admin/help/`), where the install path and unit file list are read from the
@@ -105,10 +106,13 @@ existing deployment keeps working unchanged. See the comments in
 `secrets.txt.example` for the full list — site name, hostnames, trusted origins,
 base URL, URL prefix, and the three contact addresses.
 
-`VALD_URL_PREFIX` is the sub-path the app is served under (`/new` today, empty
-for the site root). The session and CSRF cookie paths and `STATIC_URL` all derive
-from it, so it is the only place the prefix is configured — but changing it signs
-out every logged-in user, because the cookie paths change with it.
+`VALD_URL_PREFIX` is the sub-path the app is served under (empty for the site
+root, `/new` while the legacy PHP interface still held the root). The session and
+CSRF cookie paths and `STATIC_URL` all derive from it, so it is the only place
+the prefix is configured — but changing it signs out every logged-in user,
+because the cookie paths change with it. It has to agree with the web server:
+`vald.caddy` assumes the empty prefix, and keeps redirecting `/new/*` to the root
+because completion emails sent under the old prefix live on in mailboxes.
 
 Values are read both by systemd (`EnvironmentFile=`) and by `bin/vald-manage`
 (which sources the file with `sh`), so **any value containing a space must be

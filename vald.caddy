@@ -1,0 +1,94 @@
+# Caddy site body for vald.astro.uu.se, with the Django interface at the site
+# root (VALD_URL_PREFIX empty) and the PHP interface retired.
+#
+# Install as /etc/caddy/vald.caddy and splice it into the site block:
+#
+#     vald.astro.uu.se:443 {
+#             import /etc/caddy/vald.caddy
+#     }
+#
+# `import` takes a file or a glob and pastes its directives in place; paths are
+# relative to the importing file, so keep this one absolute. Reload with
+# `caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy`.
+#
+# Caddy sorts directives by its own standard order (redir before handle) and
+# sorts handle blocks by matcher specificity, so this file's layout is for
+# readers; the one thing that matters is that the catch-all handle has no
+# matcher and therefore loses to every matched one.
+
+# Result files. Still served straight off disk rather than through Django:
+# the 6-digit names are what completion emails and the legacy interface both
+# hand out.
+handle /FTP/* {
+        root * /vald/VALD3/WWW/public_html
+        header Content-disposition "attachment"
+        file_server
+}
+
+# /robots.txt must sit at the root to be honoured at all, and browsers ask for
+# /favicon.ico there whether or not a page links to it. Both are collectstatic
+# output like anything else, so they are served from that tree, not from the
+# legacy public_html the old site used.
+handle /robots.txt {
+        root * /home/vald/vald-www.git/staticfiles
+        file_server
+}
+handle /favicon.ico {
+        root * /home/vald/vald-www.git/staticfiles
+        file_server
+}
+
+# Django's collectstatic output.
+handle /static/* {
+        uri strip_prefix /static
+        root * /home/vald/vald-www.git/staticfiles
+        file_server
+}
+
+# VAMDC data nodes, unchanged.
+handle /atoms-12.07/* {
+        uri strip_prefix /atoms-12.07
+        reverse_proxy unix//run/vamdc-atom/atomnode.socket
+}
+handle /vamdc-all/* {
+        uri strip_prefix /vamdc-all
+        reverse_proxy unix//run/vamdc-all/vald_all.socket
+}
+handle /vamdc-obs/* {
+        uri strip_prefix /vamdc-obs
+        reverse_proxy unix//run/vamdc-obs/vald_obs.socket
+}
+
+# Bookmarks and old completion emails from the /new/ era. Temporary redirect on
+# purpose: a 301 would be cached forever by every browser that ever hit it.
+# handle_path strips the prefix as part of the match, so {uri} below is already
+# the target path. Doing it with `uri strip_prefix` inside a plain handle would
+# loop: redir is evaluated before uri in Caddy's directive order.
+handle_path /new/* {
+        redir {uri}
+}
+redir /new /
+
+# The PHP interface. Every entry point was vald.php with query parameters that
+# mean nothing to Django, so send them all to the front page rather than
+# forwarding a request that can only fail.
+redir /~vald/php/vald.php /
+redir /php/* /
+redir /vald.php /
+
+# Nothing here for /doc/ - that file server is retired, and the two pages worth
+# keeping are Django views with their own redirects in vald/urls.py.
+
+# Everything else is Django.
+handle {
+        reverse_proxy unix//run/vald/vald.socket {
+                header_up X-Forwarded-Proto {scheme}
+                header_up X-Forwarded-Host {host}
+                header_up X-Forwarded-For {remote_host}
+        }
+}
+
+log {
+        format console
+        output file /var/log/caddy/vald.log
+}

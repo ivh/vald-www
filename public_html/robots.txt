@@ -1,0 +1,17 @@
+# At /new/ this file was empty and nothing found the site. At the site root,
+# crawlers reach the extract forms and the result files - which are named by a
+# 6-digit number and served without authentication, so indexing them would make
+# other people's extractions searchable.
+User-agent: *
+Disallow: /FTP/
+Disallow: /request/
+Disallow: /submit/
+Disallow: /my-requests/
+Disallow: /account/
+Disallow: /login/
+Disallow: /set-password/
+Disallow: /reset-password/
+Disallow: /persconf/
+Disallow: /config/
+Disallow: /activate/
+Disallow: /admin/
