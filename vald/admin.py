@@ -237,6 +237,11 @@ STATS_PERIODS = ('hour', 'day', 'month', 'year')
 # and a template loop long enough to notice. Truncate instead, and say so.
 STATS_MAX_BUCKETS = 400
 
+# Days over the last two months is what the page is opened to see: enough to
+# show a trend and the current week's shape at once. The coarser groupings still
+# default to the interval one level up, where that reasoning holds.
+STATS_DEFAULT_DAYS = 60
+
 _TRUNC = {'hour': TruncHour, 'day': TruncDay,
           'month': TruncMonth, 'year': TruncYear}
 
@@ -319,13 +324,18 @@ def _parse_date(value):
 
 
 def _default_window(period, today):
-    """The enclosing interval one level up: hours fill a day, days fill a month,
-    months fill a year. Picking a grouping is nearly always asking "and over
-    what", and this is the answer that needs no second click."""
+    """Mostly the enclosing interval one level up: hours fill a day, months fill
+    a year. Picking a grouping is nearly always asking "and over what", and this
+    is the answer that needs no second click.
+
+    Days are the exception, and the default the page itself opens on: a
+    month-to-date window is a single bar on the 1st and never shows a trend, so
+    they get a fixed STATS_DEFAULT_DAYS trailing window instead.
+    """
     if period == _HOUR:
         return today, today
     if period == 'day':
-        return today.replace(day=1), today
+        return today - timedelta(days=STATS_DEFAULT_DAYS - 1), today
     if period == 'month':
         return date(today.year, 1, 1), today
     earliest = Request.objects.aggregate(first=Min('created_at'))['first']
@@ -339,9 +349,9 @@ def _parse_stats_period(request):
     A hand-edited or stale URL must render the default window rather than a 500,
     so every unparseable part falls back independently.
     """
-    period = request.GET.get('period', 'month')
+    period = request.GET.get('period', 'day')
     if period not in STATS_PERIODS:
-        period = 'month'
+        period = 'day'
 
     today = timezone.localdate()
     frm = _parse_date(request.GET.get('from'))

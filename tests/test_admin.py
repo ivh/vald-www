@@ -859,23 +859,37 @@ def test_an_hourly_range_can_span_days(staff_client):
     assert any('Jun' in label['text'] for label in context['chart']['x_labels'])
 
 
-@pytest.mark.django_db
-@pytest.mark.parametrize('period,expected', [
-    ('hour', ('2026-08-10', '2026-08-10')),     # the current day
-    ('day', ('2026-08-01', '2026-08-10')),      # the current month, so far
-    # The current year, so far - but the last bucket is the whole of August, and
-    # the reported range describes the buckets rather than trailing off mid-bar.
-    ('month', ('2026-01-01', '2026-08-31')),
-])
-def test_choosing_a_grouping_selects_the_interval_one_level_up(
-        staff_client, period, expected, monkeypatch):
+@pytest.fixture
+def fixed_today(monkeypatch):
     from datetime import date as real_date
     import vald.admin
     monkeypatch.setattr(vald.admin.timezone, 'localdate',
                         lambda *a, **kw: real_date(2026, 8, 10))
 
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('period,expected', [
+    ('hour', ('2026-08-10', '2026-08-10')),     # the current day
+    ('day', ('2026-06-12', '2026-08-10')),      # STATS_DEFAULT_DAYS back
+    # The current year, so far - but the last bucket is the whole of August, and
+    # the reported range describes the buckets rather than trailing off mid-bar.
+    ('month', ('2026-01-01', '2026-08-31')),
+])
+def test_choosing_a_grouping_picks_its_own_window(
+        staff_client, period, expected, fixed_today):
     context = staff_client.get(f'/admin/stats/?period={period}').context
     assert (context['date_from'], context['date_to']) == expected
+
+
+@pytest.mark.django_db
+def test_the_page_opens_on_days_over_the_last_two_months(staff_client, fixed_today):
+    """The landing view with no querystring at all - what the sidebar link hits."""
+    from vald.admin import STATS_DEFAULT_DAYS
+
+    context = staff_client.get('/admin/stats/').context
+    assert context['period'] == 'day'
+    assert (context['date_from'], context['date_to']) == ('2026-06-12', '2026-08-10')
+    assert len(context['chart']['bars']) == STATS_DEFAULT_DAYS
 
 
 @pytest.mark.django_db
