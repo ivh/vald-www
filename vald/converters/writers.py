@@ -176,8 +176,10 @@ def write_votable(linelist: LineList, path: Path) -> None:
             ET.SubElement(tr, 'TD').text = str(number)
             ET.SubElement(tr, 'TD').text = text
 
+    # Not indented: this is read by machines, and on a 500k-line extraction
+    # pretty-printing costs three seconds and a tenth of the file for
+    # whitespace. Pipe it through `xmllint --format` if you need to read one.
     tree = ET.ElementTree(votable)
-    ET.indent(tree, space=' ')
     with gzip.open(path, 'wb') as fh:
         tree.write(fh, encoding='utf-8', xml_declaration=True)
 
