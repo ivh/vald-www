@@ -9,6 +9,7 @@ drifting away from the parser.
 import datetime
 import gzip
 import sqlite3
+import warnings
 from pathlib import Path
 
 import pytest
@@ -329,7 +330,7 @@ def test_fits_round_trips_with_metadata_in_the_header(linelist, tmp_path):
     fits = pytest.importorskip('astropy.io.fits')
     from astropy.table import Table
 
-    target = tmp_path / 'out.fits'
+    target = tmp_path / f"out{get_converter('fits').extension}"
     get_converter('fits').write(linelist, target)
 
     t = Table.read(target, hdu='LINES')
@@ -340,6 +341,34 @@ def test_fits_round_trips_with_metadata_in_the_header(linelist, tmp_path):
         assert hdul[0].header['request_uuid'] == linelist.meta['request_uuid']
         assert hdul[0].header['energy_unit'] == 'eV'
         assert 'REFS' in [h.name for h in hdul]
+
+
+def test_fits_is_actually_gzipped(linelist, tmp_path):
+    """astropy compresses only when it can see a .gz name, and ensure_converted
+    hands the writer a .tmp one - so the writer must gzip for itself."""
+    pytest.importorskip('astropy.io.fits')
+    target = tmp_path / f"out{get_converter('fits').extension}"
+    get_converter('fits').write(linelist, target)
+    assert target.read_bytes()[:2] == b'\x1f\x8b'
+    assert gzip.decompress(target.read_bytes())[:6] == b'SIMPLE'
+
+
+def test_fits_writes_a_wavenumber_unit_fits_can_parse(tmp_path):
+    """FITS unit syntax has no '/', so '1/cm' must be written 'cm-1'.
+
+    Written the other way it is not an error, just a TUNIT astropy warns about
+    and then drops - so this reads the file back with that warning promoted.
+    """
+    u = pytest.importorskip('astropy.units')
+    from astropy.table import Table
+
+    target = tmp_path / f"cm{get_converter('fits').extension}"
+    get_converter('fits').write(parse(LONG_CM_VAC), target)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', u.UnitsWarning)
+        t = Table.read(target, hdu='LINES')
+    assert t['e_low'].unit == u.Unit('cm-1')
+    assert t['wavelength'].unit == u.Unit('Angstrom')
 
 
 def test_parquet_round_trips_with_metadata_in_the_schema(linelist, tmp_path):

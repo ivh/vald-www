@@ -14,7 +14,9 @@ from typing import Any
 import csv
 import gzip
 import json
+import shutil
 import sqlite3
+import tempfile
 import xml.etree.ElementTree as ET
 
 from .parser import LineList
@@ -238,10 +240,24 @@ def write_sqlite(linelist: LineList, path: Path) -> None:
 # declared in TNULLn - which is what a FITS reader looks at.
 FITS_INT_NULL = -999999
 
+# The FITS unit syntax has no '/', so the wavenumber unit every other format
+# spells '1/cm' has to be written 'cm-1' here. Without this a cm^-1 extraction
+# produces a TUNIT that astropy refuses to parse on the way back in.
+_FITS_UNITS = {'1/cm': 'cm-1'}
+
+
+def _fits_unit(unit: str) -> str | None:
+    return _FITS_UNITS.get(unit, unit) or None
+
 
 def write_fits(linelist: LineList, path: Path) -> None:
-    """FITS binary table, with the request metadata in the header and the
-    reference list as a second extension."""
+    """FITS binary table, gzipped, with the request metadata in the header and
+    the reference list as a second extension.
+
+    Gzipped because a FITS binary table pads every string cell to the longest
+    value in its column: a 500k-line extraction is 200 MB on disk and 20 MB
+    compressed, and astropy, fitsio and CFITSIO all read .fits.gz directly.
+    """
     import numpy as np
     from astropy.io import fits
 
@@ -251,16 +267,16 @@ def write_fits(linelist: LineList, path: Path) -> None:
             values = ['' if v is None else str(v) for v in values]
             width = max((len(v) for v in values), default=1) or 1
             return fits.Column(name=col.name, format=f'{width}A',
-                               array=np.array(values), unit=col.unit or None)
+                               array=np.array(values), unit=_fits_unit(col.unit))
         if col.dtype == 'int':
             filled = [FITS_INT_NULL if v is None else int(v) for v in values]
             return fits.Column(name=col.name, format='K',
                                array=np.array(filled, dtype='int64'),
-                               null=FITS_INT_NULL, unit=col.unit or None)
+                               null=FITS_INT_NULL, unit=_fits_unit(col.unit))
         filled = [np.nan if v is None else float(v) for v in values]
         return fits.Column(name=col.name, format='D',
                            array=np.array(filled, dtype='float64'),
-                           unit=col.unit or None)
+                           unit=_fits_unit(col.unit))
 
     hdu = fits.BinTableHDU.from_columns(
         [column(i, c) for i, c in enumerate(linelist.columns)], name='LINES')
@@ -289,7 +305,14 @@ def write_fits(linelist: LineList, path: Path) -> None:
                         array=np.array(texts)),
         ], name='REFS'))
 
-    fits.HDUList(hdus).writeto(path, overwrite=True)
+    # Written uncompressed first and then gzipped: astropy gzips on its own
+    # only when it can see a .gz filename, and this is handed a temporary name
+    # ending in .tmp - and writeto() seeks backwards to pad, which a
+    # write-mode GzipFile cannot do.
+    with tempfile.NamedTemporaryFile(dir=path.parent, suffix='.fits') as raw:
+        fits.HDUList(hdus).writeto(raw.name, overwrite=True)
+        with open(raw.name, 'rb') as plain, gzip.open(path, 'wb') as out:
+            shutil.copyfileobj(plain, out)
 
 
 # --------------------------------------------------------------------------

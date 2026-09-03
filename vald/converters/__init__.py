@@ -58,7 +58,7 @@ CONVERTERS: tuple[Converter, ...] = (
     Converter(
         key='fits',
         label='FITS table',
-        extension='.fits',
+        extension='.fits.gz',
         description='FITS binary table, references in a second extension.',
         write=writers.write_fits,
         requires=('astropy', 'numpy'),
