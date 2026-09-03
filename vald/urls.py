@@ -52,6 +52,14 @@ urlpatterns = [
     path('request/<uuid:uuid>/download/<str:filename>', views.download_request, name='download_request'),
     path('request/<uuid:uuid>/download-bib/', views.download_bib_request, name='download_bib_request'),
     path('request/<uuid:uuid>/download-bib/<str:filename>', views.download_bib_request, name='download_bib_request'),
+    # Machine-readable renderings, generated on first request from the ASCII
+    # above. Same two URL forms, and for the same reason.
+    # The bare form is where the format menu submits: it takes ?fmt= and
+    # redirects into the path form, so the menu needs no JavaScript and wget
+    # still names the saved file after the format.
+    path('request/<uuid:uuid>/as/', views.download_converted, name='download_converted_pick'),
+    path('request/<uuid:uuid>/as/<slug:fmt>/', views.download_converted, name='download_converted'),
+    path('request/<uuid:uuid>/as/<slug:fmt>/<str:filename>', views.download_converted, name='download_converted'),
 
     # Info pages and news
     path('about/', views.about, name='about'),

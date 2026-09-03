@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 import datetime
 
+from vald.converters.service import sweep_patterns
+
 
 class Command(BaseCommand):
     help = 'Clean up old result files and working directory temporary files'
@@ -100,7 +102,10 @@ class Command(BaseCommand):
             # '*.html' its companion fragment - which must go with it, or the
             # detail page keeps rendering tables for a download that has
             # expired.
-            for pattern in ['*.gz', '*.txt', '*.html']:
+            # The converted downloads come from the registry rather than a
+            # literal list here, so a new format cannot arrive with nothing
+            # ever deleting its files.
+            for pattern in ['*.gz', '*.txt', '*.html'] + sweep_patterns():
                 for file_path in ftp_dir.glob(pattern):
                     if file_path.is_file():
                         # Check modification time

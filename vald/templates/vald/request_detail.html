@@ -94,6 +94,21 @@ their own choice of browser configuration that selects it.
       {% if bib_output_ready %}
       <a class="btn" href="{% url 'vald:download_bib_request' req.uuid req.bib_output_filename %}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5 L8 10"/><path d="M4.6 6.8 L8 10.2 L11.4 6.8"/><path d="M3 13 L13 13"/></svg>Bibliography ({{ bib_output_size }})</a>
       {% endif %}
+      {% if converters %}
+      {% comment %}
+      A plain GET form, so the menu works without JavaScript: the bare /as/ URL
+      takes ?fmt= and redirects to the one ending in the filename.
+      {% endcomment %}
+      <form class="convertform" method="get" action="{% url 'vald:download_converted_pick' req.uuid %}">
+        <label class="hint" for="convert-fmt">Also as</label>
+        <select id="convert-fmt" name="fmt">
+          {% for c in converters %}
+          <option value="{{ c.key }}" title="{{ c.description }}">{{ c.label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn" type="submit">Convert</button>
+      </form>
+      {% endif %}
       {% endif %}
       <div class="header-spacer"></div>
       <span class="hint">Kept for {{ req.retention_description }} after processing</span>

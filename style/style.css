@@ -938,3 +938,12 @@ table { border-collapse: collapse; }
      it but leaves no edge behind. */
   .masthead img { filter: invert(1) hue-rotate(180deg); }
 }
+
+/* Format menu in a result card's footer: the label, the select and its button
+   read as one control rather than three items in the footer's flex row. */
+.convertform {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.convertform label { white-space: nowrap; }
