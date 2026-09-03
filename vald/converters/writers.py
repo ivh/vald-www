@@ -192,9 +192,22 @@ _SQLITE_DTYPES = {'str': 'TEXT', 'int': 'INTEGER', 'float': 'REAL'}
 def write_sqlite(linelist: LineList, path: Path) -> None:
     """One relational file holding the transitions, their references and the
     request metadata - the reference numbers in `lines` are foreign keys into
-    `references`, which is the join the ASCII format cannot express."""
-    if path.exists():
-        path.unlink()
+    `references`, which is the join the ASCII format cannot express.
+
+    Gzipped, like every other result the site hands out: an uncompressed
+    database is the only download here that is not compressed either by its own
+    container or by gzip, and at 500k transitions that is 133 MB against 25.
+    Users gunzip it before opening it, exactly as they do the ASCII.
+    """
+    # sqlite3 needs a seekable file, so the database is built beside the target
+    # and then compressed into it.
+    with tempfile.NamedTemporaryFile(dir=path.parent, suffix='.sqlite') as raw:
+        _write_sqlite_database(linelist, Path(raw.name))
+        with open(raw.name, 'rb') as plain, gzip.open(path, 'wb') as out:
+            shutil.copyfileobj(plain, out)
+
+
+def _write_sqlite_database(linelist: LineList, path: Path) -> None:
     conn = sqlite3.connect(path)
     try:
         cur = conn.cursor()

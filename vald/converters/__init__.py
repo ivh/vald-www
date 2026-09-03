@@ -74,7 +74,7 @@ CONVERTERS: tuple[Converter, ...] = (
     Converter(
         key='sqlite',
         label='SQLite',
-        extension='.sqlite',
+        extension='.sqlite.gz',
         description='Relational database: transitions joined to their references.',
         write=writers.write_sqlite,
     ),

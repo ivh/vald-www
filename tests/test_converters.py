@@ -8,6 +8,7 @@ drifting away from the parser.
 """
 import datetime
 import gzip
+import os
 import sqlite3
 import warnings
 from pathlib import Path
@@ -260,10 +261,17 @@ def test_csv_carries_the_metadata_as_comments(linelist, tmp_path):
     assert len(body) == 1 + len(linelist.rows)
 
 
+def open_converted_sqlite(target, tmp_path):
+    """Gunzip a converted database and open it, as a user would."""
+    plain = tmp_path / 'unpacked.sqlite'
+    plain.write_bytes(gzip.decompress(target.read_bytes()))
+    return sqlite3.connect(plain)
+
+
 def test_sqlite_joins_transitions_to_their_references(linelist, tmp_path):
-    target = tmp_path / 'out.sqlite'
+    target = tmp_path / f"out{get_converter('sqlite').extension}"
     get_converter('sqlite').write(linelist, target)
-    conn = sqlite3.connect(target)
+    conn = open_converted_sqlite(target, tmp_path)
     try:
         tables = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
@@ -284,14 +292,21 @@ def test_sqlite_joins_transitions_to_their_references(linelist, tmp_path):
 
 def test_sqlite_overwrites_a_stale_file(linelist, tmp_path):
     """ensure_converted() hands the writer an existing temporary file."""
-    target = tmp_path / 'out.sqlite'
+    target = tmp_path / f"out{get_converter('sqlite').extension}"
     target.write_bytes(b'not a database')
     get_converter('sqlite').write(linelist, target)
-    conn = sqlite3.connect(target)
+    conn = open_converted_sqlite(target, tmp_path)
     try:
         assert conn.execute('SELECT count(*) FROM lines').fetchone()[0] == 2
     finally:
         conn.close()
+
+
+def test_sqlite_is_actually_gzipped(linelist, tmp_path):
+    target = tmp_path / f"out{get_converter('sqlite').extension}"
+    get_converter('sqlite').write(linelist, target)
+    assert target.read_bytes()[:2] == b'\x1f\x8b'
+    assert gzip.decompress(target.read_bytes())[:15] == b'SQLite format 3'
 
 
 def test_ecsv_round_trips_through_astropy(linelist, tmp_path):
@@ -446,7 +461,7 @@ def test_conversion_is_cached_beside_the_original(approved_user, ftp_dir):
     converter = get_converter('sqlite')
 
     target = ensure_converted(req, converter)
-    assert target == ftp_dir / 'Result.000001.sqlite'
+    assert target == ftp_dir / 'Result.000001.sqlite.gz'
     assert target == converted_path(req, converter)
 
     first = target.stat().st_mtime_ns
@@ -512,6 +527,48 @@ def test_the_metadata_carries_nothing_personal(approved_user, ftp_dir):
     assert 'test@example.com' not in values
 
 
+@pytest.mark.django_db  # the command also reports on stuck requests
+def test_the_cleanup_command_deletes_every_converted_format(
+        ftp_dir, tmp_path, settings):
+    """Runs the real command, rather than trusting sweep_patterns() alone.
+
+    The gzipped conversions are swept by the command's own '*.gz' and the rest
+    by the patterns the registry contributes; only running it proves both, and
+    proves the registry is actually wired in.
+    """
+    from django.core.management import call_command
+
+    working = tmp_path / 'working'
+    working.mkdir()
+    settings.VALD_WORKING_DIR = working
+
+    old_enough = datetime.datetime(2020, 1, 1).timestamp()
+    written = []
+    for converter in available_converters():
+        target = ftp_dir / f'Result.000001{converter.extension}'
+        target.write_bytes(b'x')
+        os.utime(target, (old_enough, old_enough))
+        written.append(target)
+    assert written, 'no converters to sweep'
+
+    # A file of every kind that existed before, to confirm nothing regressed.
+    for name in ('Result.000001.gz', 'Result.000001.bib.gz',
+                 'Result.000002.txt', 'Result.000002.html'):
+        target = ftp_dir / name
+        target.write_bytes(b'x')
+        os.utime(target, (old_enough, old_enough))
+        written.append(target)
+
+    recent = ftp_dir / 'Result.000003.parquet'
+    recent.write_bytes(b'x')
+
+    call_command('cleanup_old_results', '--age', '1H')
+
+    survivors = [t.name for t in written if t.exists()]
+    assert not survivors, f'left behind after the sweep: {survivors}'
+    assert recent.exists(), 'the sweep deleted a result inside the retention window'
+
+
 def test_the_cleanup_sweep_covers_every_uncompressed_conversion():
     patterns = sweep_patterns()
     for converter in available_converters():
@@ -560,7 +617,7 @@ def test_the_menu_submits_to_the_bare_url(client, approved_user, ftp_dir):
     req = long_request(approved_user, make_long_result(ftp_dir))
     response = client.get(f'/request/{req.uuid}/as/', {'fmt': 'sqlite'})
     assert response.status_code == 302
-    assert response['Location'].endswith('/as/sqlite/Result.000001.sqlite')
+    assert response['Location'].endswith('/as/sqlite/Result.000001.sqlite.gz')
 
 
 @pytest.mark.django_db
@@ -708,7 +765,8 @@ def test_every_converter_handles_a_real_extraction(vald_home, tmp_path):
         converter.write(linelist, target)
         assert target.stat().st_size > 0
 
-    conn = sqlite3.connect(tmp_path / 'real.sqlite')
+    conn = open_converted_sqlite(
+        tmp_path / f"real{get_converter('sqlite').extension}", tmp_path)
     try:
         assert conn.execute('SELECT count(*) FROM lines').fetchone()[0] == \
             len(linelist.rows)

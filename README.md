@@ -371,6 +371,12 @@ The short format is not offered: it has no term designations, no upper level and
 one Landé factor instead of three, so most of the columns of a converted table
 would be missing.
 
+FITS and SQLite are gzipped, like the ASCII: a FITS binary table pads every
+string cell to the longest value in its column, and an SQLite database is not
+compressed at all, so a 500k-line extraction is 202 MB and 133 MB raw against
+19 MB and 25 MB gzipped. Parquet and the text formats carry their own
+compression and are served as they are.
+
 Each file carries what the ASCII cannot: the units and UCD of every column, the
 request's provenance, and the reference list as data rather than a numbered
 footnote (a `references` table in SQLite and FITS, a second table in the
