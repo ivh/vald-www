@@ -11,6 +11,7 @@ import gzip
 import logging
 import os
 import tempfile
+import threading
 
 from django.utils import timezone
 
@@ -112,6 +113,24 @@ def linelist_for_request(req) -> LineList:
     return linelist
 
 
+# One lock per file being converted, so that a second request for a conversion
+# already under way waits for it instead of doing the same 30 seconds of work
+# again. Impatient double-clicks are the normal case, and the gunicorn worker
+# has eight threads to lose to them. Keyed by target path; entries are small and
+# the process is long-lived but not immortal.
+_conversion_locks: dict[str, threading.Lock] = {}
+_conversion_locks_guard = threading.Lock()
+
+
+def _lock_for(target: Path) -> threading.Lock:
+    with _conversion_locks_guard:
+        return _conversion_locks.setdefault(str(target), threading.Lock())
+
+
+def _is_fresh(target: Path, source: Path) -> bool:
+    return target.exists() and target.stat().st_mtime >= source.stat().st_mtime
+
+
 def ensure_converted(req, converter: Converter) -> Path:
     """Return the converted file, writing it first if the cache is cold.
 
@@ -123,9 +142,17 @@ def ensure_converted(req, converter: Converter) -> Path:
     if target is None or source is None:
         raise ParseError('this request has no output file')
 
-    if target.exists() and target.stat().st_mtime >= source.stat().st_mtime:
+    if _is_fresh(target, source):
         return target
 
+    with _lock_for(target):
+        # Rechecked under the lock: whoever held it may have just written it.
+        if _is_fresh(target, source):
+            return target
+        return _convert(req, converter, target, source)
+
+
+def _convert(req, converter: Converter, target: Path, source: Path) -> Path:
     linelist = linelist_for_request(req)
 
     # Written to a temporary name in the same directory and renamed, so a

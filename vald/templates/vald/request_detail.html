@@ -99,14 +99,15 @@ their own choice of browser configuration that selects it.
       A plain GET form, so the menu works without JavaScript: the bare /as/ URL
       takes ?fmt= and redirects to the one ending in the filename.
       {% endcomment %}
-      <form class="convertform" method="get" action="{% url 'vald:download_converted_pick' req.uuid %}">
+      <form class="convertform" id="convert-form" method="get" action="{% url 'vald:download_converted_pick' req.uuid %}">
         <label class="hint" for="convert-fmt">Also as</label>
         <select id="convert-fmt" name="fmt">
           {% for c in converters %}
           <option value="{{ c.key }}" title="{{ c.description }}">{{ c.label }}</option>
           {% endfor %}
         </select>
-        <button class="btn" type="submit">Convert</button>
+        <button class="btn" id="convert-go" type="submit">Convert</button>
+        <input type="hidden" name="dl" id="convert-token" value="" disabled>
       </form>
       {% endif %}
       {% endif %}
@@ -158,6 +159,75 @@ mail is not offered here, and is on its way out.
 <div class="btn-row" style="margin-top: 20px;">
   <a class="btn" href="{% url 'vald:'|add:req.request_type %}?modify={{ req.uuid }}">Modify request</a>
 </div>
+
+{% if converters %}
+{% comment %}
+Converting a large result takes tens of seconds, during which a plain form
+submit shows nothing at all - so the button says so, and refuses a second click
+that would only queue the same work again.
+
+A download fires no event the page can see, so the button cannot know when to
+come back on its own. The form sends a one-shot token, the download response
+returns it as a cookie, and this watches for it. If that never arrives - the
+conversion failed, the user cancelled the save dialog - the button comes back
+anyway after a while rather than staying dead.
+{% endcomment %}
+<script>
+(function () {
+  var form = document.getElementById("convert-form");
+  var button = document.getElementById("convert-go");
+  var field = document.getElementById("convert-token");
+  if (!form || !button || !field) return;
+
+  var COOKIE = "vald_download";
+  var GIVE_UP = 300000;   // 5 min: longer than any conversion should take
+  var idle = button.textContent;
+  var watching = null;
+
+  function cookie() {
+    var parts = document.cookie.split(";");
+    for (var i = 0; i < parts.length; i++) {
+      var bit = parts[i].trim();
+      if (bit.indexOf(COOKIE + "=") === 0) return bit.slice(COOKIE.length + 1);
+    }
+    return null;
+  }
+
+  function forget() {
+    document.cookie = COOKIE + "=; Max-Age=0; path=/";
+  }
+
+  function release() {
+    if (watching) { clearInterval(watching); watching = null; }
+    button.disabled = false;
+    button.textContent = idle;
+  }
+
+  form.addEventListener("submit", function () {
+    var token = String(Date.now()) + "-" +
+                Math.random().toString(36).slice(2, 10);
+    field.value = token;
+    field.disabled = false;    // only sent when this script is here to watch it
+    forget();
+
+    // After the browser has serialised the form: disabling a control before
+    // that can drop it from the query string.
+    setTimeout(function () {
+      button.disabled = true;
+      button.textContent = "Converting\u2026";
+      var deadline = Date.now() + GIVE_UP;
+      watching = setInterval(function () {
+        if (cookie() === token) { forget(); release(); }
+        else if (Date.now() > deadline) release();
+      }, 500);
+    }, 0);
+  });
+
+  // Coming back via the bfcache must not restore a frozen button.
+  window.addEventListener("pageshow", function (e) { if (e.persisted) release(); });
+})();
+</script>
+{% endif %}
 
 {% if req.is_pending %}
 {% comment %}

@@ -6,6 +6,7 @@ would test the parser against a format nothing produces. The tests marked
 vald_binaries generate fresh output instead, which is what catches the Fortran
 drifting away from the parser.
 """
+import dataclasses
 import datetime
 import gzip
 import os
@@ -618,6 +619,91 @@ def test_the_menu_submits_to_the_bare_url(client, approved_user, ftp_dir):
     response = client.get(f'/request/{req.uuid}/as/', {'fmt': 'sqlite'})
     assert response.status_code == 302
     assert response['Location'].endswith('/as/sqlite/Result.000001.sqlite.gz')
+
+
+@pytest.mark.django_db
+def test_the_download_token_comes_back_as_a_cookie(client, approved_user, ftp_dir):
+    """How the page's Convert button learns the download actually started."""
+    req = long_request(approved_user, make_long_result(ftp_dir))
+
+    response = client.get(f'/request/{req.uuid}/as/',
+                          {'fmt': 'csv', 'dl': '1234-abcd'})
+    assert response.status_code == 302
+    assert response['Location'].endswith(
+        '/as/csv/Result.000001.csv.gz?dl=1234-abcd'), 'token lost in the redirect'
+
+    served = client.get(response['Location'])
+    assert served.status_code == 200
+    assert served.cookies['vald_download'].value == '1234-abcd'
+
+
+@pytest.mark.django_db
+def test_no_token_means_no_cookie(client, approved_user, ftp_dir):
+    """A no-JS submit sends no token, and must not be handed a stray cookie."""
+    req = long_request(approved_user, make_long_result(ftp_dir))
+    response = client.get(f'/request/{req.uuid}/as/', {'fmt': 'csv'})
+    assert '?dl=' not in response['Location']
+    assert 'vald_download' not in client.get(response['Location']).cookies
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('token', [
+    'a b', 'x"; Path=/; Domain=evil', 'a' * 65, 'tok\nSet-Cookie: x=1',
+])
+def test_a_malformed_token_is_ignored(token, client, approved_user, ftp_dir):
+    """It is echoed into a Set-Cookie header, so it is validated, not trusted."""
+    req = long_request(approved_user, make_long_result(ftp_dir))
+    response = client.get(f'/request/{req.uuid}/as/csv/Result.000001.csv.gz',
+                          {'dl': token})
+    assert response.status_code == 200
+    assert 'vald_download' not in response.cookies
+
+
+@pytest.mark.django_db
+def test_the_page_carries_the_button_script(logged_in_client, approved_user,
+                                            ftp_dir):
+    req = long_request(approved_user, make_long_result(ftp_dir))
+    body = logged_in_client.get(f'/request/{req.uuid}/').content.decode()
+    assert 'id="convert-go"' in body
+    assert 'vald_download' in body
+    # Sent only when the script is present to watch for the answer.
+    assert 'id="convert-token"' in body and 'disabled' in body
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_second_click_waits_instead_of_converting_twice(
+        approved_user, ftp_dir, monkeypatch):
+    """The impatient double-click is the normal case, and it used to cost two
+    full conversions of the same file in two of the worker's eight threads."""
+    import threading
+    import time
+
+    req = long_request(approved_user, make_long_result(ftp_dir))
+    converter = get_converter('csv')
+
+    calls = []
+
+    def slow_write(linelist, path):
+        calls.append(1)
+        time.sleep(0.3)
+        converter.write(linelist, path)
+
+    # Same extension, so the same target path and therefore the same lock.
+    slow = dataclasses.replace(converter, write=slow_write)
+
+    results = []
+    threads = [threading.Thread(
+        target=lambda: results.append(ensure_converted(req, slow)))
+        for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30)
+
+    assert len(results) == 4, 'a caller did not get a file'
+    assert len(set(results)) == 1, 'callers disagreed about the path'
+    assert len(calls) == 1, f'converted {len(calls)} times for one file'
+    assert results[0].exists()
 
 
 @pytest.mark.django_db

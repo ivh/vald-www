@@ -18,6 +18,7 @@ from django_ratelimit.decorators import ratelimit
 from pathlib import Path
 import glob
 import logging
+import re
 import threading
 
 from .models import UNIT_KEYS, Request, User, UserEmail
@@ -1721,6 +1722,15 @@ def download_converted(request, uuid, fmt=None, filename=None):
     # Reached without a format when the detail page's menu submits.
     fmt = fmt or request.GET.get('fmt', '')
 
+    # The menu freezes its button while a conversion runs, and a file download
+    # fires no page event it could watch for. So it sends a token and watches
+    # for the cookie the response below sets - the standard way to notice that
+    # a download has actually begun. Ignored unless it looks like the token the
+    # page generates, since it is echoed into a Set-Cookie header.
+    token = request.GET.get('dl', '')
+    if not re.fullmatch(r'[A-Za-z0-9-]{1,64}', token or ''):
+        token = ''
+
     converter = get_converter(fmt)
     if converter is None:
         return HttpResponseNotFound('No such output format.\n',
@@ -1756,16 +1766,24 @@ def download_converted(request, uuid, fmt=None, filename=None):
                                     content_type='text/plain')
 
     if filename is None:
-        return redirect('vald:download_converted', uuid=uuid, fmt=fmt,
-                        filename=file_path.name)
+        target = reverse('vald:download_converted',
+                         kwargs={'uuid': uuid, 'fmt': fmt,
+                                 'filename': file_path.name})
+        if token:
+            target = f'{target}?dl={token}'
+        return redirect(target)
     if filename != file_path.name:
         return HttpResponseNotFound('Converted file not found.\n',
                                     content_type='text/plain')
 
     try:
-        return FileResponse(open(file_path, 'rb'),
-                            content_type='application/octet-stream',
-                            as_attachment=True, filename=file_path.name)
+        response = FileResponse(open(file_path, 'rb'),
+                                content_type='application/octet-stream',
+                                as_attachment=True, filename=file_path.name)
+        if token:
+            response.set_cookie('vald_download', token, max_age=600,
+                                samesite='Lax')
+        return response
     except OSError as e:
         logger.error("Failed to open %s for request %s: %s", file_path, uuid, e)
         return HttpResponse('Converted file could not be read.\n',
