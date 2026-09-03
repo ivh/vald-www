@@ -665,6 +665,9 @@ def test_the_page_carries_the_button_script(logged_in_client, approved_user,
     req = long_request(approved_user, make_long_result(ftp_dir))
     body = logged_in_client.get(f'/request/{req.uuid}/').content.decode()
     assert 'id="convert-go"' in body
+    # The script swaps this span, not the button: the button also holds the
+    # download icon, which setting textContent on it would delete.
+    assert 'id="convert-label"' in body
     assert 'vald_download' in body
     # Sent only when the script is present to watch for the answer.
     assert 'id="convert-token"' in body and 'disabled' in body

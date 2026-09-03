@@ -486,20 +486,33 @@ input[type="button"] {
   cursor: pointer;
   text-decoration: none;
 }
-.btn:hover,
-button:hover,
-input[type="submit"]:hover,
-input[type="button"]:hover {
+.btn:hover:not(:disabled),
+button:hover:not(:disabled),
+input[type="submit"]:hover:not(:disabled),
+input[type="button"]:hover:not(:disabled) {
   background: var(--face-hover);
   color: var(--navy);
   text-decoration: none;
 }
+/* Nothing styled :disabled before, so a disabled button kept the pointer
+   cursor and still lit up under it - it looked clickable and simply ignored
+   the click. The one that spends real time disabled is Convert, which is busy
+   rather than forbidden, hence the progress cursor there. */
+.btn:disabled,
+button:disabled,
+input[type="submit"]:disabled,
+input[type="button"]:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+#convert-go:disabled { cursor: progress; }
+
 .btn-primary {
   background: var(--navy);
   border-color: var(--navy);
   color: var(--surface);
 }
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background: var(--navy-hover);
   border-color: var(--navy-hover);
   color: var(--surface);
@@ -510,7 +523,7 @@ input[type="button"]:hover {
   font-size: 13px;
   padding: 7px 14px;
 }
-.btn-quiet:hover { background: var(--panel); }
+.btn-quiet:hover:not(:disabled) { background: var(--panel); }
 .btn-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 /* The nav's logout button must not inherit the button chrome above. */
@@ -915,7 +928,7 @@ table { border-collapse: collapse; }
   /* The primary button is the light accent carrying dark text, the reverse of
      daylight - a dark navy fill would vanish into the card behind it. */
   .btn-primary { color: var(--ground); }
-  .btn-primary:hover { color: var(--ground); }
+  .btn-primary:hover:not(:disabled) { color: var(--ground); }
 
   /* Chevrons: the stroke colour is inside the data URI, so these three rules
      are restated rather than tokenised. */

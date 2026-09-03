@@ -90,9 +90,9 @@ their own choice of browser configuration that selects it.
       {% if output_empty %}
       <span class="muted">No lines found matching your criteria.</span>
       {% else %}
-      <a class="btn btn-primary" href="{% url 'vald:download_request' req.uuid req.output_filename %}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5 L8 10"/><path d="M4.6 6.8 L8 10.2 L11.4 6.8"/><path d="M3 13 L13 13"/></svg>Results ({{ output_size }})</a>
+      <a class="btn btn-primary" href="{% url 'vald:download_request' req.uuid req.output_filename %}">{% include "vald/_download_icon.html" %}Results ({{ output_size }})</a>
       {% if bib_output_ready %}
-      <a class="btn" href="{% url 'vald:download_bib_request' req.uuid req.bib_output_filename %}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5 L8 10"/><path d="M4.6 6.8 L8 10.2 L11.4 6.8"/><path d="M3 13 L13 13"/></svg>Bibliography ({{ bib_output_size }})</a>
+      <a class="btn" href="{% url 'vald:download_bib_request' req.uuid req.bib_output_filename %}">{% include "vald/_download_icon.html" %}Bibliography ({{ bib_output_size }})</a>
       {% endif %}
       {% if converters %}
       {% comment %}
@@ -106,7 +106,7 @@ their own choice of browser configuration that selects it.
           <option value="{{ c.key }}" title="{{ c.description }}">{{ c.label }}</option>
           {% endfor %}
         </select>
-        <button class="btn" id="convert-go" type="submit">Convert</button>
+        <button class="btn" id="convert-go" type="submit">{% include "vald/_download_icon.html" %}<span id="convert-label">Convert</span></button>
         <input type="hidden" name="dl" id="convert-token" value="" disabled>
       </form>
       {% endif %}
@@ -176,12 +176,13 @@ anyway after a while rather than staying dead.
 (function () {
   var form = document.getElementById("convert-form");
   var button = document.getElementById("convert-go");
+  var label = document.getElementById("convert-label");
   var field = document.getElementById("convert-token");
-  if (!form || !button || !field) return;
+  if (!form || !button || !label || !field) return;
 
   var COOKIE = "vald_download";
   var GIVE_UP = 300000;   // 5 min: longer than any conversion should take
-  var idle = button.textContent;
+  var idle = label.textContent;
   var watching = null;
 
   function cookie() {
@@ -200,7 +201,7 @@ anyway after a while rather than staying dead.
   function release() {
     if (watching) { clearInterval(watching); watching = null; }
     button.disabled = false;
-    button.textContent = idle;
+    label.textContent = idle;
   }
 
   form.addEventListener("submit", function () {
@@ -214,7 +215,7 @@ anyway after a while rather than staying dead.
     // that can drop it from the query string.
     setTimeout(function () {
       button.disabled = true;
-      button.textContent = "Converting\u2026";
+      label.textContent = "Converting\u2026";
       var deadline = Date.now() + GIVE_UP;
       watching = setInterval(function () {
         if (cookie() === token) { forget(); release(); }
