@@ -11,6 +11,15 @@ dependencies = [
     "gunicorn>=21.0",
 ]
 
+[project.optional-dependencies]
+# The stdlib covers CSV, ECSV, VOTable and SQLite; these two buy FITS and
+# Parquet. Kept optional so a deployment that does not want numpy does not get
+# it - the download menu hides what it cannot produce.
+formats = [
+    "astropy>=6.0",
+    "pyarrow>=15.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.1",
