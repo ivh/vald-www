@@ -358,6 +358,35 @@ EMAIL_HOST = 'localhost'
 EMAIL_PORT = 25
 ```
 
+### Converted downloads
+
+A completed **long-format** extraction can also be downloaded as CSV, ECSV,
+VOTable, FITS, Parquet or SQLite, from the menu in the result card on the
+request page. The conversion is made from the ASCII the job already produced,
+the first time someone asks for it, and cached beside it in `VALD_FTP_DIR` -
+nothing extra runs during the job, and a format that cannot be produced costs
+that one download rather than the extraction.
+
+The short format is not offered: it has no term designations, no upper level and
+one Landé factor instead of three, so most of the columns of a converted table
+would be missing.
+
+Each file carries what the ASCII cannot: the units and UCD of every column, the
+request's provenance, and the reference list as data rather than a numbered
+footnote (a `references` table in SQLite and FITS, a second table in the
+VOTable, metadata elsewhere).
+
+CSV, ECSV, VOTable and SQLite need nothing beyond the standard library. FITS and
+Parquet need the optional extra, and the menu hides them when it is absent:
+
+```bash
+uv sync --extra formats     # astropy, pyarrow
+```
+
+Adding a format means a writer in `vald/converters/writers.py` and an entry in
+the registry in `vald/converters/__init__.py`; the menu and the cleanup sweep
+both read that registry, so neither has to be updated by hand.
+
 ### User Registration
 
 Users live in the database. Accounts are created by self-registration through

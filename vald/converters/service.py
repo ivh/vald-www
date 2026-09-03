@@ -136,6 +136,9 @@ def ensure_converted(req, converter: Converter) -> Path:
     tmp = Path(tmp_name)
     try:
         converter.write(linelist, tmp)
+        # mkstemp creates 0600; the vhost serves this directory straight from
+        # disk, so a conversion has to be as readable as the ASCII beside it.
+        os.chmod(tmp, 0o644)
         os.replace(tmp, target)
     except BaseException:
         tmp.unlink(missing_ok=True)

@@ -451,6 +451,16 @@ def test_no_temporary_files_are_left_behind(approved_user, ftp_dir):
 
 
 @pytest.mark.django_db
+def test_conversions_are_as_readable_as_the_ascii_beside_them(
+        approved_user, ftp_dir):
+    """The vhost serves this directory from disk; mkstemp's 0600 would 403."""
+    req = long_request(approved_user, make_long_result(ftp_dir))
+    for converter in available_converters():
+        mode = ensure_converted(req, converter).stat().st_mode & 0o777
+        assert mode & 0o044, f'{converter.key} is not world-readable ({mode:o})'
+
+
+@pytest.mark.django_db
 def test_request_provenance_reaches_the_metadata(approved_user, ftp_dir):
     req = long_request(approved_user, make_long_result(ftp_dir),
                        elmion='Ca 1', pconf='default')
