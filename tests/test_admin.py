@@ -245,7 +245,11 @@ def test_user_changelist_and_change_form_link_to_help(staff_client):
 def test_help_page_documents_deployment(staff_client):
     body = staff_client.get('/admin/help/').content.decode()
     assert 'Deploying a new version' in body
-    for command in ['git pull', 'uv sync', 'bin/vald-manage migrate',
+    # The extra is named here rather than left to 'uv sync': without it the
+    # FITS and Parquet conversions vanish from the request page's download menu,
+    # which reads as a bug rather than a missing dependency.
+    for command in ['git pull', 'uv sync --extra formats',
+                    'bin/vald-manage migrate',
                     'bin/vald-manage collectstatic',
                     'systemctl daemon-reload', 'systemctl restart vald']:
         assert command in body, f'deployment section does not mention {command!r}'

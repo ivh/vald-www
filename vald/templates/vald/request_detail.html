@@ -90,9 +90,25 @@ their own choice of browser configuration that selects it.
       {% if output_empty %}
       <span class="muted">No lines found matching your criteria.</span>
       {% else %}
-      <a class="btn btn-primary" href="{% url 'vald:download_request' req.uuid req.output_filename %}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5 L8 10"/><path d="M4.6 6.8 L8 10.2 L11.4 6.8"/><path d="M3 13 L13 13"/></svg>Results ({{ output_size }})</a>
+      <a class="btn btn-primary" href="{% url 'vald:download_request' req.uuid req.output_filename %}">{% include "vald/_download_icon.html" %}Results ({{ output_size }})</a>
       {% if bib_output_ready %}
-      <a class="btn" href="{% url 'vald:download_bib_request' req.uuid req.bib_output_filename %}"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5 L8 10"/><path d="M4.6 6.8 L8 10.2 L11.4 6.8"/><path d="M3 13 L13 13"/></svg>Bibliography ({{ bib_output_size }})</a>
+      <a class="btn" href="{% url 'vald:download_bib_request' req.uuid req.bib_output_filename %}">{% include "vald/_download_icon.html" %}Bibliography ({{ bib_output_size }})</a>
+      {% endif %}
+      {% if converters %}
+      {% comment %}
+      A plain GET form, so the menu works without JavaScript: the bare /as/ URL
+      takes ?fmt= and redirects to the one ending in the filename.
+      {% endcomment %}
+      <form class="convertform" id="convert-form" method="get" action="{% url 'vald:download_converted_pick' req.uuid %}">
+        <label class="hint" for="convert-fmt">Also as</label>
+        <select id="convert-fmt" name="fmt">
+          {% for c in converters %}
+          <option value="{{ c.key }}" title="{{ c.description }}">{{ c.label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn" id="convert-go" type="submit">{% include "vald/_download_icon.html" %}<span id="convert-label">Convert</span></button>
+        <input type="hidden" name="dl" id="convert-token" value="" disabled>
+      </form>
       {% endif %}
       {% endif %}
       <div class="header-spacer"></div>
@@ -143,6 +159,76 @@ mail is not offered here, and is on its way out.
 <div class="btn-row" style="margin-top: 20px;">
   <a class="btn" href="{% url 'vald:'|add:req.request_type %}?modify={{ req.uuid }}">Modify request</a>
 </div>
+
+{% if converters %}
+{% comment %}
+Converting a large result takes tens of seconds, during which a plain form
+submit shows nothing at all - so the button says so, and refuses a second click
+that would only queue the same work again.
+
+A download fires no event the page can see, so the button cannot know when to
+come back on its own. The form sends a one-shot token, the download response
+returns it as a cookie, and this watches for it. If that never arrives - the
+conversion failed, the user cancelled the save dialog - the button comes back
+anyway after a while rather than staying dead.
+{% endcomment %}
+<script>
+(function () {
+  var form = document.getElementById("convert-form");
+  var button = document.getElementById("convert-go");
+  var label = document.getElementById("convert-label");
+  var field = document.getElementById("convert-token");
+  if (!form || !button || !label || !field) return;
+
+  var COOKIE = "vald_download";
+  var GIVE_UP = 300000;   // 5 min: longer than any conversion should take
+  var idle = label.textContent;
+  var watching = null;
+
+  function cookie() {
+    var parts = document.cookie.split(";");
+    for (var i = 0; i < parts.length; i++) {
+      var bit = parts[i].trim();
+      if (bit.indexOf(COOKIE + "=") === 0) return bit.slice(COOKIE.length + 1);
+    }
+    return null;
+  }
+
+  function forget() {
+    document.cookie = COOKIE + "=; Max-Age=0; path=/";
+  }
+
+  function release() {
+    if (watching) { clearInterval(watching); watching = null; }
+    button.disabled = false;
+    label.textContent = idle;
+  }
+
+  form.addEventListener("submit", function () {
+    var token = String(Date.now()) + "-" +
+                Math.random().toString(36).slice(2, 10);
+    field.value = token;
+    field.disabled = false;    // only sent when this script is here to watch it
+    forget();
+
+    // After the browser has serialised the form: disabling a control before
+    // that can drop it from the query string.
+    setTimeout(function () {
+      button.disabled = true;
+      label.textContent = "Converting\u2026";
+      var deadline = Date.now() + GIVE_UP;
+      watching = setInterval(function () {
+        if (cookie() === token) { forget(); release(); }
+        else if (Date.now() > deadline) release();
+      }, 500);
+    }, 0);
+  });
+
+  // Coming back via the bfcache must not restore a frozen button.
+  window.addEventListener("pageshow", function (e) { if (e.persisted) release(); });
+})();
+</script>
+{% endif %}
 
 {% if req.is_pending %}
 {% comment %}

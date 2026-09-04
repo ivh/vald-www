@@ -11,6 +11,15 @@ dependencies = [
     "gunicorn>=21.0",
 ]
 
+[project.optional-dependencies]
+# The stdlib covers CSV, ECSV, VOTable and SQLite; these two buy FITS and
+# Parquet. Kept optional so a deployment that does not want numpy does not get
+# it - the download menu hides what it cannot produce.
+formats = [
+    "astropy>=6.0",
+    "pyarrow>=15.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.1",
@@ -21,6 +30,11 @@ dev = [
 DJANGO_SETTINGS_MODULE = "vald_web.settings"
 python_files = ["test_*.py"]
 testpaths = ["tests"]
+# The binary tests are the whole of the suite's runtime - 87 s against 16 s
+# without them - because each one runs the real Fortran. Deselected by default
+# so the routine run stays fast enough to be run often; conftest prints a header
+# saying so, and `pytest -m vald_binaries` (or -m "") brings them back.
+addopts = ["-m", "not vald_binaries"]
 markers = [
-    "vald_binaries: needs a populated VALD_HOME (Fortran binaries and data); deselect with -m 'not vald_binaries'",
+    "vald_binaries: needs a populated VALD_HOME (Fortran binaries and data); deselected by default, run with -m vald_binaries",
 ]

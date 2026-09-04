@@ -362,9 +362,15 @@ themselves changed; the rest apply to every deploy.
 
   <li><b>Pull the code, and sync dependencies if they changed.</b>
     <pre>git pull
-uv sync</pre>
+uv sync --extra formats</pre>
     Dependencies are pinned in <code>uv.lock</code>; <code>uv sync</code> makes
-    <code>.venv</code> match it exactly.</li>
+    <code>.venv</code> match it exactly.
+    <span class="note">The <code>formats</code> extra is astropy and pyarrow,
+    which the FITS and Parquet result conversions need. It is an extra because
+    nothing else in the app wants numpy &mdash; but leaving it off is not an
+    error: those two formats simply stop being offered in the download menu on
+    the request page, which looks like a bug rather than a missing
+    dependency.</span></li>
 
   <li><b>Apply migrations.</b>
     <pre>bin/vald-manage migrate</pre>

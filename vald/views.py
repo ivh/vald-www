@@ -18,6 +18,7 @@ from django_ratelimit.decorators import ratelimit
 from pathlib import Path
 import glob
 import logging
+import re
 import threading
 
 from .models import UNIT_KEYS, Request, User, UserEmail
@@ -1505,6 +1506,8 @@ def my_requests(request):
 def request_detail(request, uuid):
     """Show details of a specific request"""
     from .backend import format_request_file, uuid_to_6digit
+    from .converters import available_converters
+    from .converters.service import is_convertible
 
     context = get_user_context(request)
     user = get_current_user(request)
@@ -1563,9 +1566,16 @@ def request_detail(request, uuid):
         else:
             queue_position = None
 
+        # Only offered when the ASCII is long-format: the short format has no
+        # term designations or per-level data, so a table of it would be a
+        # table of most of the columns missing.
+        converters = (available_converters()
+                      if is_convertible(req_obj) else [])
+
         context.update({
             'req': req_obj,
             'backend_id': backend_id,
+            'converters': converters,
             'request_file_content': request_file_content,
             'output_ready': output_ready,
             'output_empty': output_empty,
@@ -1688,3 +1698,93 @@ def download_request(request, uuid, filename=None):
 def download_bib_request(request, uuid, filename=None):
     """Download the .bib.gz output file for a completed request"""
     return _serve_result(request, uuid, 'bib', filename)
+
+
+def download_converted(request, uuid, fmt=None, filename=None):
+    """Serve a machine-readable rendering of a completed long-format result.
+
+    Converted lazily from the ASCII the job already produced and cached beside
+    it, so a converter that cannot cope costs this download and nothing else.
+    Unauthenticated for the same reason as _serve_result: the uuid is the
+    capability, and wget must be able to follow the link.
+    """
+    from django.http import FileResponse, HttpResponseNotFound
+
+    from .converters import get_converter
+    from .converters.parser import ParseError
+    from .converters.service import ensure_converted, is_convertible
+
+    try:
+        req_obj = Request.objects.get(uuid=uuid)
+    except Request.DoesNotExist:
+        return HttpResponseNotFound('No such request.\n', content_type='text/plain')
+
+    # Reached without a format when the detail page's menu submits.
+    fmt = fmt or request.GET.get('fmt', '')
+
+    # The menu freezes its button while a conversion runs, and a file download
+    # fires no page event it could watch for. So it sends a token and watches
+    # for the cookie the response below sets - the standard way to notice that
+    # a download has actually begun. Ignored unless it looks like the token the
+    # page generates, since it is echoed into a Set-Cookie header.
+    token = request.GET.get('dl', '')
+    if not re.fullmatch(r'[A-Za-z0-9-]{1,64}', token or ''):
+        token = ''
+
+    converter = get_converter(fmt)
+    if converter is None:
+        return HttpResponseNotFound('No such output format.\n',
+                                    content_type='text/plain')
+
+    if not is_convertible(req_obj):
+        if req_obj.results_expired():
+            return HttpResponseNotFound(
+                f'Results have expired - they are kept {req_obj.retention_description()}.\n',
+                content_type='text/plain')
+        return HttpResponseNotFound(
+            'This result cannot be converted: only completed long-format '
+            'extractions can.\n', content_type='text/plain')
+
+    try:
+        path = ensure_converted(req_obj, converter)
+    except ParseError as e:
+        logger.warning("Could not convert %s to %s: %s", uuid, fmt, e)
+        return HttpResponse(
+            f'This result could not be converted to {converter.label}: {e}\n'
+            'The original ASCII download is unaffected.\n',
+            content_type='text/plain', status=422)
+    except Exception:
+        logger.exception("Conversion of %s to %s failed", uuid, fmt)
+        return HttpResponse(
+            f'Conversion to {converter.label} failed. The original ASCII '
+            'download is unaffected.\n',
+            content_type='text/plain', status=500)
+
+    file_path = serve_path_or_none(path)
+    if file_path is None:
+        return HttpResponseNotFound('Converted file not found.\n',
+                                    content_type='text/plain')
+
+    if filename is None:
+        target = reverse('vald:download_converted',
+                         kwargs={'uuid': uuid, 'fmt': fmt,
+                                 'filename': file_path.name})
+        if token:
+            target = f'{target}?dl={token}'
+        return redirect(target)
+    if filename != file_path.name:
+        return HttpResponseNotFound('Converted file not found.\n',
+                                    content_type='text/plain')
+
+    try:
+        response = FileResponse(open(file_path, 'rb'),
+                                content_type='application/octet-stream',
+                                as_attachment=True, filename=file_path.name)
+        if token:
+            response.set_cookie('vald_download', token, max_age=600,
+                                samesite='Lax')
+        return response
+    except OSError as e:
+        logger.error("Failed to open %s for request %s: %s", file_path, uuid, e)
+        return HttpResponse('Converted file could not be read.\n',
+                            content_type='text/plain', status=500)

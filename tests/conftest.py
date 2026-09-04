@@ -11,6 +11,20 @@ import pytest
 os.environ['DJANGO_SETTINGS_MODULE'] = 'vald_web.settings'
 
 
+def pytest_report_header(config):
+    """Say out loud when the binary tests are not being run.
+
+    They are deselected by default (addopts in pyproject) because they carry the
+    whole runtime, and they are also the only tests that catch the Fortran
+    drifting away from what the app writes and parses. A count of "deselected"
+    at the end of a green run is far too quiet for that.
+    """
+    if 'not vald_binaries' in (config.option.markexpr or ''):
+        return ('vald: Fortran binary tests are DESELECTED. '
+                'Run them with: pytest -m vald_binaries')
+    return None
+
+
 def pytest_configure(config):
     """Configure Django before running tests."""
     django.setup()
