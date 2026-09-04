@@ -257,6 +257,16 @@ def test_stellar_help_text_does_not_share_a_row_with_the_units(logged_in_client)
         'help text no longer sits under the chemcomp box'
 
 
+@pytest.mark.django_db
+def test_stellar_help_text_advertises_the_metallicity_shorthand(logged_in_client):
+    """M/H is supported end to end and the PHP form said so; this page lost the
+    hint, leaving the validation error as the only place it was mentioned."""
+    body = logged_in_client.get('/extractstellar/').content.decode()
+    start = body.index('id="id_chemcomp"')
+    cell = body[start:body.index('class="formrow"', start)]
+    assert 'M/H: -0.5' in cell
+
+
 # --- "also save as my defaults" --------------------------------------------
 
 @pytest.mark.django_db

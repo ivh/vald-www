@@ -603,7 +603,12 @@ class ExtractStellarForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
         required=False,
         max_length=4000,
         widget=forms.Textarea(attrs={'rows': '2', 'cols': '50'}),
-        help_text='optional, e.g. Sr: -4.67, Cr: -3.37 - solar values are used for anything omitted'
+        # The metallicity hint is restored from the PHP form
+        # (old/interface/extractstellar.html), which advertised it beside the
+        # box. It was reachable but undocumented here: only the validation
+        # error mentioned it, so you had to guess wrong to find out.
+        help_text='optional, e.g. Sr: -4.67, Cr: -3.37 - solar values are used '
+                  'for anything omitted. M/H: -0.5 sets an overall metallicity'
     )
     format = forms.ChoiceField(
         label='Extraction format',
