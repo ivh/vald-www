@@ -289,6 +289,14 @@ label.stacked input { width: 100%; font-size: 14px; color: var(--ink); }
 }
 .pagehead-titles { display: flex; flex-direction: column; gap: 2px; }
 .pagesub { font-size: 14px; color: var(--ink-muted); }
+/* Capped rather than truncated: the form allows 200 characters, and a request
+   the user bothered to label is one they want to recognise in full. */
+.pagecomment {
+  font-size: 15px;
+  color: var(--ink);
+  max-width: 60ch;
+  overflow-wrap: anywhere;
+}
 
 /* --------------------------------------------------------------- cards ---- */
 

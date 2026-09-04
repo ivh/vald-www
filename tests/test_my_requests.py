@@ -134,3 +134,42 @@ def test_details_column_appears_in_the_rendered_page(logged_in_client, approved_
          stwvl=5000.0, endwvl=5010.0, waveunit='angstrom')
     response = logged_in_client.get('/my-requests/')
     assert 'Fe 1, 5000–5010 Å' in response.content.decode()
+
+
+# --- comment(): the user's own label for a request --------------------------
+
+@pytest.mark.django_db
+def test_the_comment_shows_on_both_the_list_and_the_request(
+        logged_in_client, approved_user):
+    """It is the one line on either page the user wrote themselves.
+
+    It reached the list from the start but not the detail page, where the
+    subtitle showed only the derived wavelength summary.
+    """
+    req = make(approved_user, 'extractelement', subject='Ca triplet, run 3',
+               elmion='Ca 1', stwvl=8490, endwvl=8680)
+
+    listing = logged_in_client.get('/my-requests/').content.decode()
+    assert 'Ca triplet, run 3' in listing
+
+    detail = logged_in_client.get(f'/request/{req.uuid}/').content.decode()
+    assert 'Ca triplet, run 3' in detail
+    # Still shown alongside what was actually asked for, not instead of it.
+    assert 'Ca 1' in detail
+
+
+@pytest.mark.django_db
+def test_a_request_without_a_comment_renders_cleanly(logged_in_client,
+                                                     approved_user):
+    req = make(approved_user, 'extractall', stwvl=5000, endwvl=5010)
+    detail = logged_in_client.get(f'/request/{req.uuid}/')
+    assert detail.status_code == 200
+    assert 'pagecomment' not in detail.content.decode()
+
+
+@pytest.mark.django_db
+def test_a_comment_cannot_inject_markup(logged_in_client, approved_user):
+    req = make(approved_user, 'extractall', subject='<script>alert(1)</script>')
+    detail = logged_in_client.get(f'/request/{req.uuid}/').content.decode()
+    assert '<script>alert(1)</script>' not in detail
+    assert '&lt;script&gt;' in detail
