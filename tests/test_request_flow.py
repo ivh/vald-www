@@ -5,7 +5,11 @@ model layer directly, but never process_request - the daemon thread
 that records the outcome. An UnboundLocalError there marked every successful
 extraction as Failed, and nothing caught it.
 """
+import re
+
 import pytest
+
+from vald.models import Request
 
 
 EXTRACT = {
@@ -57,3 +61,28 @@ def test_failed_extraction_records_the_error(logged_in_client, wait_for_worker, 
     assert req.status == 'failed'
     assert 'something specific' in req.error_message
     assert req.completed_at is not None
+
+
+# --- extraction format: long by default, so results can be converted ---------
+
+@pytest.mark.parametrize('page', ['extractall', 'extractelement', 'extractstellar'])
+@pytest.mark.django_db
+def test_long_format_is_preselected(page, logged_in_client):
+    """Only the long format can be converted to CSV, FITS, Parquet or SQLite,
+    and the radio label is the only place the page says so."""
+    body = logged_in_client.get(f'/{page}/').content.decode()
+    checked = re.findall(r'<input[^>]*name="format"[^>]*checked[^>]*>', body)
+    assert len(checked) == 1, 'exactly one format radio should be preselected'
+    assert 'value="long"' in checked[0]
+    assert 'Long format (with conversion options)' in body
+
+
+@pytest.mark.django_db
+def test_modifying_a_short_request_keeps_short(logged_in_client, approved_user):
+    """The default applies to fresh forms, not to a rerun of an old request."""
+    req = Request.objects.create(
+        user=approved_user, request_type='extractall', status='complete',
+        parameters={'format': 'short', 'stwvl': 5000, 'endwvl': 5010})
+    body = logged_in_client.get(f'/extractall/?modify={req.uuid}').content.decode()
+    checked = re.findall(r'<input[^>]*name="format"[^>]*checked[^>]*>', body)
+    assert len(checked) == 1 and 'value="short"' in checked[0]

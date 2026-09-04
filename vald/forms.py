@@ -15,6 +15,18 @@ AFFILIATION_MAX_LENGTH = 500
 
 AFFILIATION_HELP = 'Institute, department and your current position'
 
+# Shared by the three extraction forms, which had three copies of it to drift
+# apart. Long is the default because it is the only format that can be converted
+# to CSV, VOTable, FITS, Parquet or SQLite afterwards - it carries the term
+# designations, both level energies and all three Lande factors that the short
+# format drops - and the label says so, since nothing else on the page would
+# tell someone why the choice matters.
+EXTRACTION_FORMAT_CHOICES = [
+    ('short', 'Short format'),
+    ('long', 'Long format (with conversion options)'),
+]
+EXTRACTION_FORMAT_DEFAULT = 'long'
+
 
 class UserPreferencesForm(forms.ModelForm):
     """Validates unit preferences against the model's choices.
@@ -400,8 +412,8 @@ class ExtractAllForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form):
     )
     format = forms.ChoiceField(
         label='Extraction format',
-        choices=[('short', 'Short format'), ('long', 'Long format')],
-        initial='short',
+        choices=EXTRACTION_FORMAT_CHOICES,
+        initial=EXTRACTION_FORMAT_DEFAULT,
         widget=forms.RadioSelect
     )
     email_notify = forms.BooleanField(
@@ -481,8 +493,8 @@ class ExtractElementForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
     )
     format = forms.ChoiceField(
         label='Extraction format',
-        choices=[('short', 'Short format'), ('long', 'Long format')],
-        initial='short',
+        choices=EXTRACTION_FORMAT_CHOICES,
+        initial=EXTRACTION_FORMAT_DEFAULT,
         widget=forms.RadioSelect
     )
     email_notify = forms.BooleanField(
@@ -595,8 +607,8 @@ class ExtractStellarForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
     )
     format = forms.ChoiceField(
         label='Extraction format',
-        choices=[('short', 'Short format'), ('long', 'Long format')],
-        initial='short',
+        choices=EXTRACTION_FORMAT_CHOICES,
+        initial=EXTRACTION_FORMAT_DEFAULT,
         widget=forms.RadioSelect
     )
     email_notify = forms.BooleanField(
