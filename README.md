@@ -52,6 +52,20 @@ uv run python manage.py runserver
 
 Server runs at http://127.0.0.1:8000/
 
+## Tests
+
+```bash
+uv run pytest                      # ~15 s, everything but the Fortran
+uv run pytest -m vald_binaries     # ~70 s, the real binaries
+uv run pytest -m ""                # both
+```
+
+The tests marked `vald_binaries` run the real Fortran and account for the whole
+of the suite's runtime, so they are deselected by default and the run says so in
+its header. They are also the only tests that catch the binaries drifting away
+from what the app writes and parses, so run them before pushing and after any
+change under `$VALD_HOME/SOURCE`.
+
 ## Production deployment
 
 The app runs under gunicorn via `vald.service`, with two timers for scheduled
