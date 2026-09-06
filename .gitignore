@@ -54,6 +54,9 @@ data/
 *.sqlite
 *.db
 *.sqlite3
+# WAL sidecars: any sqlite copy pulled off the server brings these along
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Django
 __pycache__/

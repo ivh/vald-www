@@ -8,8 +8,8 @@ gets the "Add user" button pulled down on top of it.
 {% block object-tools %}
 {{ block.super }}
 <p style="clear: right; margin: 0 0 1em;">
-  The <em>Has password</em>, <em>Pending approval</em> and <em>Suspended</em> columns
-  combine into four account states &mdash;
+  The <em>Has password</em> and <em>Is active</em> columns combine into four account
+  states &mdash;
   <a href="{% url 'admin_help' %}">what they mean and what to do about each</a>.
 </p>
 {% endblock %}

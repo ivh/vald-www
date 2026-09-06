@@ -394,12 +394,9 @@ def test_config_view_warns_about_linelists_added_since_the_snapshot(
 
 
 @pytest.mark.django_db
-def test_user_changelist_and_change_form_link_to_the_config_view(staff_client,
-                                                                 system_default,
-                                                                 approved_user):
-    changelist = staff_client.get('/admin/vald/user/').content.decode()
-    assert config_url(approved_user) in changelist
-
+def test_change_form_links_to_the_config_view(staff_client, system_default,
+                                              approved_user):
+    """The change form is the only entry point; the changelist column is gone."""
     change_form = staff_client.get(f'/admin/vald/user/{approved_user.id}/change/').content.decode()
     assert config_url(approved_user) in change_form
 

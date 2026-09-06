@@ -899,7 +899,7 @@ class UserPreferencesInline(admin.StackedInline):
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     form = UserChangeForm
-    list_display = ('name', 'get_emails', 'has_password', 'is_active', 'is_pending', 'is_suspended', 'config_link', 'created_at')
+    list_display = ('name', 'get_emails', 'has_password', 'is_active', 'created_at', 'changed')
     list_filter = ('is_active', HasPasswordFilter, PendingApprovalFilter, 'created_at')
     search_fields = ('name', 'affiliation', 'emails__email')
     readonly_fields = ('created_at', 'updated_at', 'activation_token')
@@ -1025,12 +1025,6 @@ class UserAdmin(admin.ModelAdmin):
         }
         return render(request, 'admin/vald/user_config.html', context)
 
-    def config_link(self, obj):
-        """Column linking to the read-only configuration view."""
-        url = reverse('admin:vald_user_config', args=[obj.pk])
-        return format_html('<a href="{}">View</a>', url)
-    config_link.short_description = 'Configuration'
-
     def user_change_password(self, request, id, form_url=''):
         from django.contrib import messages
         from django.shortcuts import redirect, render
@@ -1083,17 +1077,10 @@ class UserAdmin(admin.ModelAdmin):
     has_password.short_description = 'Has Password'
     has_password.admin_order_field = 'password'
 
-    def is_pending(self, obj):
-        """Show if user is pending approval (inactive with no password)"""
-        return obj.is_pending_approval()
-    is_pending.boolean = True
-    is_pending.short_description = 'Pending Approval'
-
-    def is_suspended(self, obj):
-        """Inactive but already activated - switched off, not awaiting approval"""
-        return obj.is_suspended()
-    is_suspended.boolean = True
-    is_suspended.short_description = 'Suspended'
+    @admin.display(description='Changed', ordering='updated_at')
+    def changed(self, obj):
+        """See RequestAdmin.submitted: a method gets no localtime() for free."""
+        return timezone.localtime(obj.updated_at)
 
     def approve_and_send_activation(self, request, queryset):
         """Approve selected users and send activation email"""
