@@ -5,6 +5,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from django.contrib import admin, messages
+from django.contrib.admin.models import LogEntry
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.contrib.auth.password_validation import validate_password
@@ -1176,6 +1177,69 @@ class UserEmailAdmin(admin.ModelAdmin):
     list_filter = ('is_primary',)
     search_fields = ('email', 'user__name')
     readonly_fields = ('created_at',)
+
+
+@admin.register(LogEntry)
+class LogEntryAdmin(admin.ModelAdmin):
+    """The admin's own audit trail, which Django records but does not expose.
+
+    Worth having visible because some of what the admin does is destructive and
+    leaves nothing behind: reject_registration deletes the user rows, and this
+    log is then the only record that they ever existed.
+
+    Read-only in the strong sense - no add, change or delete, whoever you are.
+    A tamperable audit log is worse than none, and Django writes these rows
+    itself; nothing should be editing them by hand.
+    """
+    list_display = ('action_time', 'user', 'content_type', 'object_link',
+                    'action', 'change_message_short')
+    list_filter = ('action_flag', 'content_type', 'user')
+    search_fields = ('object_repr', 'change_message')
+    date_hierarchy = 'action_time'
+    list_select_related = ('user', 'content_type')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description='Action', ordering='action_flag')
+    def action(self, obj):
+        if obj.is_addition():
+            return 'Added'
+        if obj.is_deletion():
+            return 'Deleted'
+        return 'Changed'
+
+    @admin.display(description='Object', ordering='object_repr')
+    def object_link(self, obj):
+        """Link to the object, except where following it would 404.
+
+        A deletion's target is gone, and a content type whose model has since
+        been removed has no admin URL to reverse at all.
+        """
+        if obj.is_deletion():
+            return obj.object_repr
+        try:
+            url = obj.get_admin_url()
+        except NoReverseMatch:
+            url = None
+        if not url:
+            return obj.object_repr
+        return format_html('<a href="{}">{}</a>', url, obj.object_repr)
+
+    @admin.display(description='What changed')
+    def change_message_short(self, obj):
+        """get_change_message() renders the structured JSON Django stores.
+
+        The plain field is that JSON, which is unreadable in a list.
+        """
+        message = obj.get_change_message()
+        return message if len(message) <= 100 else message[:100] + '...'
 
 
 @admin.register(UserPreferences)

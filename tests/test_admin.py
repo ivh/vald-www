@@ -6,7 +6,7 @@ into /admin/, and vald.models.User, which is the VALD account being administered
 from pathlib import Path
 
 import pytest
-from django.contrib.admin.models import LogEntry
+from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.auth.models import User as StaffUser
 from django.test import Client
 
@@ -97,6 +97,38 @@ def test_rejecting_a_registration_is_recorded(staff_client):
     assert not User.objects.filter(pk=pending.pk).exists()
     entry = LogEntry.objects.get()
     assert entry.is_deletion() and 'Pending' in entry.object_repr
+
+
+@pytest.mark.django_db
+def test_the_deletion_log_is_readable_in_the_admin(staff_client):
+    """The point of exposing LogEntry: a rejected registration leaves no row,
+    so this list is where it can still be seen."""
+    pending = make_user('Spammer', is_active=False)
+    run_action(staff_client, 'reject_registration', [pending])
+
+    body = staff_client.get('/admin/admin/logentry/').content.decode()
+    assert 'Spammer' in body and 'Deleted' in body
+    # The target is gone, so its name must not be rendered as a dead link
+    assert f'/admin/vald/user/{pending.pk}/' not in body
+
+
+@pytest.mark.django_db
+def test_the_log_cannot_be_edited(staff_client, approved_user):
+    """An audit trail that the audited party can rewrite is worse than none."""
+    entry = LogEntry.objects.create(
+        user=StaffUser.objects.get(), object_id=approved_user.pk,
+        object_repr='Original', action_flag=CHANGE, change_message='x',
+    )
+
+    assert staff_client.get('/admin/admin/logentry/add/').status_code == 403
+    response = staff_client.post(
+        f'/admin/admin/logentry/{entry.pk}/change/',
+        {'object_repr': 'TAMPERED', '_save': '1'},
+    )
+
+    assert response.status_code == 403
+    entry.refresh_from_db()
+    assert entry.object_repr == 'Original'
 
 
 @pytest.mark.django_db
