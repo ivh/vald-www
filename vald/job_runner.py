@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, List
 from django.conf import settings
 
-from . import abundances
+from . import abundances, krz
 
 logger = logging.getLogger(__name__)
 
@@ -985,8 +985,54 @@ class JobRunner:
             logger.warning("Could not remove intermediate file %s: %s", path, e)
 
 
+def get_model_path_for_request(params, job_dir: Path,
+                               krz_content: Optional[str], write: bool) -> str:
+    """The model atmosphere a stellar request must run with, as a path.
+
+    Empty for a request that named no model of its own, which leaves
+    _find_model() to pick the nearest node of the VALD grid from Teff and log g.
+
+    An uploaded model lives in the job directory and nowhere else. On the
+    submission that carried it, `krz_content` is that upload and this writes it.
+    On a re-run there is no upload - the content was deliberately never stored -
+    so the file written the first time is the only copy, and it survives exactly
+    as long as the job directory does: cleanup_old_results removes both after
+    VALD_RESULT_RETENTION_DAYS, at which point the results it produced have
+    expired too.
+
+    Past that, this raises. The alternative is running the request against a
+    grid model while the stored request says otherwise, which is the same
+    mismatch get_config_path_for_request refuses to create for linelists. The
+    caller turns it into a failed request, so a re-run of an expired upload
+    tells the user to upload it again instead of quietly answering a different
+    question.
+
+    Raises:
+        ValueError: the request names an uploaded model that is no longer there.
+    """
+    name = params.get('model_name')
+    if not name:
+        return ''
+
+    # Rebuilt from the stored name rather than trusted as a path: it reaches
+    # Fortran as a filename in a quoted literal, and this is the last point
+    # where that is under our control.
+    path = job_dir / krz.safe_filename(name, krz.MONAME_MAX)
+
+    if krz_content is not None and write:
+        path.write_text(krz_content)
+    elif write and not path.exists():
+        raise ValueError(
+            f"The model atmosphere uploaded with this request ({name}) has "
+            f"been deleted, along with the request's results. Please submit "
+            f"the request again with the model attached."
+        )
+    return str(path)
+
+
 def create_job_config(request_obj, backend_id: int, job_dir: Path,
-                      client_name: str, config_path: Optional[str] = None) -> JobConfig:
+                      client_name: str, config_path: Optional[str] = None,
+                      krz_content: Optional[str] = None) -> JobConfig:
     """
     Create JobConfig from a Request model instance.
 
@@ -997,7 +1043,13 @@ def create_job_config(request_obj, backend_id: int, job_dir: Path,
         client_name: Alphanumeric client name
         config_path: path to use as the .cfg, instead of writing one into
             job_dir. Only for callers that must not touch the filesystem -
-            rendering a job's inputs for inspection, not running it.
+            rendering a job's inputs for inspection, not running it. Also
+            suppresses writing an uploaded model, and the check that a re-run's
+            model still exists: inspecting a job must not depend on files a
+            nightly sweep is entitled to remove.
+        krz_content: an uploaded model atmosphere, on the submission that
+            carried it. None on every re-run, where the copy in the job
+            directory is the only one.
 
     Returns:
         JobConfig instance
@@ -1079,6 +1131,8 @@ def create_job_config(request_obj, backend_id: int, job_dir: Path,
         config.teff = float(params.get('teff', 5800))
         config.logg = float(params.get('logg', 4.5))
         config.abundances = params.get('chemcomp', '')
+        config.model_path = get_model_path_for_request(
+            params, job_dir, krz_content, write=config_path is None)
     
     # Showline-specific: parse multiple queries (up to 5)
     if reqtype == 'showline':
@@ -1199,6 +1253,14 @@ def debug_shell_recipe(request_obj) -> str:
     pres_in = f"pres_in.{backend_id:06d}"
     lines.append(_heredoc(pres_in, runner._pres_in_text(config), 'PRES_IN'))
     if config.request_type == 'extractstellar':
+        # An uploaded model cannot be dumped here - it was never stored, only
+        # written into the job directory - so the recipe says what it needs
+        # rather than pretending to be self-contained.
+        if request_obj.parameters.get('model_name'):
+            lines.append(
+                f"# needs the uploaded model atmosphere "
+                f"{config.model_path}, which cleanup_old_results removes "
+                f"with the rest of the job directory")
         lines.append(_heredoc('select.input', runner._select_input_text(config),
                               'SELECT_INPUT'))
 

@@ -1464,7 +1464,7 @@ def test_rerun_carries_a_stranded_row_through_to_complete(staff_client, wait_for
     gz = tmp_path / 'Stranded.000001.gz'
     gz.write_bytes(b'\x1f\x8b' + b'0' * 200)
     monkeypatch.setattr('vald.backend.submit_request_direct',
-                        lambda req_obj: (True, str(gz)))
+                        lambda req_obj, **kw: (True, str(gz)))
 
     user = make_user('Stranded', is_active=True)
     req = make_request(user, local(2026, 8, 1), status='processing')

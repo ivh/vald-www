@@ -113,6 +113,93 @@ def test_stellar_extraction_runs(run_job):
     assert data_rows(run.text), 'no data rows in output'
 
 
+# --- uploaded model atmospheres --------------------------------------------
+
+@pytest.fixture
+def uploaded_model(vald_home):
+    """A copy of a grid model at a path select5 can actually hold.
+
+    Not tmp_path: MONAME is a CHARACTER*120 holding the whole path, and
+    pytest's temporary directories are long enough on their own to overrun it -
+    select5 then truncates the path and reports "Wrong model atmosphere
+    fielname". Real job directories are ~40 characters, and
+    vald.forms._model_name_budget() trims the filename against that, so this is
+    a property of the test environment rather than of the code. Kept short here
+    deliberately, since a fixture that silently tested the truncation instead
+    would have looked like a bug in the upload path.
+    """
+    import shutil
+    import tempfile
+
+    directory = Path(tempfile.mkdtemp(dir='/tmp', prefix='k'))
+    model = directory / 'marcs_p8000_g45_m-0.5.krz'
+    model.write_text((vald_home / 'MODELS' / 'STELLAR' / '08000G45.KRZ').read_text())
+    assert len(str(model)) <= 120, 'fixture path would overrun MONAME'
+    yield model
+    shutil.rmtree(directory, ignore_errors=True)
+
+
+def test_an_uploaded_model_gives_the_same_lines_as_the_grid_model(
+        run_job, uploaded_model):
+    """A model select5 opens by an absolute path outside MODELS/STELLAR, under a
+    name that is not the grid's Teff/log g convention, must behave exactly like
+    the grid file it is a copy of. _find_model() is bypassed entirely, so this
+    is what proves an upload reaches RDMODL intact."""
+    from vald.converters.parser import _is_record_start
+
+    from_grid = run_job(**stellar(abundances=''))
+    from_upload = run_job(**stellar(abundances='',
+                                    model_path=str(uploaded_model)))
+
+    assert from_upload.ok, from_upload.result
+
+    # _is_record_start rather than data_rows(): the model name is printed into
+    # the output as a quoted field of its own, and an uploaded name beginning
+    # with a letter sits exactly where data_rows() looks for a species. The
+    # parser's species pattern is what tells the two apart, so it is the honest
+    # way to ask "which lines are transitions".
+    def transitions(text):
+        return [l for l in text.splitlines() if _is_record_start(l.strip())]
+
+    assert transitions(from_upload.text), 'no transitions from the uploaded model'
+    assert transitions(from_upload.text) == transitions(from_grid.text)
+
+
+def test_an_uploaded_name_is_not_mistaken_for_a_transition(run_job, uploaded_model):
+    """The uploaded name lands in the output where a species field would be.
+
+    Every export goes through converters/parser.py, so if its species pattern
+    matched "marcs_p8000_g45_m-0.5.krz" the name would become a row of data in
+    the CSV, VOTable and FITS conversions. Grid names begin with a digit and
+    could never do this; uploaded ones can, so it is worth pinning.
+    """
+    from vald.converters import parser
+
+    # Long format, because that is the only one the converters read - and so the
+    # only one where the name could reach an exported table.
+    run = run_job(**stellar(abundances='', model_path=str(uploaded_model),
+                            format_flags=flags(fmt=1, rad=1, stark=1, waals=1,
+                                               lande=1, term=1)))
+    assert run.ok, run.result
+
+    assert not parser._is_record_start(f"'{uploaded_model.name}',")
+
+    linelist = parser.parse(run.text)
+    assert linelist.rows, 'nothing parsed out of the result'
+    assert uploaded_model.name in '\n'.join(linelist.meta['trailer'])
+
+
+def test_the_uploaded_name_reaches_the_result_header(run_job, uploaded_model):
+    """select5 prints MONAME's basename into the output (select5.f:2264), and
+    converters/parser.py carries that line into every exported format. Once the
+    job directory has been swept it is the only record of which atmosphere
+    produced a result, which is why the upload keeps its own name."""
+    run = run_job(**stellar(abundances='', model_path=str(uploaded_model)))
+
+    assert run.ok, run.result
+    assert f"'{uploaded_model.name}'," in run.text
+
+
 def test_custom_abundances_change_the_result(run_job):
     """The defect: unquoted abundances were skipped by RDABND and solar used.
 

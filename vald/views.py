@@ -571,7 +571,23 @@ def modify_initial_data(request, user):
         owner = req_obj.user.name if req_obj.user else 'an unknown user'
         messages.info(request, f'Form pre-filled from a request by {owner}. Submitting it '
                                f'creates a new request owned by you.')
-    return req_obj.parameters or {}
+
+    parameters = req_obj.parameters or {}
+
+    # A browser cannot pre-fill a file input, so the one field this cannot carry
+    # over is an uploaded model atmosphere. Said out loud because the silent
+    # version is the worst of the options: Teff and log g were filled in from
+    # the model's own header, so submitting as-is would run against whichever
+    # grid model sits nearest them and look like it had worked.
+    if parameters.get('model_name'):
+        messages.warning(
+            request,
+            f"The model atmosphere ({parameters['model_name']}) could not be "
+            'carried over - upload it again, or this request will use the '
+            'nearest model from the ATLAS9 grid used by VALD instead.'
+        )
+
+    return parameters
 
 
 STICKY_KEYS = UNIT_KEYS + ('email_notify',)
@@ -809,7 +825,7 @@ def start_background_worker(target):
     threading.Thread(target=target, daemon=True).start()
 
 
-def process_request(req_obj):
+def process_request(req_obj, krz_content=None):
     """Run one request to completion, then record it and notify.
 
     Module level, and taking the row rather than closing over it, so the
@@ -818,8 +834,13 @@ def process_request(req_obj):
     here, and duplicating any of it for a second caller is how the two
     would drift.
 
+    krz_content is an uploaded model atmosphere, carried in memory from the
+    submitting request because the job directory it belongs in does not exist
+    yet. Re-runs pass nothing and use the copy left in that directory.
+
     Runs in a worker thread, so it never raises at its caller: every
-    failure ends up on the row as status=failed.
+    failure ends up on the row as status=failed - including the ValueError
+    raised for a re-run whose uploaded model has since been swept.
     """
     from django import db
 
@@ -839,7 +860,7 @@ def process_request(req_obj):
             raise  # Re-raise to be caught by outer exception handler
 
         # Submit directly to backend
-        success, result = submit_request_direct(req_obj)
+        success, result = submit_request_direct(req_obj, krz_content=krz_content)
 
         if success:
             # Update request with output file
@@ -1015,7 +1036,8 @@ def handle_extract_request(request):
     # initial matters even bound: a unit the POST omits falls back to it, so a
     # submission that predates the unit fields still means "my saved defaults".
     prefs = user.get_preferences()
-    form = form_class(request.POST, initial=prefs.as_dict(), user=user)
+    form = form_class(request.POST, request.FILES, initial=prefs.as_dict(),
+                      user=user)
 
     if not form.is_valid():
         add_form_errors(request, form)
@@ -1028,6 +1050,13 @@ def handle_extract_request(request):
             'showline': 'vald/showline.html',
         }
         return render(request, template_map[reqtype], context)
+
+    # The model atmosphere is the one field whose value must not reach
+    # Request.parameters: it is a JSONField, and the point of the design is
+    # that the upload lives in the job directory and expires with the results.
+    # What stays in parameters is its name, which is what the re-run path looks
+    # for and what select5 prints into the result header.
+    krz_content = form.cleaned_data.pop('model_file', None) or None
 
     # Only on an explicit tick. An automatic writeback on every submission would
     # let the profile drift with nothing to show who changed it or when, and the
@@ -1134,7 +1163,7 @@ def handle_extract_request(request):
     )
 
     # Start background processing
-    start_background_worker(lambda: process_request(req_obj))
+    start_background_worker(lambda: process_request(req_obj, krz_content))
 
     # Immediately redirect to request detail page
     messages.success(request, 'Your request has been submitted and is being processed.')

@@ -16,6 +16,25 @@
 # readers; the one thing that matters is that the catch-all handle has no
 # matcher and therefore loses to every matched one.
 
+# Cap on the request body, site-wide. Caddy answers anything larger with 413
+# without reading it.
+#
+# The only upload the site has is the model atmosphere on the Extract Stellar
+# form, capped at 512 kB by MODEL_UPLOAD_MAX_BYTES in vald/forms.py. That check
+# runs too late to be the whole defence: Django spools any upload over
+# FILE_UPLOAD_MAX_MEMORY_SIZE (2.5 MB) to a file in the temp directory *before*
+# the form is cleaned, so without this an authenticated user could write
+# arbitrary volumes to disk at VALD_SUBMIT_RATE and only then be told the file
+# was too big.
+#
+# 1MB rather than 512 kB so the two limits cannot collide: a merely oversized
+# krz reaches Django and gets the form's sentence explaining what the limit is,
+# while a body large enough to be an attack never arrives. Every other form on
+# the site posts a few hundred bytes.
+request_body {
+        max_size 1MB
+}
+
 # Result files. Still served straight off disk rather than through Django:
 # the 6-digit names are what completion emails and the legacy interface both
 # hand out.

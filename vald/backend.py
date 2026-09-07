@@ -220,12 +220,16 @@ def uuid_to_6digit(uuid_obj):
     return hash_val % 1000000
 
 
-def submit_request_direct(request_obj):
+def submit_request_direct(request_obj, krz_content=None):
     """
     Submit a request directly to the backend processing system.
 
     Args:
         request_obj: Request model instance with user, request_type, parameters
+        krz_content: text of a model atmosphere uploaded with this request, on
+            the submission that carried it and None on every re-run. Passed
+            through memory rather than stored: the copy written into the job
+            directory is what a re-run uses, and it expires with the results.
 
     Returns:
         tuple: (success, output_file_path or error_message)
@@ -279,8 +283,11 @@ def submit_request_direct(request_obj):
     except Exception as e:
         return (False, f"Failed to create job directory: {e}")
     
-    # Create job config from request
-    job_config = create_job_config(request_obj, backend_id, job_dir, client_name)
+    # Create job config from request. An uploaded model atmosphere is written
+    # into the job directory here, which is why the content is passed down
+    # rather than stored: this is the first moment the directory exists.
+    job_config = create_job_config(request_obj, backend_id, job_dir, client_name,
+                                   krz_content=krz_content)
     
     # Define job execution function for queue
     def execute_job():
@@ -396,6 +403,13 @@ def format_request_file(request_obj):
             lines.append(f"{params['dlimit']}, {params['micturb']},")
         if 'teff' in params and 'logg' in params:
             lines.append(f"{params['teff']}, {params['logg']},")
+        # The email format has no way to carry an uploaded model atmosphere, so
+        # this is a comment rather than a field. It is here because the panel
+        # this text appears in exists for quoting in a problem report, and a
+        # report about a stellar request has to say which atmosphere ran - the
+        # Teff and log g above came out of the model's own header.
+        if params.get('model_name'):
+            lines.append(f"! uploaded model atmosphere: {params['model_name']}")
         if 'chemcomp' in params:
             lines.append(params['chemcomp'])
 

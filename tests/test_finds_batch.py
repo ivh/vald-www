@@ -74,7 +74,7 @@ def _email_request(client, monkeypatch, settings, tmp_path, size_bytes):
     gz = tmp_path / 'TestUser.000001.gz'
     gz.write_bytes(os.urandom(size_bytes))     # incompressible: stat size == size_bytes
     monkeypatch.setattr('vald.backend.submit_request_direct',
-                        lambda req: (True, str(gz)))
+                        lambda req, **kw: (True, str(gz)))
     client.post('/submit/', {
         'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5010',
         'format': 'short', 'email_notify': 'on', 'pconf': 'default',
@@ -110,7 +110,7 @@ def test_no_email_when_the_box_is_unticked(logged_in_client, monkeypatch, tmp_pa
     gz = tmp_path / 'TestUser.000001.gz'
     gz.write_bytes(os.urandom(500))
     monkeypatch.setattr('vald.backend.submit_request_direct',
-                        lambda req: (True, str(gz)))
+                        lambda req, **kw: (True, str(gz)))
     logged_in_client.post('/submit/', {
         'reqtype': 'extractall', 'stwvl': '5000', 'endwvl': '5010',
         'format': 'short', 'pconf': 'default',

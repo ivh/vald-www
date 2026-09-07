@@ -10,7 +10,7 @@
   </div>
 </div>
 
-<form name="bottomform" method="post" action="{% url 'vald:submit_request' %}">
+<form name="bottomform" method="post" action="{% url 'vald:submit_request' %}" enctype="multipart/form-data">
 {% csrf_token %}
 
 {% include "vald/_unitfields.html" %}
@@ -33,6 +33,16 @@
   <div class="formrow">
     <label class="formlabel" for="{{ form.logg.id_for_label }}">Surface gravity</label>
     <div class="formfield">{{ form.logg }} <span class="unit">{{ form.logg.help_text }}</span></div>
+  </div>
+  <div class="formrow top">
+    <label class="formlabel" for="{{ form.model_file.id_for_label }}">Model atmosphere</label>
+    <div class="formfield stack">
+      {{ form.model_file }}
+      <span class="hint">{{ form.model_file.help_text }}. An uploaded model
+        supplies its own effective temperature and surface gravity, so the two
+        fields above are ignored. It is kept only while this request's results
+        are available &ndash; a later request needs it uploaded again.</span>
+    </div>
   </div>
   <div class="formrow top">
     <label class="formlabel" for="{{ form.chemcomp.id_for_label }}">Chemical composition</label>

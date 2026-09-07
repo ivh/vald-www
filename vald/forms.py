@@ -1,9 +1,11 @@
 from django import forms
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from pathlib import Path
 import re
 
-from . import abundances
+from . import abundances, krz
 from .models import UNIT_KEYS, User, UserPreferences
 
 
@@ -26,6 +28,24 @@ EXTRACTION_FORMAT_CHOICES = [
     ('long', 'Long format (with conversion options)'),
 ]
 EXTRACTION_FORMAT_DEFAULT = 'long'
+
+# A 100-layer krz model - the most select5 accepts - is about 12 kB. The cap is
+# generous against that rather than tight, since the point is only to refuse a
+# file that cannot be a model atmosphere before reading it into memory.
+MODEL_UPLOAD_MAX_BYTES = 512 * 1024
+
+
+def _model_name_budget():
+    """Characters left for the model's filename inside a job directory.
+
+    select5 holds the path it opens in a CHARACTER*120 (MONAME in COMMONS.SEL),
+    and job directories are VALD_WORKING_DIR/<6-digit id>, so the budget is
+    knowable here. Computed rather than assumed because VALD_WORKING_DIR is
+    deployment-specific and a longer deployment path silently truncates the
+    path Fortran opens.
+    """
+    job_dir_len = len(str(Path(settings.VALD_WORKING_DIR))) + len('/000000/')
+    return max(12, krz.MONAME_MAX - job_dir_len)
 
 
 class UserPreferencesForm(forms.ModelForm):
@@ -585,18 +605,29 @@ class ExtractStellarForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
         widget=forms.TextInput(attrs={'size': '5'}),
         help_text='km/sec'
     )
+    # Not required=True any more: an uploaded model carries its own Teff and
+    # log g in its header, and select5 reads them from there rather than from
+    # anything we pass. clean() requires them only when there is no upload, and
+    # fills them in from the header when there is - Request.describe and the
+    # request page both read them back out of parameters.
     teff = forms.FloatField(
         label='Effective temperature',
-        required=True,
+        required=False,
         min_value=0.0,
         widget=forms.TextInput(attrs={'size': '5'}),
         help_text='K'
     )
     logg = forms.FloatField(
         label='Surface gravity',
-        required=True,
+        required=False,
         widget=forms.TextInput(attrs={'size': '5'}),
         help_text='log g in cgs units'
+    )
+    model_file = forms.FileField(
+        label='Model atmosphere',
+        required=False,
+        help_text='optional, krz format - plane-parallel only. Leave empty to '
+                  'use the nearest model from the ATLAS9 grid used by VALD'
     )
     chemcomp = forms.CharField(
         label='Chemical composition',
@@ -660,6 +691,47 @@ class ExtractStellarForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
     def clean_chemcomp(self):
         return clean_chemical_composition(self.cleaned_data['chemcomp'])
 
+    def clean_model_file(self):
+        """Decode and validate the upload, returning its text.
+
+        Validated here rather than in the runner because RDMODL answers a
+        malformed model with a gfortran backtrace after a queue slot has been
+        spent - see vald/krz.py. The text goes back into cleaned_data; the view
+        keeps it out of Request.parameters and hands it to the worker, which
+        writes it into the job directory.
+        """
+        upload = self.cleaned_data.get('model_file')
+        if not upload:
+            return ''
+
+        if upload.size > MODEL_UPLOAD_MAX_BYTES:
+            raise ValidationError(
+                f'That file is {upload.size / 1024:.0f} kB. A krz model is a '
+                f'few tens of kB at most, so anything over '
+                f'{MODEL_UPLOAD_MAX_BYTES // 1024} kB is not one.'
+            )
+
+        raw = upload.read()
+        if b'\x00' in raw:
+            raise ValidationError(
+                'That file is binary. A krz model atmosphere is plain text.'
+            )
+        try:
+            text = raw.decode('utf-8')
+        except UnicodeDecodeError:
+            # Converted models occasionally arrive as latin-1; the format is
+            # numbers and ASCII keywords, so the distinction only matters for
+            # the title line.
+            text = raw.decode('latin-1')
+
+        try:
+            self.krz_model = krz.parse(text)
+        except krz.KrzError as e:
+            raise ValidationError(str(e))
+
+        self.krz_name = krz.safe_filename(upload.name, _model_name_budget())
+        return text
+
     def clean(self):
         cleaned_data = super().clean()
         stwvl = cleaned_data.get('stwvl')
@@ -670,6 +742,27 @@ class ExtractStellarForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
                 raise ValidationError(
                     "The 'Ending wavelength' cannot be smaller than or equal to the 'Starting wavelength'"
                 )
+
+        # Teff and log g select a grid model, so they are required only when
+        # there is no upload to read them from. When there is, the header wins:
+        # select5 takes them from the file whatever we were sent, and a request
+        # page claiming a Teff the job never used is the mismatch that
+        # get_config_path_for_request already refuses to create for linelists.
+        if getattr(self, 'krz_model', None):
+            cleaned_data['teff'] = self.krz_model.teff
+            cleaned_data['logg'] = self.krz_model.logg
+            cleaned_data['model_name'] = self.krz_name
+            cleaned_data['model_layers'] = self.krz_model.layers
+        elif 'model_file' in self.cleaned_data:
+            # Only when the upload itself validated - otherwise its own error is
+            # the useful one and these would bury it.
+            for field, label in (('teff', 'Effective temperature'),
+                                 ('logg', 'Surface gravity')):
+                if cleaned_data.get(field) is None:
+                    self.add_error(field, ValidationError(
+                        f"'{label}' is required unless you upload a model "
+                        'atmosphere.'
+                    ))
 
         return cleaned_data
 

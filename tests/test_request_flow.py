@@ -30,7 +30,7 @@ def test_successful_extraction_is_recorded_complete(logged_in_client, wait_for_w
     gz = tmp_path / 'TestUser.000001.gz'
     gz.write_bytes(b'\x1f\x8b' + b'0' * 200)
 
-    def fake_submit(req_obj):
+    def fake_submit(req_obj, **kw):
         return (True, str(gz))
     monkeypatch.setattr('vald.backend.submit_request_direct', fake_submit)
 
@@ -48,7 +48,7 @@ def test_successful_extraction_is_recorded_complete(logged_in_client, wait_for_w
 
 @pytest.mark.django_db(transaction=True)
 def test_failed_extraction_records_the_error(logged_in_client, wait_for_worker, monkeypatch):
-    def fake_submit(req_obj):
+    def fake_submit(req_obj, **kw):
         return (False, 'preselect5 failed: something specific')
     monkeypatch.setattr('vald.backend.submit_request_direct', fake_submit)
 
