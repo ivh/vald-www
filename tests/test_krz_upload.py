@@ -193,7 +193,52 @@ def test_hostile_input_is_a_message_not_a_traceback(label, mutate):
 
 
 @pytest.mark.parametrize('label, mutate', [
+    # RDMODL reads the parameter line into a CHARACTER*256 and then hunts for
+    # the keywords with INDEX(), so a keyword pushed past column 256 is gone
+    # before it looks. Verified against select5: "End of file" at line 1454.
+    ('keyword past column 256',
+     lambda t: '\n'.join([t.splitlines()[0], 'PAD ' + 'Z' * 260 + '  '
+                          + t.splitlines()[1]] + t.splitlines()[2:])),
+    # MOTYPE, IFOP and NRHOX are INTEGER; a list-directed READ into one refuses
+    # a decimal point or an exponent outright - "Bad integer for item N in list
+    # input" - where float()/int() would silently round.
+    ('fractional model type', lambda t: t.replace('MODEL TYPE= 0', 'MODEL TYPE= 0.5')),
+    ('model type with a trailing dot', lambda t: t.replace('MODEL TYPE= 0', 'MODEL TYPE= 0.')),
+    ('fractional opacity switch', lambda t: t.replace(' 1 1', ' 1.5 1', 1)),
+    ('depth count with a trailing dot',
+     lambda t: '\n'.join(t.splitlines()[:12] + [t.splitlines()[12][:-2] + ' 72.']
+                         + t.splitlines()[13:])),
+    ('depth count in exponent form',
+     lambda t: '\n'.join(t.splitlines()[:12] + [t.splitlines()[12][:-2] + '3.0E0']
+                         + t.splitlines()[13:])),
+    # T, XNE, XNA and RHO are plain REAL. A value finite in Python's double but
+    # past the single-precision range reads in as Infinity, and select5 then
+    # neither converges nor fails - the job holds a queue slot until it times
+    # out. Observed: still iterating after several minutes.
+    ('single-precision overflow in T',
+     lambda t: t.replace('   2081.2,', '     1E39,', 1)),
+])
+def test_input_select5_rejects_is_rejected_here_too(label, mutate):
+    """Every case here was checked against the binary: select5 fails or hangs
+    on it, so accepting it would spend a queue slot to find that out."""
+    with pytest.raises(krz.KrzError):
+        krz.parse(mutate(make_krz()))
+
+
+@pytest.mark.parametrize('label, mutate', [
     ('CRLF line endings', lambda t: t.replace('\n', '\r\n')),
+    # The title line is read and discarded, so its length is never a problem,
+    # and padding the parameter line with trailing spaces leaves the keywords
+    # where INDEX() can still reach them. Both confirmed against select5.
+    ('a 400-character title',
+     lambda t: '\n'.join(['TITLE ' + 'Z' * 400] + t.splitlines()[1:])),
+    ('parameter line padded past 256',
+     lambda t: '\n'.join([t.splitlines()[0], t.splitlines()[1] + ' ' * 200]
+                         + t.splitlines()[2:])),
+    # RHOX is the one column select5 keeps in double precision, so the value
+    # that overflows T is fine here.
+    ('large RHOX, which is double precision',
+     lambda t: t.replace('7.888140720E-03,', '1E39,', 1)),
     ('non-ASCII in the title', lambda t: t.replace('TITLE', 'TITLE café \U0001f600')),
     ('junk after the last depth row', lambda t: t + '\n' * 50_000),
 ])

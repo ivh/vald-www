@@ -13,6 +13,22 @@ Deleting just "WLSTD= 5000." from a working model gets you
 so every check below is here to turn one of those into a sentence naming the
 line. The checks are deliberately no stricter than RDMODL: anything this accepts
 must run, and anything it rejects must be something RDMODL cannot handle.
+
+Holding to that means matching Fortran's types, not Python's. The three places
+they disagree, each confirmed against the binary rather than reasoned about:
+
+  * RDMODL reads the parameter line into a CHARACTER*256 before looking for the
+    keywords, so one pushed past column 256 is not there to be found.
+  * MOTYPE, IFOP and NRHOX are INTEGER, and a list-directed READ into an
+    INTEGER refuses "0." and "7.2E1" outright, where float()/int() round them.
+  * T, XNE, XNA and RHO are plain REAL, so a value finite in Python's double
+    can still read in as Infinity - and select5 answers that by iterating
+    forever rather than stopping, which costs a queue slot for an hour.
+
+The uploaded bytes are forwarded unchanged rather than normalised into a
+canonical file. Re-serialising every number would guarantee readability at the
+cost of the property worth more here: the file that ran is the file the user
+sent, and the result names it.
 """
 import math
 import re
@@ -37,11 +53,36 @@ N_ELEMENTS = 99
 
 MODEL_TYPE_SPHERICAL = 3
 
+# RDMODL reads the title and parameter lines into a CHARACTER*256, so anything
+# past column 256 of the parameter line is truncated away before INDEX() looks
+# for the keywords. The read still consumes the whole record, so a longer line
+# is not an error - the keywords simply have to fall inside the first 256
+# characters, which is what this emulates. (Padding the line to 300 with
+# trailing spaces is therefore fine; it is only pushing a keyword out that
+# breaks.) The title line is discarded, so its length never matters.
+HEADER_MAX = 256
+
 # MONAME is CHARACTER*120 in COMMONS.SEL, and it holds the whole path select5
 # opens, not just the basename.
 MONAME_MAX = 120
 
 _SAFE_NAME = re.compile(r'[^A-Za-z0-9._+-]+')
+
+# MOTYPE, IFOP and NRHOX are INTEGER in COMMONS.SEL, and a list-directed READ
+# into an INTEGER refuses anything with a decimal point or an exponent - "0."
+# and "7.2E1" both fail with "Bad integer for item ... in list input". float()
+# takes all of them and int() then rounds silently, so the token has to be
+# checked as written rather than as a number.
+_INTEGER_TOKEN = re.compile(r'^[+-]?\d+$')
+
+# COMMONS.SEL declares WLSTD and RHOX DOUBLE PRECISION and TEFF, GRAV, T, XNE,
+# XNA, RHO and ABUND plain REAL. A value that is finite in Python's double but
+# past the single-precision range therefore reads in as Infinity, and select5
+# does not fail on it: 1E39 in the temperature column makes the equation of
+# state iterate without converging, so the job holds a queue slot until
+# VALD_JOB_TIMEOUT an hour later. A crash would have been kinder, so the range
+# is enforced here for the fields that have it.
+REAL4_MAX = 3.4028235e38
 
 
 class KrzError(ValueError):
@@ -74,7 +115,16 @@ def _numbers(line):
     Treating them as non-numbers means the count checks reject the file with a
     message about the block they are in.
     """
-    values = []
+    return [value for value, _ in _scan(line)]
+
+
+def _scan(line):
+    """(value, token) for each leading number, keeping the token as written.
+
+    The raw token is what tells an INTEGER field apart from a REAL one: Fortran
+    rejects "0." for the former and float() cannot see the difference.
+    """
+    pairs = []
     for token in line.replace(',', ' ').split():
         try:
             value = float(token)
@@ -82,20 +132,42 @@ def _numbers(line):
             break
         if not math.isfinite(value):
             break
-        values.append(value)
-    return values
+        pairs.append((value, token))
+    return pairs
+
+
+def _require_single_precision(value, what):
+    if abs(value) > REAL4_MAX:
+        raise KrzError(
+            f'{what} is {value:g}, which is past the single-precision range '
+            f'select5 reads it into. It becomes Infinity there, and the '
+            f'extraction then runs until it times out rather than failing.'
+        )
+
+
+def _require_integer(token, what):
+    if not _INTEGER_TOKEN.match(token):
+        raise KrzError(
+            f'{what} is "{token}", which select5 reads into an INTEGER and '
+            'refuses - a decimal point or an exponent there is an error, not '
+            'a rounding. Write it as a whole number.'
+        )
 
 
 def _header_value(line, key, nxt):
     """The number between `key` and the following keyword, as RDMODL reads it."""
+    return _header_pair(line, key, nxt)[0]
+
+
+def _header_pair(line, key, nxt):
     start = line.index(key) + len(key)
     end = line.index(nxt) if nxt else len(line)
-    values = _numbers(line[start:end])
-    if not values:
+    pairs = _scan(line[start:end])
+    if not pairs:
         raise KrzError(
             f'Line 2 of the model has no number after "{key}".'
         )
-    return values[0]
+    return pairs[0]
 
 
 def parse(text):
@@ -119,7 +191,10 @@ def parse(text):
             'abundances and one row per depth point.'
         )
 
-    upper = lines[1].upper()
+    # Truncated exactly as the CHARACTER*256 read truncates it, so a keyword
+    # pushed past column 256 goes missing here for the same reason it goes
+    # missing in RDMODL, and reports itself through the check below.
+    upper = lines[1][:HEADER_MAX].upper()
     missing = [key for key in _HEADER_KEYS if key not in upper]
     if missing:
         raise KrzError(
@@ -143,7 +218,9 @@ def parse(text):
 
     teff = _header_value(upper, 'T EFF=', 'GRAV')
     logg = _header_value(upper, 'GRAV=', 'MODEL TYPE=')
-    model_type = int(_header_value(upper, 'MODEL TYPE=', 'WLSTD='))
+    model_type, model_type_token = _header_pair(upper, 'MODEL TYPE=', 'WLSTD=')
+    _require_integer(model_type_token, 'The model type on line 2')
+    model_type = int(model_type)
     wlstd = _header_value(upper, 'WLSTD=', None)
 
     if model_type == MODEL_TYPE_SPHERICAL:
@@ -155,21 +232,25 @@ def parse(text):
         )
     if teff <= 0:
         raise KrzError(f'The model gives a non-physical T EFF= {teff:g}.')
+    _require_single_precision(teff, 'The effective temperature on line 2')
+    _require_single_precision(logg, 'The surface gravity on line 2')
 
-    switches = _numbers(lines[2])
+    switches = _scan(lines[2])
     if len(switches) < OPACITY_SWITCHES:
         raise KrzError(
             f'Line 3 of the model must hold {OPACITY_SWITCHES} opacity '
             f'switches; {len(switches)} were found. The grid models use '
             '" 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0 0 0 - OPACITY SWITCHES".'
         )
+    for position, (_, token) in enumerate(switches[:OPACITY_SWITCHES], start=1):
+        _require_integer(token, f'Opacity switch {position} on line 3')
 
     # The abundances and NRHOX are one list-directed read of 100 values, so they
     # may be spread over any number of lines. The grid uses ten lines of ten.
     values = []
     consumed = 3
     while consumed < len(lines) and len(values) < N_ELEMENTS + 1:
-        values.extend(_numbers(lines[consumed]))
+        values.extend(_scan(lines[consumed]))
         consumed += 1
     if len(values) < N_ELEMENTS + 1:
         raise KrzError(
@@ -178,8 +259,10 @@ def parse(text):
             f'depth points are needed, and {len(values)} numbers were found.'
         )
 
-    abundances = values[:N_ELEMENTS]
-    layers = int(values[N_ELEMENTS])
+    abundances = [value for value, _ in values[:N_ELEMENTS]]
+    layer_value, layer_token = values[N_ELEMENTS]
+    _require_integer(layer_token, 'The number of depth points')
+    layers = int(layer_value)
 
     if not MIN_LAYERS <= layers <= MAX_LAYERS:
         raise KrzError(
@@ -193,11 +276,16 @@ def parse(text):
     for line in lines[consumed:]:
         if not line.strip():
             continue
-        if len(_numbers(line)) < 5:
+        columns = _numbers(line)
+        if len(columns) < 5:
             raise KrzError(
                 f'Depth point {rows + 1} of the model does not have five '
                 'columns. Each row is RHOX, T, XNE, XNA, RHO.'
             )
+        # RHOX is the only one of the five select5 keeps in double precision.
+        for column, name in zip(columns[1:5], ('T', 'XNE', 'XNA', 'RHO')):
+            _require_single_precision(
+                column, f'{name} at depth point {rows + 1}')
         rows += 1
         if rows == layers:
             break
