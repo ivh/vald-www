@@ -66,6 +66,13 @@ a no-op on the older compilers currently in use at the mirrors -- it can go in
 without waiting for anyone to upgrade. Every mirror will need it as soon as it
 reaches gcc 15.
 
+**Status.** Applied on this Mac; **not yet on the server**, which still builds
+with a gfortran older than 15 and so does not need it yet. The 2026-09-07 rsync
+of `SOURCE` overwrote it here and it was re-applied from the stash. A ready
+patch against SVN r3754 + `hfs-empty-stream.patch` (i.e. the server's current
+state) is kept at `~/vald-local-changes/PATCHES/external-split.patch`; apply it
+there whenever convenient, ahead of the next gcc upgrade.
+
 The alternative is to rename `split` to something unlikely to collide (say
 `hfs_split`) in `hfs_vald.f` and both call sites. That is cleaner long-term and
 immune to the next intrinsic that lands on a common name, at the cost of a larger
@@ -97,6 +104,10 @@ They did surface together, though. While testing this build fix, an HFS
 extract-all over 5000-5002 A still failed with that note's `FORMAT ERROR IN LINE
 #`. The cause was that the same rsync had overwritten `SOURCE/SELECT/Makefile`,
 losing the target-specific override that builds `presformat5` without
-`-std=legacy` -- the half of that fix which does the actual work. Restoring the
-Makefile and rebuilding cleared it. Both fixes are needed for a working HFS
-pipeline on a current toolchain, and neither is in SVN.
+`-std=legacy` -- the half of that fix which did the actual work.
+
+That override no longer exists: `-std=legacy` turned out to be a setting of this
+Mac's `CONFIG/Makefile_local.inc` alone, and was dropped on 2026-09-07. See
+"Where the flag actually came from" in `presformat_fix.md`. Of the two fixes,
+only this one -- the `EXTERNAL split` declarations -- is still a live local
+change that an rsync can take.
