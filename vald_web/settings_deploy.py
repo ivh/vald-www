@@ -259,6 +259,19 @@ VALD_JOB_TIMEOUT = 3600
 # could occupy all of it and everyone else got "Server is busy" (R5).
 VALD_MAX_REQUESTS_PER_USER = 5
 
+# Model atmosphere filenames, most preferred first: the name is the only place
+# Teff and log g are recorded, so _find_model() both builds candidate names with
+# these and parses the grid's own filenames back with them. Two formats because
+# the Kurucz/Castelli grid was renamed in place (2026-09) and a checkout that
+# has not been updated yet still carries the old bare names; both describe the
+# same physical grid, so accepting either cannot mix families. MARCS models will
+# need their own format here, plus a way to say which grid a request wants -
+# there is no such selector yet.
+VALD_MODEL_NAME_FORMATS = (
+    'castelli_ap05k2_T%05dG%02d.krz',
+    '%05dG%02d.KRZ',
+)
+
 # Submission rate per user (django-ratelimit syntax). The in-flight cap above
 # is the real protection; this just stops a scripted loop.
 VALD_SUBMIT_RATE = '120/h'

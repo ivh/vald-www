@@ -494,3 +494,120 @@ def test_the_prefill_flow_warns_that_the_model_cannot_come_with_it(
 
     assert 'marcs_p4250_g15.krz' in resp.content.decode()
     assert 'could not be carried over' in resp.content.decode()
+
+
+# --- the grid's own filenames ----------------------------------------------
+#
+# Teff and log g are recorded nowhere but the filename, so VALD_MODEL_NAME_FORMATS
+# has to serve both directions: building a candidate name and reading the grid's
+# names back. These are the regression tests for the 2026-09 rename, where
+# _find_model() stopped recognising every file in MODELS/STELLAR and returned a
+# name it had invented instead - select5 then refused to open it, printed the
+# reason to a discarded stdout, and exited 0, so five stellar requests failed
+# with nothing but "Output file not found".
+
+def grid(tmp_path, names):
+    """A MODELS/STELLAR holding empty files with these names."""
+    stellar = tmp_path / 'MODELS' / 'STELLAR'
+    stellar.mkdir(parents=True)
+    for name in names:
+        (stellar / name).touch()
+    return stellar
+
+
+def runner_for(settings, tmp_path, formats=None):
+    from vald.job_runner import JobRunner
+
+    settings.VALD_HOME = tmp_path
+    if formats is not None:
+        settings.VALD_MODEL_NAME_FORMATS = formats
+    return JobRunner()
+
+
+RENAMED = 'castelli_ap05k2_T%05dG%02d.krz'
+BARE = '%05dG%02d.KRZ'
+
+
+@pytest.mark.parametrize('name,node', [
+    ('castelli_ap05k2_T03500G30.krz', (3500, 30)),
+    ('castelli_ap05k2_T07900G00.krz', (7900, 0)),
+    ('05500G35.KRZ', (5500, 35)),
+    ('05500G35.krz', (5500, 35)),        # the rename also lowered the suffix
+    ('T03500G30.krz', None),             # no configured format has a bare T
+    ('castelli_ap05k2_T03500G30.krz.bak', None),
+    ('marcs_p4250_g15.krz', None),       # a family with no format yet
+    ('README', None),
+])
+def test_both_naming_schemes_are_read_back(settings, tmp_path, name, node):
+    runner = runner_for(settings, tmp_path, (RENAMED, BARE))
+    assert runner._model_node(name) == node
+
+
+def test_the_renamed_grid_resolves_to_the_nearest_node(settings, tmp_path):
+    grid(tmp_path, [RENAMED % (t, g)
+                    for t in (7500, 8000) for g in (5, 40, 45)])
+    runner = runner_for(settings, tmp_path, (RENAMED, BARE))
+
+    assert Path(runner._find_model(7900, 0.34)).name == RENAMED % (8000, 5)
+    assert Path(runner._find_model(8000, 4.5)).name == RENAMED % (8000, 45)
+
+
+def test_a_grid_no_format_explains_fails_instead_of_inventing_a_name(
+        settings, tmp_path):
+    """The bug itself: a grid full of files, none of them recognised.
+
+    It used to return $VALD_HOME/MODELS/STELLAR/07900G03.KRZ - a Teff/log g pair
+    off the 250 K / 0.5 dex grid, so a name that could not exist under any
+    naming scheme.
+    """
+    grid(tmp_path, [RENAMED % (7500, 5), RENAMED % (8000, 10)])
+    runner = runner_for(settings, tmp_path, (BARE,))
+
+    with pytest.raises(ValueError) as excinfo:
+        runner._find_model(7900, 0.34)
+    assert BARE in str(excinfo.value)
+
+
+def test_an_absent_grid_directory_says_so(settings, tmp_path):
+    runner = runner_for(settings, tmp_path, (RENAMED,))
+
+    with pytest.raises(ValueError, match='Cannot read the model atmosphere grid'):
+        runner._find_model(7900, 0.34)
+
+
+@pytest.mark.parametrize('teff,logg', [
+    (7900, 0.34), (8000, 4.5), (2000, 5.0), (50000, 0.0), (5777, 4.44),
+])
+def test_the_returned_model_always_exists(settings, tmp_path, teff, logg):
+    """The invariant that makes the failure mode impossible: every name comes
+    out of the directory listing, so none can name a file that is not there."""
+    grid(tmp_path, [RENAMED % (t, g)
+                    for t in (3500, 7500, 8000) for g in (0, 5, 45, 50)])
+    runner = runner_for(settings, tmp_path, (RENAMED, BARE))
+
+    assert Path(runner._find_model(teff, logg)).exists()
+
+
+def test_ties_resolve_the_same_way_every_time(settings, tmp_path):
+    """7900 K sits exactly between two nodes; whichever wins must keep winning,
+    or the same request answers differently on a re-run."""
+    grid(tmp_path, [RENAMED % (7800, 30), RENAMED % (8000, 30)])
+    formats = (RENAMED, BARE)
+
+    chosen = {runner_for(settings, tmp_path, formats)._find_model(7900, 3.0)
+              for _ in range(5)}
+    assert len(chosen) == 1
+
+
+@pytest.mark.parametrize('fmt', [
+    'castelli_T%05d.krz',              # one field
+    'castelli_T%05dG%02dM%02d.krz',    # three
+    'castelli_T%dG%d.krz',             # unpadded, so no width to match on
+])
+def test_a_format_without_exactly_two_padded_fields_is_rejected(fmt):
+    from django.core.exceptions import ImproperlyConfigured
+
+    from vald.job_runner import model_name_pattern
+
+    with pytest.raises(ImproperlyConfigured):
+        model_name_pattern(fmt)

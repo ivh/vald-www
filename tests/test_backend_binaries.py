@@ -131,9 +131,16 @@ def uploaded_model(vald_home):
     import shutil
     import tempfile
 
+    from vald.job_runner import JobRunner
+
+    params = stellar()
     directory = Path(tempfile.mkdtemp(dir='/tmp', prefix='k'))
     model = directory / 'marcs_p8000_g45_m-0.5.krz'
-    model.write_text((vald_home / 'MODELS' / 'STELLAR' / '08000G45.KRZ').read_text())
+    # Asked for by Teff/log g rather than by name, so that the fixture copies
+    # whatever the grid run below will use - the grid's filenames are a
+    # convention that has changed once already (VALD_MODEL_NAME_FORMATS).
+    grid_model = JobRunner()._find_model(params['teff'], params['logg'])
+    model.write_text(Path(grid_model).read_text())
     assert len(str(model)) <= 120, 'fixture path would overrun MONAME'
     yield model
     shutil.rmtree(directory, ignore_errors=True)

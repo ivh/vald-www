@@ -19,6 +19,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 from . import abundances, krz
 
@@ -45,6 +46,10 @@ SELECT_TRUNCATED = 'WARNING: Output was truncated to'
 # line; the HFS stages pass it through at the same place. A couple of lines of
 # slack in case a stage prepends something later.
 TRUNCATION_HEAD_LINES = 3
+
+# The two integer fields of a VALD_MODEL_NAME_FORMATS entry: Teff, then
+# log g x 10.
+MODEL_FORMAT_FIELD = re.compile(r'%0(\d+)d')
 
 
 def summarise_stage_error(stderr_text: str) -> str:
@@ -184,6 +189,10 @@ class JobRunner:
         
         # Model atmosphere directory
         self.models_dir = self.vald_home / 'MODELS'
+        self.model_name_formats = tuple(settings.VALD_MODEL_NAME_FORMATS)
+        self._model_name_patterns = [
+            model_name_pattern(fmt) for fmt in self.model_name_formats
+        ]
 
         self.pipeline_timeout = getattr(
             settings, 'VALD_JOB_TIMEOUT', DEFAULT_PIPELINE_TIMEOUT
@@ -875,41 +884,69 @@ class JobRunner:
         return [(config.wl_start, config.wl_end, config.element)]
     
     def _find_model(self, teff: float, logg: float) -> str:
-        """Find nearest model atmosphere file."""
-        # Model filename format: 05500G35.KRZ (Teff 5500K, logg 3.5)
+        """The grid model atmosphere nearest the requested Teff and log g.
+
+        Only ever returns a path that was read out of the directory, so the name
+        cannot be one the grid does not hold. It used to fall back to a name
+        built from the request when the scan found nothing, and in 2026-09 that
+        turned a renamed grid into five stellar requests failing with "Output
+        file not found": select5 refuses a model it cannot open by printing to
+        stdout, which _run_stellar discards, and still exits 0.
+
+        Raises:
+            ValueError: the grid is unreadable, or holds no name any configured
+                format explains. Legacy parserequest.c failed here too, with
+                "VALD could not find any atmosphere model"
+                (old/backend/parserequest.c:1106).
+        """
         iteff = int(round(teff))
         ilogg = int(round(logg * 10))
-        
-        # Models are in MODELS/STELLAR/ subdirectory
+
         stellar_dir = self.models_dir / 'STELLAR'
-        
-        # Find nearest
+        try:
+            # sorted() so that nodes an equal distance away resolve the same way
+            # on every run, rather than in directory order.
+            entries = sorted(stellar_dir.iterdir())
+        except OSError as e:
+            raise ValueError(
+                f"Cannot read the model atmosphere grid {stellar_dir}: {e}"
+            ) from e
+
         best_match = None
         best_dist = float('inf')
-        
-        if stellar_dir.exists():
-            for model_file in stellar_dir.iterdir():
-                if model_file.suffix.upper() == '.KRZ':
-                    try:
-                        name = model_file.stem.upper()
-                        m_teff = int(name[:5])
-                        m_logg = int(name[6:8])
-                        
-                        # Distance metric (teff has more weight)
-                        dist = abs(m_teff - iteff) + abs(m_logg - ilogg) * 100
-                        if dist < best_dist:
-                            best_dist = dist
-                            best_match = str(model_file)
-                    except (ValueError, IndexError):
-                        continue
-        
-        if best_match:
-            return best_match
-        
-        # Fallback to exact name (uppercase)
-        target = f"{iteff:05d}G{ilogg:02d}.KRZ"
-        return str(stellar_dir / target)
-    
+        for model_file in entries:
+            node = self._model_node(model_file.name)
+            if node is None:
+                continue
+            m_teff, m_logg = node
+            # Distance metric (teff has more weight)
+            dist = abs(m_teff - iteff) + abs(m_logg - ilogg) * 100
+            if dist < best_dist:
+                best_dist = dist
+                best_match = model_file
+
+        if best_match is None:
+            raise ValueError(
+                f"No model atmosphere in {stellar_dir} is named like "
+                f"{self.model_name_formats[0]} - the grid is missing, empty, "
+                f"or has been renamed"
+            )
+
+        if best_dist:
+            # Legacy put this in the user's result file as "VALD does not have
+            # the exact model, will use X instead"; here it is only logged.
+            logger.info("No exact model for Teff %s / log g %s - using %s",
+                        teff, logg, best_match.name)
+        return str(best_match)
+
+    def _model_node(self, filename: str) -> Optional[Tuple[int, int]]:
+        """(Teff, log g x 10) encoded in a grid filename, or None if it is not one."""
+        for pattern in self._model_name_patterns:
+            match = pattern.fullmatch(filename)
+            if match:
+                return int(match.group(1)), int(match.group(2))
+        return None
+
     def _was_truncated(self, config: JobConfig, output_file: Path) -> bool:
         """Whether the job stopped at the line cap rather than running out of lines.
 
@@ -983,6 +1020,38 @@ class JobRunner:
             path.unlink()
         except OSError as e:
             logger.warning("Could not remove intermediate file %s: %s", path, e)
+
+
+def model_name_pattern(fmt: str) -> re.Pattern:
+    """Regex matching the filenames `fmt % (teff, logg * 10)` produces.
+
+    Derived from the format rather than written down beside it, so a rename
+    needs one edit and the two directions cannot drift apart - which is what
+    legacy parserequest.c got for free by handing the same MODEL_NAME_FORMAT to
+    both sprintf and sscanf (old/backend/parserequest.c:496-517).
+
+    Each width is a minimum, not a maximum: '%05d' pads 7900 to '07900' but
+    leaves a six-figure Teff six digits long, and the pattern has to match what
+    the format would actually emit.
+    """
+    parts = MODEL_FORMAT_FIELD.split(fmt)
+    if len(parts) != 5:
+        raise ImproperlyConfigured(
+            f"Model name format {fmt!r} must hold exactly two %0Nd fields, "
+            f"Teff then log g x 10"
+        )
+    literals = parts[0::2]
+    widths = parts[1::2]
+    pattern = ''.join([
+        re.escape(literals[0]),
+        rf'(\d{{{widths[0]},}})',
+        re.escape(literals[1]),
+        rf'(\d{{{widths[1]},}})',
+        re.escape(literals[2]),
+    ])
+    # Case-insensitive because the rename also moved .KRZ to .krz, and the grid
+    # is not guaranteed to be consistent mid-transition.
+    return re.compile(pattern, re.IGNORECASE)
 
 
 def get_model_path_for_request(params, job_dir: Path,
