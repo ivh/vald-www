@@ -524,19 +524,26 @@ def runner_for(settings, tmp_path, formats=None):
     return JobRunner()
 
 
-RENAMED = 'castelli_ap05k2_T%05dG%02d.krz'
+RENAMED = 'castelli_ap00k2_T%05dG%02d.krz'
 BARE = '%05dG%02d.KRZ'
 
 
 @pytest.mark.parametrize('name,node', [
-    ('castelli_ap05k2_T03500G30.krz', (3500, 30)),
-    ('castelli_ap05k2_T07900G00.krz', (7900, 0)),
+    ('castelli_ap00k2_T03500G30.krz', (3500, 30)),
+    ('castelli_ap00k2_T07900G00.krz', (7900, 0)),
     ('05500G35.KRZ', (5500, 35)),
     ('05500G35.krz', (5500, 35)),        # the rename also lowered the suffix
     ('T03500G30.krz', None),             # no configured format has a bare T
-    ('castelli_ap05k2_T03500G30.krz.bak', None),
-    ('marcs_p4250_g15.krz', None),       # a family with no format yet
+    ('castelli_ap00k2_T03500G30.krz.bak', None),
     ('README', None),
+    # The six metallicity families sitting beside ap00k2 in the real
+    # MODELS/STELLAR, and the MARCS models, must stay invisible: no request
+    # says which grid it wants, so a match here would pick a metallicity by
+    # filename sort order.
+    ('castelli_ap05k2_T03500G30.krz', None),
+    ('castelli_am20k2_T03500G30.krz', None),
+    ('p2500_g+3.0_m0.0_t01_st_z-0.25_a+0.10_c+0.00_n+0.00_o+0.10_r+0.00_s+0.00.krz',
+     None),
 ])
 def test_both_naming_schemes_are_read_back(settings, tmp_path, name, node):
     runner = runner_for(settings, tmp_path, (RENAMED, BARE))

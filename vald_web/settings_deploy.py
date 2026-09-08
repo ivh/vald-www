@@ -261,14 +261,25 @@ VALD_MAX_REQUESTS_PER_USER = 5
 
 # Model atmosphere filenames, most preferred first: the name is the only place
 # Teff and log g are recorded, so _find_model() both builds candidate names with
-# these and parses the grid's own filenames back with them. Two formats because
-# the Kurucz/Castelli grid was renamed in place (2026-09) and a checkout that
-# has not been updated yet still carries the old bare names; both describe the
-# same physical grid, so accepting either cannot mix families. MARCS models will
-# need their own format here, plus a way to say which grid a request wants -
-# there is no such selector yet.
+# these and parses the grid's own filenames back with them.
+#
+# MODELS/STELLAR holds far more than these match, and that is deliberate: seven
+# Castelli/ATLAS9 metallicity families (am20 am15 am10 am05 ap00 ap02 ap05, all
+# k2, 476 nodes each over the same Teff/log g range) plus 2400 MARCS models.
+# Nothing in a request says which grid it wants, so listing more than one family
+# here would make the metallicity of the atmosphere depend on filename sort
+# order. ap00k2 is [M/H]=0.0: its headers are identical to the bare-named grid
+# that served every stellar extraction before the 2026-09 rename, so it is the
+# choice that keeps answers the same rather than a new default.
+#
+# Giving users the other families - or MARCS, whose names encode log g and
+# metallicity as signed decimals no %0Nd format can describe - needs a request
+# field and a second parser, not another entry here.
+#
+# The bare format stays accepted so a checkout that has not been synced yet
+# still resolves; it names the same solar grid, so the two cannot disagree.
 VALD_MODEL_NAME_FORMATS = (
-    'castelli_ap05k2_T%05dG%02d.krz',
+    'castelli_ap00k2_T%05dG%02d.krz',
     '%05dG%02d.KRZ',
 )
 
