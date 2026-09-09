@@ -828,8 +828,12 @@ class RequestAdmin(admin.ModelAdmin):
         return _format_duration(obj._duration.total_seconds())
 
     def get_user_email(self, obj):
-        """Display user's primary email"""
-        return obj.user_email
+        """Display user's primary email, linked to the user's change page"""
+        email = obj.user_email
+        if not obj.user:
+            return email or '—'
+        url = reverse('admin:vald_user_change', args=[obj.user.pk])
+        return format_html('<a href="{}">{}</a>', url, email or obj.user.name)
     get_user_email.short_description = 'User Email'
 
     def has_output(self, obj):
