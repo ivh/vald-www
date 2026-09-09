@@ -113,6 +113,26 @@ def test_stellar_extraction_runs(run_job):
     assert data_rows(run.text), 'no data rows in output'
 
 
+def test_a_marcs_model_gives_transitions_too(run_job):
+    """MARCS krz files are the same format but not the same files: different
+    layer counts, a different title line and a T EFF the parser has never seen.
+    RDMODL reading them is the whole premise of offering the grid, and only the
+    real binary can answer it."""
+    run = run_job(**stellar(abundances='', model_grid='marcs'))
+    assert run.ok, run.result
+    assert data_rows(run.text), 'no data rows from the MARCS model'
+
+
+def test_the_two_grids_answer_with_different_atmospheres(run_job):
+    """Same Teff and log g, so if the choice did nothing the two would agree
+    line for line - which is exactly the silent failure to watch for."""
+    atlas9 = run_job(**stellar(abundances='', model_grid='atlas9'))
+    marcs = run_job(**stellar(abundances='', model_grid='marcs'))
+
+    assert atlas9.ok and marcs.ok
+    assert data_rows(atlas9.text) != data_rows(marcs.text)
+
+
 # --- uploaded model atmospheres --------------------------------------------
 
 @pytest.fixture

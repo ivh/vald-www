@@ -43,6 +43,7 @@ def make_krz(layers=3, teff=5750.0, logg=4.5, model_type=0,
 STELLAR = {
     'reqtype': 'extractstellar', 'stwvl': '4400', 'endwvl': '4402',
     'dlimit': '0.01', 'micturb': '1.5', 'format': 'long', 'pconf': 'default',
+    'modelgrid': 'atlas9',
 }
 
 
@@ -64,6 +65,9 @@ def post_stellar(client, text=None, **overrides):
         content, name = upload(text)
         content.name = name
         data['model_file'] = content
+        # The menu is what reveals the file field, so a browser sending a file
+        # sent this too - and the form ignores an upload without it.
+        data['modelgrid'] = overrides.get('modelgrid', 'upload')
     return client.post('/submit/', data)
 
 
@@ -385,7 +389,7 @@ def test_the_model_is_written_into_the_job_directory(tmp_path, approved_user, de
     text = make_krz()
     req = Request.objects.create(
         user=approved_user, request_type='extractstellar', status='pending',
-        parameters=dict(STELLAR, teff=5750.0, logg=4.5,
+        parameters=dict(STELLAR, modelgrid='upload', teff=5750.0, logg=4.5,
                         model_name='marcs_p5750_g45.krz'))
 
     config = create_job_config(req, 123, job_dir, 'TestUser', krz_content=text)
@@ -407,7 +411,7 @@ def test_select_input_points_at_the_uploaded_model(tmp_path, approved_user,
     job_dir.mkdir()
     req = Request.objects.create(
         user=approved_user, request_type='extractstellar', status='pending',
-        parameters=dict(STELLAR, teff=5750.0, logg=4.5,
+        parameters=dict(STELLAR, modelgrid='upload', teff=5750.0, logg=4.5,
                         model_name='marcs_p5750_g45.krz'))
 
     config = create_job_config(req, 123, job_dir, 'TestUser',
@@ -428,7 +432,7 @@ def test_a_rerun_uses_the_file_left_in_the_job_directory(tmp_path, approved_user
     job_dir.mkdir()
     req = Request.objects.create(
         user=approved_user, request_type='extractstellar', status='pending',
-        parameters=dict(STELLAR, teff=5750.0, logg=4.5,
+        parameters=dict(STELLAR, modelgrid='upload', teff=5750.0, logg=4.5,
                         model_name='marcs_p5750_g45.krz'))
     create_job_config(req, 123, job_dir, 'TestUser', krz_content=make_krz())
 
@@ -452,7 +456,7 @@ def test_a_rerun_after_cleanup_fails_rather_than_using_a_grid_model(
     job_dir.mkdir()
     req = Request.objects.create(
         user=approved_user, request_type='extractstellar', status='pending',
-        parameters=dict(STELLAR, teff=5750.0, logg=4.5,
+        parameters=dict(STELLAR, modelgrid='upload', teff=5750.0, logg=4.5,
                         model_name='marcs_p5750_g45.krz'))
 
     with pytest.raises(ValueError, match='been deleted'):
@@ -470,13 +474,14 @@ def test_a_request_without_an_upload_still_uses_the_grid(tmp_path, approved_user
     job_dir.mkdir()
     req = Request.objects.create(
         user=approved_user, request_type='extractstellar', status='pending',
-        parameters=dict(STELLAR, teff=5750.0, logg=4.5))
+        parameters=dict(STELLAR, modelgrid='atlas9', teff=5750.0, logg=4.5))
 
     config = create_job_config(req, 123, job_dir, 'TestUser')
     assert config.model_path == ''
+    assert config.model_grid == 'atlas9'
 
     monkeypatch.setattr(JobRunner, '_find_model',
-                        lambda self, teff, logg: '/grid/05750G45.KRZ')
+                        lambda self, teff, logg, grid: '/grid/05750G45.KRZ')
     assert "'/grid/05750G45.KRZ'" in JobRunner()._select_input_text(config)
 
 
@@ -487,7 +492,7 @@ def test_the_prefill_flow_warns_that_the_model_cannot_come_with_it(
     own header - so submitting as-is would silently use a grid model."""
     req = Request.objects.create(
         user=approved_user, request_type='extractstellar', status='complete',
-        parameters=dict(STELLAR, teff=4250.0, logg=1.5,
+        parameters=dict(STELLAR, modelgrid='upload', teff=4250.0, logg=1.5,
                         model_name='marcs_p4250_g15.krz'))
 
     resp = logged_in_client.get(f'/extractstellar/?modify={req.uuid}')
@@ -515,17 +520,25 @@ def grid(tmp_path, names):
     return stellar
 
 
-def runner_for(settings, tmp_path, formats=None):
+def runner_for(settings, tmp_path, formats=None, marcs_formats=None):
     from vald.job_runner import JobRunner
 
     settings.VALD_HOME = tmp_path
     if formats is not None:
         settings.VALD_MODEL_NAME_FORMATS = formats
+    if marcs_formats is not None:
+        settings.VALD_MODEL_NAME_FORMATS_MARCS = marcs_formats
     return JobRunner()
 
 
 RENAMED = 'castelli_ap00k2_T%05dG%02d.krz'
 BARE = '%05dG%02d.KRZ'
+
+# The solar-composition MARCS names, whose log g is a signed decimal rather
+# than log g x 10. Verified against the real MODELS/STELLAR: this format
+# reproduces its filenames character for character.
+MARCS = ('p%04d_g%+04.1f_m0.0_t01_st_z+0.00_a+0.00_c+0.00'
+         '_n+0.00_o+0.00_r+0.00_s+0.00.krz')
 
 
 @pytest.mark.parametrize('name,node', [
@@ -618,3 +631,170 @@ def test_a_format_without_exactly_two_padded_fields_is_rejected(fmt):
 
     with pytest.raises(ImproperlyConfigured):
         model_name_pattern(fmt)
+
+
+# --- the grid choice --------------------------------------------------------
+#
+# Two grids overlap over most of their Teff range, so which one a request ran
+# against is decided by parameters['modelgrid'] alone and can never be inferred
+# back from the answer. These pin the parts of that which could silently pick
+# the wrong atmosphere rather than fail.
+
+@pytest.mark.parametrize('name,node', [
+    (MARCS % (2500, 3.0), (2500, 30)),
+    (MARCS % (5750, 4.5), (5750, 45)),
+    (MARCS % (8000, 5.5), (8000, 55)),
+    # The non-solar MARCS families beside them: same log g field, different
+    # composition, so nothing here may match them.
+    ('p2500_g+3.0_m0.0_t01_st_z-0.25_a+0.10_c+0.00_n+0.00_o+0.10_r+0.00_s+0.00.krz',
+     None),
+    ('p5750_g+4.5_m0.0_t02_st_z+0.00_a+0.00_c+0.00_n+0.00_o+0.00_r+0.00_s+0.00.krz',
+     None),
+    (RENAMED % (5750, 45), None),      # ATLAS9 is a different grid, not a node
+    ('README', None),
+])
+def test_the_marcs_names_are_read_back(settings, tmp_path, name, node):
+    runner = runner_for(settings, tmp_path, marcs_formats=(MARCS,))
+    assert runner._model_node(name, 'marcs') == node
+
+
+def test_each_grid_answers_only_from_its_own_nodes(settings, tmp_path):
+    """The failure this is here to prevent: ATLAS9 has a node at exactly
+    5750/4.5 and MARCS's nearest is 5750/4.5 too, so a leaked format would look
+    right in Teff and log g while running the wrong atmosphere."""
+    grid(tmp_path, [RENAMED % (5750, 45), MARCS % (5750, 4.5)])
+    runner = runner_for(settings, tmp_path, (RENAMED, BARE), (MARCS,))
+
+    assert Path(runner._find_model(5750, 4.5, 'atlas9')).name == RENAMED % (5750, 45)
+    assert Path(runner._find_model(5750, 4.5, 'marcs')).name == MARCS % (5750, 4.5)
+
+
+def test_marcs_answers_a_request_past_its_edge_with_its_nearest_node(
+        settings, tmp_path):
+    """MARCS stops at 8000 K where ATLAS9 runs to 50000. A hotter request is
+    not refused - the form says as much - but it must not cross grids to find
+    something nearer."""
+    grid(tmp_path, [MARCS % (t, 4.5) for t in (7750, 8000)]
+         + [RENAMED % (10000, 45)])
+    runner = runner_for(settings, tmp_path, (RENAMED, BARE), (MARCS,))
+
+    assert Path(runner._find_model(12000, 4.5, 'marcs')).name == MARCS % (8000, 4.5)
+
+
+def test_an_unknown_grid_fails_rather_than_falling_back(settings, tmp_path):
+    """Same rule as get_config_path_for_request: a request naming something
+    this deployment does not have must fail, not quietly get the default."""
+    grid(tmp_path, [RENAMED % (5750, 45)])
+    runner = runner_for(settings, tmp_path, (RENAMED,), (MARCS,))
+
+    with pytest.raises(ValueError, match='Unknown model atmosphere grid'):
+        runner._find_model(5750, 4.5, 'phoenix')
+
+
+def test_a_grid_with_nothing_in_it_names_that_grid(settings, tmp_path):
+    grid(tmp_path, [RENAMED % (5750, 45)])
+    runner = runner_for(settings, tmp_path, (RENAMED,), (MARCS,))
+
+    with pytest.raises(ValueError, match='marcs grid'):
+        runner._find_model(5750, 4.5, 'marcs')
+
+
+def test_the_extent_is_read_off_the_grid(settings, tmp_path):
+    from vald.job_runner import grid_extent
+
+    grid(tmp_path, [MARCS % (t, g) for t in (2500, 5750, 8000)
+                    for g in (3.0, 5.5)] + [RENAMED % (3500, 0)])
+    settings.VALD_MODEL_NAME_FORMATS_MARCS = (MARCS,)
+    grid_extent.cache_clear()
+
+    stellar = str(tmp_path / 'MODELS' / 'STELLAR')
+    assert grid_extent('marcs', stellar) == (2500, 8000, 3.0, 5.5)
+    assert grid_extent('atlas9', str(tmp_path / 'nowhere')) is None
+
+
+@pytest.mark.django_db
+def test_the_menu_quotes_the_extent_of_each_grid(logged_in_client, settings,
+                                                 tmp_path):
+    """The range is the one thing that decides whether a choice can answer the
+    user's Teff at all, and _find_model() answers past the edge rather than
+    complaining - so the form has to say where the edge is."""
+    from vald.job_runner import grid_extent
+
+    grid(tmp_path, [RENAMED % (t, 45) for t in (3500, 50000)]
+         + [MARCS % (t, 4.5) for t in (2500, 8000)])
+    settings.VALD_HOME = tmp_path
+    settings.VALD_MODEL_NAME_FORMATS = (RENAMED,)
+    settings.VALD_MODEL_NAME_FORMATS_MARCS = (MARCS,)
+    grid_extent.cache_clear()
+
+    html = logged_in_client.get('/extractstellar/').content.decode()
+
+    assert 'Teff 3500-50000 K' in html
+    assert 'Teff 2500-8000 K' in html
+
+
+@pytest.mark.django_db
+def test_a_grid_request_records_the_grid_and_ignores_a_stray_file(
+        logged_in_client, no_background_worker):
+    """The file field is hidden unless the menu asks for it, so a file arriving
+    beside a grid choice is the browser talking - and Teff and log g on the page
+    are then the ones that count."""
+    post_stellar(logged_in_client, make_krz(teff=4250.0, logg=1.5),
+                 modelgrid='marcs', teff='5750', logg='4.5')
+
+    req = Request.objects.latest('created_at')
+    assert req.parameters['modelgrid'] == 'marcs'
+    assert 'model_name' not in req.parameters
+    assert req.parameters['teff'] == 5750.0
+    assert 'MARCS' in req.describe()
+
+
+@pytest.mark.django_db
+def test_choosing_upload_without_a_file_says_so(logged_in_client,
+                                                no_background_worker):
+    resp = post_stellar(logged_in_client, modelgrid='upload',
+                        teff='5750', logg='4.5')
+
+    assert resp.status_code == 200
+    assert not Request.objects.exists()
+    assert 'Choose a file, or pick one of the grids' in resp.content.decode()
+
+
+@pytest.mark.django_db
+def test_a_stellar_job_runs_against_the_grid_the_request_names(
+        tmp_path, approved_user, settings, default_config):
+    """End to end from stored parameters to the model path select5 opens."""
+    from vald.job_runner import JobRunner, create_job_config
+
+    grid(tmp_path, [RENAMED % (5750, 45), MARCS % (5750, 4.5)])
+    settings.VALD_HOME = tmp_path
+    settings.VALD_MODEL_NAME_FORMATS = (RENAMED,)
+    settings.VALD_MODEL_NAME_FORMATS_MARCS = (MARCS,)
+    settings.VALD_WORKING_DIR = tmp_path
+    job_dir = tmp_path / '000123'
+    job_dir.mkdir()
+    req = Request.objects.create(
+        user=approved_user, request_type='extractstellar', status='pending',
+        parameters=dict(STELLAR, modelgrid='marcs', teff=5750.0, logg=4.5))
+
+    config = create_job_config(req, 123, job_dir, 'TestUser')
+
+    assert MARCS % (5750, 4.5) in JobRunner()._select_input_text(config)
+
+
+@pytest.mark.django_db
+def test_a_request_predating_the_grid_choice_still_runs_atlas9(
+        tmp_path, approved_user, settings, default_config):
+    """Every stellar request stored before parameters['modelgrid'] existed ran
+    against ATLAS9, so a re-run of one must keep doing that."""
+    from vald.job_runner import create_job_config
+
+    settings.VALD_WORKING_DIR = tmp_path
+    job_dir = tmp_path / '000123'
+    job_dir.mkdir()
+    legacy = {key: value for key, value in STELLAR.items() if key != 'modelgrid'}
+    req = Request.objects.create(
+        user=approved_user, request_type='extractstellar', status='pending',
+        parameters=dict(legacy, teff=5750.0, logg=4.5))
+
+    assert create_job_config(req, 123, job_dir, 'TestUser').model_grid == 'atlas9'

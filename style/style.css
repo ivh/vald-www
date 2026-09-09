@@ -353,6 +353,9 @@ label.stacked input { width: 100%; font-size: 14px; color: var(--ink); }
   align-items: center;
 }
 .formrow.top { align-items: start; }
+/* display:grid above outranks the UA stylesheet's [hidden] rule, so a row the
+   page hides (the stellar form's model upload) needs saying explicitly. */
+.formrow[hidden] { display: none; }
 label.formlabel,
 .formlabel { display: block; gap: 0; color: var(--ink); }
 .formfield {

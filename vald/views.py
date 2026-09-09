@@ -583,8 +583,8 @@ def modify_initial_data(request, user):
         messages.warning(
             request,
             f"The model atmosphere ({parameters['model_name']}) could not be "
-            'carried over - upload it again, or this request will use the '
-            'nearest model from the ATLAS9 grid used by VALD instead.'
+            'carried over - upload it again, or choose one of the grids '
+            'instead.'
         )
 
     return parameters

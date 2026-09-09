@@ -17,6 +17,7 @@ import sys
 import time
 from pathlib import Path
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional, Tuple, List
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -47,9 +48,32 @@ SELECT_TRUNCATED = 'WARNING: Output was truncated to'
 # slack in case a stage prepends something later.
 TRUNCATION_HEAD_LINES = 3
 
-# The two integer fields of a VALD_MODEL_NAME_FORMATS entry: Teff, then
-# log g x 10.
-MODEL_FORMAT_FIELD = re.compile(r'%0(\d+)d')
+# The two numeric fields of a model name format: Teff, then log g - the latter
+# as log g x 10 in the ATLAS9 names ('%02d') and as a signed decimal in the
+# MARCS ones ('%+04.1f'). Both directions go through model_name_pattern(), so
+# the two spellings never have to be told apart anywhere else.
+MODEL_FORMAT_FIELD = re.compile(r'%\+?0?(\d+)(?:\.(\d+))?([df])')
+
+# Which setting names the filenames of each grid a request may ask for, keyed by
+# the value stored in parameters['modelgrid']. 'upload' is not here: a request
+# that names its own model never looks at a grid.
+MODEL_GRID_FORMAT_SETTINGS = {
+    'atlas9': 'VALD_MODEL_NAME_FORMATS',
+    'marcs': 'VALD_MODEL_NAME_FORMATS_MARCS',
+}
+
+# What to call each grid where a request is summarised for a user. Short
+# because it appears in a one-line description beside everything else about the
+# request; the forms spell the same grids out at length.
+MODEL_GRID_NAMES = {
+    'atlas9': 'ATLAS9',
+    'marcs': 'MARCS',
+}
+
+# The grid a request that says nothing gets. Every stellar request predating
+# parameters['modelgrid'] ran against ATLAS9, so this is what keeps their
+# re-runs answering the same.
+MODEL_GRID_DEFAULT = 'atlas9'
 
 
 def summarise_stage_error(stderr_text: str) -> str:
@@ -125,6 +149,10 @@ class JobConfig:
     logg: float = 0.0
     abundances: str = ""
     model_path: str = ""
+
+    # Which grid _find_model() picks from, when model_path is empty. Ignored
+    # when it is not: an uploaded model belongs to no grid.
+    model_grid: str = MODEL_GRID_DEFAULT
     
     # Showline-specific: list of (wl_center, wl_window, element) tuples
     showline_queries: List[Tuple[float, float, str]] = None
@@ -192,10 +220,7 @@ class JobRunner:
         
         # Model atmosphere directory
         self.models_dir = self.vald_home / 'MODELS'
-        self.model_name_formats = tuple(settings.VALD_MODEL_NAME_FORMATS)
-        self._model_name_patterns = [
-            model_name_pattern(fmt) for fmt in self.model_name_formats
-        ]
+        self.stellar_dir = self.models_dir / 'STELLAR'
 
         self.pipeline_timeout = getattr(
             settings, 'VALD_JOB_TIMEOUT', DEFAULT_PIPELINE_TIMEOUT
@@ -851,7 +876,7 @@ class JobRunner:
         lines = [
             # wavelength range, depth limit, microturbulence
             f"{config.wl_start},{config.wl_end},{config.depth_limit},{config.microturbulence}",
-            f"'{config.model_path or self._find_model(config.teff, config.logg)}'",
+            f"'{config.model_path or self._find_model(config.teff, config.logg, config.model_grid)}'",
         ]
 
         # Abundances, as quoted comma-terminated tokens. select5 reads these as
@@ -929,8 +954,9 @@ class JobRunner:
         # Fallback: single query from wl_start/wl_end and element
         return [(config.wl_start, config.wl_end, config.element)]
     
-    def _find_model(self, teff: float, logg: float) -> str:
-        """The grid model atmosphere nearest the requested Teff and log g.
+    def _find_model(self, teff: float, logg: float,
+                    grid: str = MODEL_GRID_DEFAULT) -> str:
+        """The `grid` model atmosphere nearest the requested Teff and log g.
 
         Only ever returns a path that was read out of the directory, so the name
         cannot be one the grid does not hold. It used to fall back to a name
@@ -939,29 +965,36 @@ class JobRunner:
         file not found": select5 refuses a model it cannot open by printing to
         stdout, which _run_stellar discards, and still exits 0.
 
+        The nodes of the other grid are invisible here rather than merely
+        further away: they are named by formats this grid's patterns do not
+        explain, so a request for MARCS can never be answered with an ATLAS9
+        atmosphere just because it sits nearer in Teff.
+
         Raises:
-            ValueError: the grid is unreadable, or holds no name any configured
-                format explains. Legacy parserequest.c failed here too, with
-                "VALD could not find any atmosphere model"
+            ValueError: the grid is unknown or unreadable, or holds no name any
+                of its formats explains. Legacy parserequest.c failed here too,
+                with "VALD could not find any atmosphere model"
                 (old/backend/parserequest.c:1106).
         """
         iteff = int(round(teff))
         ilogg = int(round(logg * 10))
 
-        stellar_dir = self.models_dir / 'STELLAR'
+        formats = model_name_formats(grid)
+        patterns = [model_name_pattern(fmt) for fmt in formats]
+
         try:
             # sorted() so that nodes an equal distance away resolve the same way
             # on every run, rather than in directory order.
-            entries = sorted(stellar_dir.iterdir())
+            entries = sorted(self.stellar_dir.iterdir())
         except OSError as e:
             raise ValueError(
-                f"Cannot read the model atmosphere grid {stellar_dir}: {e}"
+                f"Cannot read the model atmosphere grid {self.stellar_dir}: {e}"
             ) from e
 
         best_match = None
         best_dist = float('inf')
         for model_file in entries:
-            node = self._model_node(model_file.name)
+            node = model_node(patterns, model_file.name)
             if node is None:
                 continue
             m_teff, m_logg = node
@@ -973,25 +1006,37 @@ class JobRunner:
 
         if best_match is None:
             raise ValueError(
-                f"No model atmosphere in {stellar_dir} is named like "
-                f"{self.model_name_formats[0]} - the grid is missing, empty, "
+                f"No model atmosphere in {self.stellar_dir} is named like "
+                f"{formats[0]} - the {grid} grid is missing, empty, "
                 f"or has been renamed"
             )
 
         if best_dist:
             # Legacy put this in the user's result file as "VALD does not have
             # the exact model, will use X instead"; here it is only logged.
-            logger.info("No exact model for Teff %s / log g %s - using %s",
-                        teff, logg, best_match.name)
-        return str(best_match)
+            logger.info("No exact %s model for Teff %s / log g %s - using %s",
+                        grid, teff, logg, best_match.name)
 
-    def _model_node(self, filename: str) -> Optional[Tuple[int, int]]:
-        """(Teff, log g x 10) encoded in a grid filename, or None if it is not one."""
-        for pattern in self._model_name_patterns:
-            match = pattern.fullmatch(filename)
-            if match:
-                return int(match.group(1)), int(match.group(2))
-        return None
+        # MONAME is a CHARACTER*120 holding the whole path, and select5 answers
+        # a truncated one with "Wrong model atmosphere fielname". The MARCS
+        # names are 76 characters before $VALD_HOME, so a deeper checkout than
+        # the ones this runs on could reach the limit; the job then fails with
+        # select5's complaint, and this is what says why in the log. Not raised,
+        # because a long tmp_path makes it reachable in tests where nothing is
+        # actually wrong.
+        path = str(best_match)
+        if len(path) > krz.MONAME_MAX:
+            logger.warning(
+                "Model atmosphere path is %d characters and select5 holds %d, "
+                "so it will be truncated: %s",
+                len(path), krz.MONAME_MAX, path)
+        return path
+
+    def _model_node(self, filename: str,
+                    grid: str = MODEL_GRID_DEFAULT) -> Optional[Tuple[int, int]]:
+        """(Teff, log g x 10) in a filename of `grid`, or None if it is not one."""
+        patterns = [model_name_pattern(fmt) for fmt in model_name_formats(grid)]
+        return model_node(patterns, filename)
 
     def _was_truncated(self, config: JobConfig, output_file: Path) -> bool:
         """Whether the job stopped at the line cap rather than running out of lines.
@@ -1069,35 +1114,109 @@ class JobRunner:
 
 
 def model_name_pattern(fmt: str) -> re.Pattern:
-    """Regex matching the filenames `fmt % (teff, logg * 10)` produces.
+    """Regex matching the filenames `fmt` produces for a grid node.
 
     Derived from the format rather than written down beside it, so a rename
     needs one edit and the two directions cannot drift apart - which is what
     legacy parserequest.c got for free by handing the same MODEL_NAME_FORMAT to
     both sprintf and sscanf (old/backend/parserequest.c:496-517).
 
-    Each width is a minimum, not a maximum: '%05d' pads 7900 to '07900' but
-    leaves a six-figure Teff six digits long, and the pattern has to match what
-    the format would actually emit.
+    Each integer width is a minimum, not a maximum: '%05d' pads 7900 to '07900'
+    but leaves a six-figure Teff six digits long, and the pattern has to match
+    what the format would actually emit. A float field matches its own number of
+    decimals exactly, since that is all the format ever writes.
+
+    Group 1 is Teff; group 2 is log g, in whichever of the two spellings the
+    format uses. model_node() turns it back into log g x 10.
     """
-    parts = MODEL_FORMAT_FIELD.split(fmt)
-    if len(parts) != 5:
+    fields = list(MODEL_FORMAT_FIELD.finditer(fmt))
+    if len(fields) != 2:
         raise ImproperlyConfigured(
-            f"Model name format {fmt!r} must hold exactly two %0Nd fields, "
-            f"Teff then log g x 10"
+            f"Model name format {fmt!r} must hold exactly two width-qualified "
+            f"numeric fields, Teff then log g"
         )
-    literals = parts[0::2]
-    widths = parts[1::2]
-    pattern = ''.join([
-        re.escape(literals[0]),
-        rf'(\d{{{widths[0]},}})',
-        re.escape(literals[1]),
-        rf'(\d{{{widths[1]},}})',
-        re.escape(literals[2]),
-    ])
-    # Case-insensitive because the rename also moved .KRZ to .krz, and the grid
-    # is not guaranteed to be consistent mid-transition.
-    return re.compile(pattern, re.IGNORECASE)
+
+    parts = []
+    end = 0
+    for field in fields:
+        width, decimals, conversion = field.groups()
+        parts.append(re.escape(fmt[end:field.start()]))
+        if conversion == 'd':
+            parts.append(rf'(\d{{{width},}})')
+        else:
+            parts.append(rf'([-+]?\d+\.\d{{{decimals or 6}}})')
+        end = field.end()
+    parts.append(re.escape(fmt[end:]))
+
+    # Case-insensitive because the 2026-09 rename also moved .KRZ to .krz, and
+    # the grid is not guaranteed to be consistent mid-transition.
+    return re.compile(''.join(parts), re.IGNORECASE)
+
+
+def model_node(patterns, filename: str) -> Optional[Tuple[int, int]]:
+    """(Teff, log g x 10) encoded in a grid filename, or None if it is not one.
+
+    log g x 10 rather than log g so that ATLAS9's 'G45' and MARCS's 'g+4.5'
+    become the same integer and _find_model can measure a distance in one
+    metric whichever grid it is walking.
+    """
+    for pattern in patterns:
+        match = pattern.fullmatch(filename)
+        if match:
+            teff, logg = match.group(1), match.group(2)
+            if '.' in logg:
+                return int(teff), int(round(float(logg) * 10))
+            return int(teff), int(logg)
+    return None
+
+
+def model_name_formats(grid: str) -> Tuple[str, ...]:
+    """The filename formats of one grid, by the key a request stores.
+
+    Raises:
+        ValueError: the request names a grid this deployment does not have.
+            Same reasoning as get_config_path_for_request: failing beats
+            silently answering with a different atmosphere than the one the
+            stored request names.
+    """
+    try:
+        setting = MODEL_GRID_FORMAT_SETTINGS[grid]
+    except KeyError:
+        raise ValueError(
+            f"Unknown model atmosphere grid {grid!r} - expected one of "
+            f"{', '.join(sorted(MODEL_GRID_FORMAT_SETTINGS))}"
+        ) from None
+    return tuple(getattr(settings, setting))
+
+
+@lru_cache(maxsize=None)
+def grid_extent(grid: str, stellar_dir: str) -> Optional[Tuple[int, int, float, float]]:
+    """(Teff min, Teff max, log g min, log g max) of the nodes actually present.
+
+    Read off the directory rather than written down beside the format, because
+    the forms quote it at the user and a range that is merely asserted goes
+    stale the next time the grid is synced. None when the grid is unreadable or
+    holds nothing this grid's formats explain - the caller then says nothing
+    about the range rather than guessing.
+
+    Cached for the life of the process: MODELS/STELLAR changes only on an SVN
+    sync, which comes with a restart to install the binaries anyway.
+    """
+    patterns = [model_name_pattern(fmt) for fmt in model_name_formats(grid)]
+    try:
+        names = os.listdir(stellar_dir)
+    except OSError as e:
+        logger.warning("Cannot read the model atmosphere grid %s: %s",
+                       stellar_dir, e)
+        return None
+
+    nodes = [node for node in (model_node(patterns, name) for name in names)
+             if node is not None]
+    if not nodes:
+        return None
+    teffs = [teff for teff, _ in nodes]
+    loggs = [logg for _, logg in nodes]
+    return min(teffs), max(teffs), min(loggs) / 10, max(loggs) / 10
 
 
 def get_model_path_for_request(params, job_dir: Path,
@@ -1248,6 +1367,7 @@ def create_job_config(request_obj, backend_id: int, job_dir: Path,
         config.abundances = params.get('chemcomp', '')
         config.model_path = get_model_path_for_request(
             params, job_dir, krz_content, write=config_path is None)
+        config.model_grid = params.get('modelgrid') or MODEL_GRID_DEFAULT
     
     # Showline-specific: parse multiple queries (up to 5)
     if reqtype == 'showline':

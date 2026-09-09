@@ -410,6 +410,13 @@ def format_request_file(request_obj):
         # Teff and log g above came out of the model's own header.
         if params.get('model_name'):
             lines.append(f"! uploaded model atmosphere: {params['model_name']}")
+        else:
+            # Same reason as the comment below it: the Teff and log g above do
+            # not say which grid they were resolved against, and the two grids
+            # overlap over most of their range.
+            from .job_runner import MODEL_GRID_DEFAULT
+            lines.append(f"! model atmosphere grid: "
+                         f"{params.get('modelgrid', MODEL_GRID_DEFAULT)}")
         if 'chemcomp' in params:
             lines.append(params['chemcomp'])
 

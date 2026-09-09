@@ -35,7 +35,14 @@
     <div class="formfield">{{ form.logg }} <span class="unit">{{ form.logg.help_text }}</span></div>
   </div>
   <div class="formrow top">
-    <label class="formlabel" for="{{ form.model_file.id_for_label }}">Model atmosphere</label>
+    <label class="formlabel" for="{{ form.modelgrid.id_for_label }}">Model atmosphere</label>
+    <div class="formfield stack">
+      {{ form.modelgrid }}
+      <span class="hint">{{ form.modelgrid.help_text }}</span>
+    </div>
+  </div>
+  <div class="formrow top" id="modelupload">
+    <label class="formlabel" for="{{ form.model_file.id_for_label }}">{{ form.model_file.label }}</label>
     <div class="formfield stack">
       {{ form.model_file }}
       <span class="hint">{{ form.model_file.help_text }}. An uploaded model
@@ -44,6 +51,24 @@
         are available &ndash; a later request needs it uploaded again.</span>
     </div>
   </div>
+  <script>
+  (function () {
+    // The file field is only ever wanted by one of the three choices, so it
+    // starts hidden and the menu reveals it. Hidden with [hidden] rather than
+    // removed: a submission that came back with an error on the upload has to
+    // show that error, which showUpload() below does by re-reading the menu.
+    var select = document.getElementById("{{ form.modelgrid.auto_id }}");
+    var row = document.getElementById("modelupload");
+    if (!select || !row) return;
+
+    function showUpload() {
+      row.hidden = select.value !== select.dataset.uploadValue;
+    }
+
+    select.onchange = showUpload;
+    showUpload();
+  })();
+  </script>
   <div class="formrow top">
     <label class="formlabel" for="{{ form.chemcomp.id_for_label }}">Chemical composition</label>
     <div class="formfield stack">

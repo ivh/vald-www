@@ -135,6 +135,15 @@ class Request(models.Model):
                 teff, logg = num('teff'), num('logg')
                 if teff and logg:
                     parts.append(f'Teff {teff} / log g {logg}')
+                # Which atmosphere ran is not derivable from Teff and log g -
+                # the two grids overlap - so the summary has to say it. An
+                # uploaded model is named instead of a grid; a request from
+                # before the grid choice existed says nothing and was ATLAS9.
+                from .job_runner import MODEL_GRID_NAMES
+                model = params.get('model_name') or MODEL_GRID_NAMES.get(
+                    params.get('modelgrid'))
+                if model:
+                    parts.append(model)
 
         return ', '.join(parts)
 

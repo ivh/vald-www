@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from pathlib import Path
 import re
 
-from . import abundances, krz
+from . import abundances, job_runner, krz
 from .models import UNIT_KEYS, User, UserPreferences
 
 
@@ -33,6 +33,41 @@ EXTRACTION_FORMAT_DEFAULT = 'long'
 # generous against that rather than tight, since the point is only to refuse a
 # file that cannot be a model atmosphere before reading it into memory.
 MODEL_UPLOAD_MAX_BYTES = 512 * 1024
+
+
+# The grid picker on the stellar form. 'upload' is not a grid: it is what
+# reveals the file field, and the request stores it so a re-run knows the Teff
+# and log g on the page came out of a header rather than naming a grid node.
+MODEL_GRID_UPLOAD = 'upload'
+
+MODEL_GRID_LABELS = {
+    'atlas9': 'ATLAS9 (Castelli & Kurucz)',
+    'marcs': 'MARCS',
+}
+
+
+def model_grid_choices():
+    """The grid menu, each entry carrying the extent of the grid on disk.
+
+    The range is quoted because it is the one thing that decides whether a
+    choice can answer the user's Teff at all - MARCS stops at 8000 K where
+    ATLAS9 runs to 50000 - and _find_model() answers an out-of-range request
+    with the nearest node instead of an error. It is read off MODELS/STELLAR
+    rather than written down here so it cannot outlive a sync of the grid; a
+    grid that cannot be read loses its range, not its entry, since the file it
+    needs may simply not be on this machine.
+    """
+    stellar_dir = str(Path(settings.VALD_HOME) / 'MODELS' / 'STELLAR')
+    choices = []
+    for key, label in MODEL_GRID_LABELS.items():
+        extent = job_runner.grid_extent(key, stellar_dir)
+        if extent:
+            teff_min, teff_max, logg_min, logg_max = extent
+            label = (f'{label} - Teff {teff_min}-{teff_max} K, '
+                     f'log g {logg_min}-{logg_max}')
+        choices.append((key, label))
+    choices.append((MODEL_GRID_UPLOAD, 'Upload own model atmosphere...'))
+    return choices
 
 
 def _model_name_budget():
@@ -623,11 +658,20 @@ class ExtractStellarForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
         widget=forms.TextInput(attrs={'size': '5'}),
         help_text='log g in cgs units'
     )
-    model_file = forms.FileField(
+    modelgrid = forms.ChoiceField(
         label='Model atmosphere',
+        choices=model_grid_choices,
+        initial=job_runner.MODEL_GRID_DEFAULT,
+        # Read by the template's script to decide which choice reveals the file
+        # field, so the key lives in one place rather than in both languages.
+        widget=forms.Select(attrs={'data-upload-value': MODEL_GRID_UPLOAD}),
+        help_text='the model grid the nearest node to the Teff and log g above is '
+                  'taken from'
+    )
+    model_file = forms.FileField(
+        label='Model atmosphere file',
         required=False,
-        help_text='optional, krz format - plane-parallel only. Leave empty to '
-                  'use the nearest model from the ATLAS9 grid used by VALD'
+        help_text='krz format - plane-parallel only'
     )
     chemcomp = forms.CharField(
         label='Chemical composition',
@@ -701,8 +745,18 @@ class ExtractStellarForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
         writes it into the job directory.
         """
         upload = self.cleaned_data.get('model_file')
-        if not upload:
+
+        # Declared after modelgrid, so its cleaned value is available here. A
+        # file that arrived while a grid is selected is dropped rather than
+        # objected to: the field is hidden then, so a leftover selection in a
+        # re-shown form is the user's browser talking, not the user.
+        if self.cleaned_data.get('modelgrid') != MODEL_GRID_UPLOAD:
             return ''
+
+        if not upload:
+            raise ValidationError(
+                'Choose a file, or pick one of the grids above instead.'
+            )
 
         if upload.size > MODEL_UPLOAD_MAX_BYTES:
             raise ValidationError(
@@ -753,9 +807,11 @@ class ExtractStellarForm(UnitFieldsMixin, LinelistConfigChoiceMixin, forms.Form)
             cleaned_data['logg'] = self.krz_model.logg
             cleaned_data['model_name'] = self.krz_name
             cleaned_data['model_layers'] = self.krz_model.layers
-        elif 'model_file' in self.cleaned_data:
-            # Only when the upload itself validated - otherwise its own error is
-            # the useful one and these would bury it.
+        elif cleaned_data.get('modelgrid') != MODEL_GRID_UPLOAD:
+            # A grid is chosen by Teff and log g, so there they are required.
+            # Not asked for at all when the choice is an upload, whether it
+            # validated or not: its own error is the useful one and these would
+            # bury it.
             for field, label in (('teff', 'Effective temperature'),
                                  ('logg', 'Surface gravity')):
                 if cleaned_data.get(field) is None:

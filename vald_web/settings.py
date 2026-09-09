@@ -188,28 +188,36 @@ VALD_JOB_TIMEOUT = 3600
 # could occupy all of it and everyone else got "Server is busy" (R5).
 VALD_MAX_REQUESTS_PER_USER = 5
 
-# Model atmosphere filenames, most preferred first: the name is the only place
-# Teff and log g are recorded, so _find_model() both builds candidate names with
-# these and parses the grid's own filenames back with them.
+# Model atmosphere filenames per grid, most preferred first within a grid: the
+# name is the only place Teff and log g are recorded, so model_name_pattern()
+# reads the grid's own filenames back with these, and grid_extent() reports the
+# range a form can offer from them.
 #
 # MODELS/STELLAR holds far more than these match, and that is deliberate: seven
 # Castelli/ATLAS9 metallicity families (am20 am15 am10 am05 ap00 ap02 ap05, all
-# k2, 476 nodes each over the same Teff/log g range) plus 2400 MARCS models.
-# Nothing in a request says which grid it wants, so listing more than one family
-# here would make the metallicity of the atmosphere depend on filename sort
-# order. ap00k2 is [M/H]=0.0: its headers are identical to the bare-named grid
-# that served every stellar extraction before the 2026-09 rename, so it is the
-# choice that keeps answers the same rather than a new default.
+# k2, 476 nodes each) plus 2400 MARCS models over ten metallicities and four
+# alpha/CNO patterns. A request names one grid and this maps it to one
+# metallicity family; listing several families under one grid would make the
+# atmosphere's metallicity depend on filename sort order.
 #
-# Giving users the other families - or MARCS, whose names encode log g and
-# metallicity as signed decimals no %0Nd format can describe - needs a request
-# field and a second parser, not another entry here.
+# ap00k2 and the MARCS z+0.00 family are both [M/H]=0.0. ap00k2's headers are
+# identical to the bare-named grid that served every stellar extraction before
+# the 2026-09 rename, so it stays the default: it keeps old answers the same.
 #
 # The bare format stays accepted so a checkout that has not been synced yet
 # still resolves; it names the same solar grid, so the two cannot disagree.
 VALD_MODEL_NAME_FORMATS = (
     'castelli_ap00k2_T%05dG%02d.krz',
     '%05dG%02d.KRZ',
+)
+
+# MARCS, plane-parallel, solar composition throughout - metallicity, alpha, C,
+# N, O, r- and s-process all +0.00 - and the one microturbulence (t01) the grid
+# is distributed with. Unlike ATLAS9 the log g field is a signed decimal rather
+# than log g x 10, which is why the field spec is %+04.1f and not %02d.
+VALD_MODEL_NAME_FORMATS_MARCS = (
+    'p%04d_g%+04.1f_m0.0_t01_st_z+0.00_a+0.00_c+0.00'
+    '_n+0.00_o+0.00_r+0.00_s+0.00.krz',
 )
 
 # Submission rate per user (django-ratelimit syntax). The in-flight cap above
