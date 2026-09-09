@@ -67,6 +67,9 @@ def summarise_stage_error(stderr_text: str) -> str:
         if line.strip()
         and not line.strip().startswith('#')          # backtrace frames
         and not line.strip().startswith('Error termination')
+        # gfortran writes "STOP 1" for a STOP that carries an exit code, which
+        # says only that the stage failed - never why.
+        and not re.fullmatch(r'STOP\s+\d+', line.strip())
     ]
     summary = ' '.join(interesting[:2])
 
@@ -216,6 +219,30 @@ class JobRunner:
     def _stderr_path(self, cwd: Path, stage: str) -> Path:
         return cwd / f'{stage}.err'
 
+    def _stdout_path(self, cwd: Path, stage: str) -> Path:
+        """Where a stage's stdout is kept, for the stages whose stdout is not a pipe.
+
+        select5 writes its diagnostics here rather than to stderr - including
+        the ones it exits 0 after - so this is not the low-value stream the
+        name suggests.
+        """
+        return cwd / f'{stage}.out'
+
+    def _stage_complaint(self, cwd: Path, stage: str) -> str:
+        """What a stage said on stdout, condensed, or '' if it said nothing.
+
+        For select5 this is the only account of a failure it reported without a
+        return code to match: a model atmosphere it could not open, or a line it
+        could not parse. Before this was captured the reason was discarded and
+        the request failed with nothing but "Output file not found".
+        """
+        try:
+            raw = self._stdout_path(cwd, stage).read_bytes()
+        except OSError:
+            return ''
+        text = raw[-STDERR_EXCERPT_BYTES:].decode('utf-8', 'replace').strip()
+        return summarise_stage_error(text)
+
     def _kill_all(self, procs):
         """Kill any still-running process in the pipeline and reap them all."""
         for proc in procs:
@@ -254,12 +281,19 @@ class JobRunner:
         and is shown to the user, so it is condensed and stripped of server paths
         rather than being a raw Fortran backtrace (R25).
         """
-        detail = ''
-        try:
-            raw = self._stderr_path(cwd, stage).read_bytes()
-            detail = raw[-STDERR_EXCERPT_BYTES:].decode('utf-8', 'replace').strip()
-        except OSError:
-            pass
+        streams = []
+        # stdout first: where it is captured at all, it holds the stage's own
+        # account of what went wrong, while stderr may carry only gfortran's
+        # "STOP 1".
+        for path in (self._stdout_path(cwd, stage), self._stderr_path(cwd, stage)):
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                continue
+            text = raw[-STDERR_EXCERPT_BYTES:].decode('utf-8', 'replace').strip()
+            if text:
+                streams.append(text)
+        detail = '\n'.join(streams)
         logger.error("VALD stage %s failed (rc=%s) in %s: %s",
                      stage, proc.returncode, cwd, detail)
 
@@ -582,16 +616,20 @@ class JobRunner:
                         shutil.move(str(select_bib), str(bib_file))
                 else:
                     # preselect | select
-                    # Note: select writes to 'select.out' file, not stdout.
-                    # Its stdout (header info) is discarded rather than piped,
-                    # so there is no pipe left unread.
-                    select_proc = subprocess.Popen(
-                        [str(self.select)],
-                        stdin=preselect_proc.stdout,
-                        stdout=subprocess.DEVNULL,
-                        stderr=sel_err,
-                        cwd=cwd
-                    )
+                    # Note: select writes its line list to the 'select.out'
+                    # file, not stdout. Its stdout carries diagnostics, so it
+                    # is captured to a file rather than piped - nothing reads
+                    # the pipe, and select5 reports a refused model atmosphere
+                    # or an unparsable line there and then exits 0. Discarding
+                    # it once cost a whole afternoon.
+                    with open(self._stdout_path(cwd, 'select5'), 'wb') as sel_out:
+                        select_proc = subprocess.Popen(
+                            [str(self.select)],
+                            stdin=preselect_proc.stdout,
+                            stdout=sel_out,
+                            stderr=sel_err,
+                            cwd=cwd
+                        )
                     procs.append(select_proc)
                     preselect_proc.stdout.close()
 
@@ -613,6 +651,14 @@ class JobRunner:
             select_out = cwd / 'select.out'
             if select_out.exists():
                 shutil.move(str(select_out), str(output_file))
+            elif not output_file.exists():
+                # No output and a clean return code, so _check_stages passed:
+                # select5 refuses a model atmosphere or an unparsable line by
+                # printing to stdout and exiting 0. Its own words beat the
+                # "Output file not found" _finalize_output would report.
+                complaint = self._stage_complaint(cwd, 'select5')
+                if complaint:
+                    return (False, f"select5 failed: {complaint}")
 
             return self._finalize_output(config, output_file, bib_file)
 

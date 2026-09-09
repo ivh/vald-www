@@ -334,3 +334,99 @@ def test_missing_showline_binary_does_not_leak_its_path(tmp_path):
     ok, result = runner.run(config)
     assert not ok
     assert str(tmp_path) not in result
+
+
+# --- select5 reports failure on stdout and exits 0 -------------------------
+#
+# The 2026-09 grid rename surfaced as five requests failing with "Output file
+# not found" and nothing else: select5 refuses a model atmosphere it cannot
+# open by printing to stdout, and still exits 0, so _check_stages sees a clean
+# pipeline. Its stdout used to go to DEVNULL, which is what made the cause
+# unrecoverable after the fact.
+
+@pytest.fixture
+def stellar(tmp_path):
+    """Run _run_stellar with stand-in stages. Returns (ok, result, job_dir)."""
+    def run(preselect_body, select_body, timeout=5):
+        job = tmp_path / 'sjob'
+        ftp = tmp_path / 'sftp'
+        for d in (job, ftp):
+            d.mkdir(exist_ok=True)
+
+        runner = JobRunner()
+        runner.preselect = fake_binary(tmp_path, 'vald-testfake-preselect', preselect_body)
+        runner.select = fake_binary(tmp_path, 'vald-testfake-select', select_body)
+        runner.ftp_dir = ftp
+        runner.pipeline_timeout = timeout
+
+        config = JobConfig(job_id=7, job_dir=job, client_name='Tester',
+                           request_type='extractstellar', wl_start=5000, wl_end=5010,
+                           config_path=str(tmp_path / 'config.cfg'))
+        # Set so that _select_input_text does not go looking for a real grid.
+        config.model_path = str(tmp_path / 'model.krz')
+        ok, result = runner.run(config)
+        return ok, result, job
+
+    yield run
+    subprocess.run(['pkill', '-f', 'vald-testfake-'], capture_output=True)
+
+
+def test_a_refused_model_atmosphere_is_reported_not_swallowed(stellar):
+    """The regression: no output, exit 0, and the reason only on stdout."""
+    ok, result, _ = stellar(
+        'cat',
+        'echo "SELECT3: Wrong model atmosphere fielname:/srv/VALD3/MODELS/x.krz"; exit 0',
+    )
+
+    assert not ok
+    assert 'Wrong model atmosphere' in result
+    assert 'Output file not found' not in result
+    assert '/srv' not in result, 'server path must not reach the user'
+    assert not surviving_fakes()
+
+
+def test_select_stdout_is_kept_on_disk(stellar):
+    ok, _, job = stellar('cat', 'echo "SELECT detected format error"; exit 0')
+
+    assert not ok
+    assert (job / 'select5.out').read_text().strip() == 'SELECT detected format error'
+
+
+def test_a_silent_stage_still_reports_the_missing_output(stellar):
+    """With nothing said on either stream there is nothing better to report,
+    so the old message stands rather than becoming an empty one."""
+    ok, result, _ = stellar('cat', 'exit 0')
+
+    assert not ok
+    assert 'Output file not found' in result
+
+
+def test_a_successful_stellar_run_is_unaffected(stellar):
+    ok, result, job = stellar('cat', 'echo header; echo "5000.0 x" > select.out')
+
+    assert ok, result
+    assert result.endswith('.gz')
+    # Captured but empty of complaint: the header select5 prints on a good run.
+    assert (job / 'select5.out').exists()
+    assert not surviving_fakes()
+
+
+def test_a_stage_that_fails_loudly_reports_stdout_over_stop_code(stellar):
+    """Once select5 exits non-zero, gfortran adds "STOP 1" on stderr. That says
+    only that it failed, so the message must come from stdout instead."""
+    ok, result, _ = stellar(
+        'cat',
+        'echo "SELECT ERROR: Wrong number of layers in model atmosphere"; '
+        'echo "STOP 1" >&2; exit 1',
+    )
+
+    assert not ok
+    assert 'Wrong number of layers' in result
+    assert 'STOP 1' not in result
+
+
+def test_error_summary_drops_the_bare_stop_code():
+    from vald.job_runner import summarise_stage_error
+
+    assert summarise_stage_error('STOP 1') == ''
+    assert summarise_stage_error('STOP 2\nSELECT ERROR: nope') == 'SELECT ERROR: nope'
