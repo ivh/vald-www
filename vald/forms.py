@@ -47,7 +47,7 @@ MODEL_GRID_LABELS = {
 
 
 def model_grid_choices():
-    """The grid menu, each entry carrying the extent of the grid on disk.
+    """The grid menu, each entry carrying the Teff extent of the grid on disk.
 
     The range is quoted because it is the one thing that decides whether a
     choice can answer the user's Teff at all - MARCS stops at 8000 K where
@@ -56,15 +56,22 @@ def model_grid_choices():
     rather than written down here so it cannot outlive a sync of the grid; a
     grid that cannot be read loses its range, not its entry, since the file it
     needs may simply not be on this machine.
+
+    Teff only, though grid_extent() also knows the log g bounds. Neither grid
+    fills the box those two ranges describe - ATLAS9 is a staircase, only 57%
+    of its Teff x log g pairs present, since low gravities die out as it gets
+    hot - so a quoted log g range reads as a coverage promise the grid does
+    not keep. Teff is the honest half: every Teff in range has some node.
+    Which node a request actually got is shown on its detail page, where it is
+    a fact about that request rather than a claim about the grid.
     """
     stellar_dir = str(Path(settings.VALD_HOME) / 'MODELS' / 'STELLAR')
     choices = []
     for key, label in MODEL_GRID_LABELS.items():
         extent = job_runner.grid_extent(key, stellar_dir)
         if extent:
-            teff_min, teff_max, logg_min, logg_max = extent
-            label = (f'{label} - Teff {teff_min}-{teff_max} K, '
-                     f'log g {logg_min}-{logg_max}')
+            teff_min, teff_max, _logg_min, _logg_max = extent
+            label = f'{label} - Teff {teff_min}-{teff_max} K'
         choices.append((key, label))
     choices.append((MODEL_GRID_UPLOAD, 'Upload own model atmosphere...'))
     return choices

@@ -148,6 +148,20 @@ class Request(models.Model):
         return ', '.join(parts)
 
     @property
+    def model_atmosphere(self):
+        """The model atmosphere file the run actually opened, or None.
+
+        Not derivable from the Teff and log g beside it: _find_model() takes
+        the nearest node of a grid that is ragged in log g, so a request can
+        be answered several dex from where it asked. Written back after the
+        run, so requests from before that fall back to the upload's name -
+        the only model a pre-write-back row ever recorded - and otherwise say
+        nothing rather than guessing a node.
+        """
+        params = self.parameters or {}
+        return params.get('model_used') or params.get('model_name') or None
+
+    @property
     def output_path(self):
         """Absolute path to the result file, or None if none was recorded.
 

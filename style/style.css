@@ -609,6 +609,8 @@ input[type="button"]:disabled {
   padding: 18px 20px;
 }
 .metaitem { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+/* A model atmosphere filename is far too long for one of the four columns. */
+.metaitem-wide { grid-column: 1 / -1; }
 .metaitem .mono { font-size: 13px; overflow-wrap: anywhere; }
 
 .pager {

@@ -312,3 +312,61 @@ def test_status_needs_a_session(client, approved_user):
 
     # A redirect, not JSON - which is why the poller reloads on a non-JSON reply.
     assert client.get(f'/request/{req.uuid}/status/').status_code == 302
+
+
+# --- the model atmosphere a stellar run actually opened --------------------
+
+def stellar_request(user, output_file, **params):
+    """A finished stellar request, with whatever the run recorded on it."""
+    p = dict(teff=3500.0, logg=0.5, modelgrid='marcs')
+    p.update(params)
+    return Request.objects.create(user=user, request_type='extractstellar',
+                                  parameters=p, status='complete',
+                                  output_file=str(output_file))
+
+
+MARCS_3500_G30 = ('p3500_g+3.0_m0.0_t01_st_z+0.00_a+0.00_c+0.00_n+0.00'
+                  '_o+0.00_r+0.00_s+0.00.krz')
+
+
+@pytest.mark.django_db
+def test_the_detail_page_names_the_model_that_ran(logged_in_client, approved_user,
+                                                  ftp_dir):
+    """The request that prompted this asked for log g 0.5 and was answered with
+    a log g 3.0 atmosphere, because MARCS has no plane-parallel model below 3.0
+    - and nothing on the page said so. Teff and log g are the question; this is
+    the answer, and the two are allowed to differ."""
+    make_result(ftp_dir, 'Star.000001.gz')
+    req = stellar_request(approved_user, 'Star.000001.gz', model_used=MARCS_3500_G30)
+
+    page = logged_in_client.get(f'/request/{req.uuid}/').content.decode()
+
+    assert MARCS_3500_G30 in page
+    assert 'Model atmosphere' in page
+
+
+@pytest.mark.django_db
+def test_a_request_that_recorded_no_model_claims_none(logged_in_client,
+                                                      approved_user, ftp_dir):
+    """Rows predating the write-back must not have a node guessed for them from
+    their Teff and log g - guessing is what would reintroduce the wrong claim."""
+    make_result(ftp_dir, 'Star.000002.gz')
+    req = stellar_request(approved_user, 'Star.000002.gz')
+
+    assert req.model_atmosphere is None
+    assert 'Model atmosphere' not in \
+        logged_in_client.get(f'/request/{req.uuid}/').content.decode()
+
+
+@pytest.mark.django_db
+def test_an_upload_is_named_by_the_file_that_ran(approved_user, ftp_dir):
+    """model_name is what the user sent; model_used is what landed in the job
+    directory after safe_filename(). Where they disagree the latter is the one
+    select5 opened."""
+    req = stellar_request(approved_user, 'Star.000003.gz',
+                          model_name='my star.krz', model_used='my_star.krz')
+    assert req.model_atmosphere == 'my_star.krz'
+
+    legacy = stellar_request(approved_user, 'Star.000004.gz',
+                             model_name='my star.krz')
+    assert legacy.model_atmosphere == 'my star.krz'

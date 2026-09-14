@@ -82,6 +82,17 @@ their own choice of browser configuration that selects it.
       <span class="eyebrow">Completed</span>
       <span class="mono">{% if req.completed_at %}{{ req.completed_at|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</span>
     </div>
+    {% comment %}
+    Its own full-width row: the MARCS names run to about a hundred characters,
+    and the Teff and log g above it are what the request asked for, not what
+    the grid had.
+    {% endcomment %}
+    {% if req.model_atmosphere %}
+    <div class="metaitem metaitem-wide">
+      <span class="eyebrow">Model atmosphere</span>
+      <span class="mono">{{ req.model_atmosphere }}</span>
+    </div>
+    {% endif %}
   </div>
 
   {% if req.is_complete %}

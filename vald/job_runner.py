@@ -161,6 +161,12 @@ class JobConfig:
     # run() returns only (ok, path), so this is how the fact gets back out.
     truncated: bool = False
 
+    # Likewise: the basename of the model atmosphere the stellar run resolved
+    # to. Worth carrying back because it is not derivable from teff and logg -
+    # _find_model() takes the nearest node of a ragged grid, and "nearest" has
+    # been 2.5 dex away in log g.
+    model_used: str = ""
+
     def __post_init__(self):
         if self.format_flags is None:
             self.format_flags = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
@@ -872,11 +878,21 @@ class JobRunner:
         path.write_text(self._pres_in_text(config))
 
     def _select_input_text(self, config: JobConfig) -> str:
-        """Contents of select.input, which select5 opens by name."""
+        """Contents of select.input, which select5 opens by name.
+
+        Records the resolved model on the config on the way past. This is the
+        one place that knows which file the run will open, whether it came
+        from an upload or from the grid, and it runs before the pipeline
+        starts - so the name is there for the caller to persist even if a
+        later stage fails.
+        """
+        model_path = config.model_path or self._find_model(
+            config.teff, config.logg, config.model_grid)
+        config.model_used = os.path.basename(model_path)
         lines = [
             # wavelength range, depth limit, microturbulence
             f"{config.wl_start},{config.wl_end},{config.depth_limit},{config.microturbulence}",
-            f"'{config.model_path or self._find_model(config.teff, config.logg, config.model_grid)}'",
+            f"'{model_path}'",
         ]
 
         # Abundances, as quoted comma-terminated tokens. select5 reads these as

@@ -717,7 +717,13 @@ def test_the_menu_quotes_the_extent_of_each_grid(logged_in_client, settings,
                                                  tmp_path):
     """The range is the one thing that decides whether a choice can answer the
     user's Teff at all, and _find_model() answers past the edge rather than
-    complaining - so the form has to say where the edge is."""
+    complaining - so the form has to say where the edge is.
+
+    Teff and not log g: grid_extent() is a bounding box, and the real ATLAS9
+    fills 57% of it - low gravities die out as it gets hot - so a quoted log g
+    range would promise nodes that are not there. Every Teff in range does
+    have a node, which is what makes that half safe to quote.
+    """
     from vald.job_runner import grid_extent
 
     grid(tmp_path, [RENAMED % (t, 45) for t in (3500, 50000)]
@@ -731,6 +737,57 @@ def test_the_menu_quotes_the_extent_of_each_grid(logged_in_client, settings,
 
     assert 'Teff 3500-50000 K' in html
     assert 'Teff 2500-8000 K' in html
+    menu = html[html.index('name="modelgrid"'):]
+    assert 'log g' not in menu[:menu.index('</select>')]
+
+
+@pytest.mark.django_db
+def test_the_run_records_which_model_it_opened(tmp_path, approved_user, settings,
+                                               default_config):
+    """Teff and log g say what was asked for. Which node answered is a separate
+    fact - the grids are ragged, and a MARCS request for log g 0.5 is served by
+    a log g 3.0 atmosphere - so the run has to write it down for the detail
+    page to have anything true to show."""
+    from vald.job_runner import JobRunner, create_job_config
+
+    grid(tmp_path, [MARCS % (3500, g) for g in (3.0, 3.5, 4.0)])
+    settings.VALD_HOME = tmp_path
+    settings.VALD_MODEL_NAME_FORMATS_MARCS = (MARCS,)
+    settings.VALD_WORKING_DIR = tmp_path
+    job_dir = tmp_path / '000123'
+    job_dir.mkdir()
+    req = Request.objects.create(
+        user=approved_user, request_type='extractstellar', status='pending',
+        parameters=dict(STELLAR, modelgrid='marcs', teff=3500.0, logg=0.5))
+
+    config = create_job_config(req, 123, job_dir, 'TestUser')
+    JobRunner()._select_input_text(config)
+
+    assert config.model_used == MARCS % (3500, 3.0)
+
+
+@pytest.mark.django_db
+def test_an_uploaded_model_is_recorded_by_the_name_on_disk(
+        tmp_path, approved_user, settings, default_config):
+    """The upload path sets model_path outright, so _find_model() never runs -
+    but the detail page still needs a name, and it is the sanitised one the
+    job directory holds rather than whatever the browser sent."""
+    from vald.job_runner import JobRunner, create_job_config
+
+    settings.VALD_HOME = tmp_path
+    settings.VALD_WORKING_DIR = tmp_path
+    job_dir = tmp_path / '000123'
+    job_dir.mkdir()
+    req = Request.objects.create(
+        user=approved_user, request_type='extractstellar', status='pending',
+        parameters=dict(STELLAR, modelgrid='upload', teff=5750.0, logg=4.5,
+                        model_name='my star.krz'))
+
+    config = create_job_config(req, 123, job_dir, 'TestUser',
+                               krz_content=make_krz())
+    JobRunner()._select_input_text(config)
+
+    assert config.model_used == 'my_star.krz'
 
 
 @pytest.mark.django_db

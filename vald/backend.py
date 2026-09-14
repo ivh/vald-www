@@ -307,6 +307,8 @@ def submit_request_direct(request_obj, krz_content=None):
             request_obj.parameters['truncated'] = True
             request_obj.parameters['truncated_at'] = (
                 job_config.max_lines or job_config.select_max_lines)
+        if success and job_config.model_used:
+            request_obj.parameters['model_used'] = job_config.model_used
         return (success, result)
     except QueueFullError as e:
         notify_queue_full()
