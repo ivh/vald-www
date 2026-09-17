@@ -13,6 +13,11 @@
 # Snapshots are named with the date and the code revision that wrote them,
 # because a dump is only restorable against a codebase at compatible migration
 # state.
+#
+# On the server, start vald-backup.service rather than running this directly:
+# the unit sets VALD_BACKUP_DIR to where the nightly snapshots go, while bare
+# invocation defaults to backups/ inside the checkout - which is how the one
+# snapshot you care about ends up somewhere you will not look for it.
 
 set -euo pipefail
 

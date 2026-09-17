@@ -398,8 +398,15 @@ uv sync --extra formats</pre>
     effect. Restarting alone will not.
     <pre>sudo systemctl daemon-reload</pre></li>
 
-  <li><b>Restart the application.</b>
-    <pre>sudo systemctl restart vald</pre></li>
+  <li><b>Restart the application</b>, once nothing is in flight.
+    <pre>scripts/restart_if_idle.sh</pre>
+    Waits for the queue to drain, then restarts; gives up after 10 minutes
+    rather than restarting on top of a running job. <code>--force</code> skips
+    the wait, and <code>sudo systemctl restart vald</code> is still the bare
+    equivalent.
+    <span class="note">A row left at "processing" by an earlier crash never
+    drains, so the script will wait out its timeout for nothing. Run
+    <code>bin/vald-manage reconcile_stuck_requests</code> first if it does.</span></li>
 
   <li><b>Check it came back.</b>
     <pre>systemctl status vald
@@ -421,11 +428,16 @@ Verify with <code>systemctl list-timers 'vald*'</code>.
 
   <dt>A restart kills running extractions</dt>
   <dd>Jobs run in a daemon thread inside the gunicorn worker, so restarting loses
-      them and their rows sit at "processing" indefinitely.
-      <code>bin/vald-manage reconcile_stuck_requests</code> marks those failed; it
-      leaves a merely slow job alone, using twice the job timeout as the cutoff.
-      Better to deploy when nothing is in flight &mdash; the Requests list shows
-      what is, and the queue counter is at the top of it.</dd>
+      them. Startup reconciles what it stranded: up to
+      <code>VALD_STRANDED_RERUN_MAX</code> rows are re-run for their owners, and
+      beyond that they are failed and the webmaster is mailed &mdash; so a busy
+      moment is the wrong time to restart. <code>scripts/restart_if_idle.sh</code>
+      waits for the queue to empty instead; the Requests list shows what is in
+      flight, with the queue counter at the top of it. For rows a crash left at
+      "processing" with nothing running,
+      <code>bin/vald-manage reconcile_stuck_requests</code> marks them failed; it
+      leaves a merely slow job alone, using twice the job timeout as the
+      cutoff.</dd>
 
   <dt>Editing <code>secrets.txt</code> needs a restart, not a reload</dt>
   <dd>systemd reads <code>EnvironmentFile=</code> at process start.</dd>
