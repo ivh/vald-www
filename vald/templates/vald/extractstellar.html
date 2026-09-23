@@ -38,7 +38,8 @@
     <label class="formlabel" for="{{ form.modelgrid.id_for_label }}">Model atmosphere</label>
     <div class="formfield stack">
       {{ form.modelgrid }}
-      <span class="hint">{{ form.modelgrid.help_text }}</span>
+      <span class="hint">{{ form.modelgrid.help_text }} &ndash;
+        <a href="https://www.astro.uu.se/valdwiki/StellarModels" target="_blank" rel="noopener">more info</a></span>
     </div>
   </div>
   <div class="formrow top" id="modelupload">
