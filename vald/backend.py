@@ -177,6 +177,18 @@ def notify_queue_full():
         pass  # Don't let email failure break request handling
 
 
+def queue_snapshot():
+    """(running, waiting) for requests this process is working on right now."""
+    with _active_lock:
+        active = len(_active_uuids)
+    # Read _job_queue directly: get_job_queue() would start worker threads just
+    # to report that nothing is running.
+    waiting = _job_queue.job_queue.qsize() if _job_queue is not None else 0
+    # A request is in _active_uuids a moment before it reaches the queue.
+    waiting = min(waiting, active)
+    return active - waiting, waiting
+
+
 def check_queue_capacity():
     """
     Check if the job queue has capacity for new requests.

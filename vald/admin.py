@@ -28,22 +28,23 @@ from .models import Request, User, UserEmail, UserPreferences, Linelist, Config,
 
 
 def get_queue_stats():
-    """Get current job queue statistics from database."""
-    from django.utils import timezone
-    from datetime import timedelta
-    from .models import Request
-    
-    cutoff = timezone.now() - timedelta(minutes=30)
-    pending_count = Request.objects.filter(
-        status__in=['pending', 'processing'],
-        created_at__gte=cutoff
-    ).count()
+    """What the job queue in this process is doing, not what the rows say.
+
+    Row status can't answer this: a row left at 'processing' by a restart looks
+    exactly like a running one, and the old 30-minute created_at cutoff hid long
+    jobs that really were running. Only one gunicorn worker, so this process's
+    queue is the whole site's.
+    """
+    from .backend import queue_snapshot
+    running, waiting = queue_snapshot()
     max_queue_size = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
-    max_threads = getattr(settings, 'VALD_MAX_THREADS', 2)
     return {
-        'queue_size': pending_count,
+        'running': running,
+        'waiting': waiting,
         'max_queue_size': max_queue_size,
-        'max_threads': max_threads,
+        'max_threads': getattr(settings, 'VALD_MAX_THREADS', 2),
+        'full': waiting >= max_queue_size,
+        'high_load': 2 * waiting >= max_queue_size,
     }
 
 

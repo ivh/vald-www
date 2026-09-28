@@ -1476,3 +1476,43 @@ def test_rerun_carries_a_stranded_row_through_to_complete(staff_client, wait_for
     assert req.status == 'complete', f'error_message: {req.error_message}'
     assert req.output_file == 'Stranded.000001.gz'
     assert req.completed_at is not None
+
+
+
+def queue_banner(client):
+    body = content_of(client.get('/admin/vald/request/').content.decode())
+    start = body.index('Job Queue:')
+    return ' '.join(body[start:body.index('</div>', start)].split())
+
+
+class FakeQueue:
+    def __init__(self, n):
+        self.job_queue = type('Q', (), {'qsize': lambda self: n})()
+
+
+def test_queue_banner_counts_the_live_queue_not_row_status(
+        staff_client, approved_user, monkeypatch, settings):
+    settings.VALD_MAX_THREADS = 2
+    settings.VALD_MAX_QUEUE_SIZE = 14
+    # A stranded 'processing' row, as a restart leaves it: nothing is running it.
+    Request.objects.create(user=approved_user, request_type='extractall',
+                           parameters={}, status='processing')
+    monkeypatch.setattr('vald.backend._active_uuids', set())
+    monkeypatch.setattr('vald.backend._job_queue', None)
+    assert '0 / 2 running, 0 / 14 waiting' in queue_banner(staff_client)
+
+    monkeypatch.setattr('vald.backend._active_uuids', {'a', 'b', 'c'})
+    monkeypatch.setattr('vald.backend._job_queue', FakeQueue(1))
+    banner = queue_banner(staff_client)
+    assert '2 / 2 running, 1 / 14 waiting' in banner
+    assert 'High load' not in banner
+
+
+def test_queue_banner_warns_on_the_waiting_count(staff_client, monkeypatch, settings):
+    settings.VALD_MAX_QUEUE_SIZE = 4
+    monkeypatch.setattr('vald.backend._active_uuids', set('abcd'))
+    monkeypatch.setattr('vald.backend._job_queue', FakeQueue(2))
+    assert 'High load' in queue_banner(staff_client)
+    monkeypatch.setattr('vald.backend._active_uuids', set('abcdef'))
+    monkeypatch.setattr('vald.backend._job_queue', FakeQueue(4))
+    assert 'QUEUE FULL' in queue_banner(staff_client)
