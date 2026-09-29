@@ -63,6 +63,49 @@ def test_failed_extraction_records_the_error(logged_in_client, wait_for_worker, 
     assert req.completed_at is not None
 
 
+# --- site-wide admission: VALD_MAX_QUEUE_SIZE counts what is in flight -------
+
+@pytest.mark.django_db
+def test_a_long_running_job_still_counts_against_the_queue(
+        logged_in_client, no_background_worker, monkeypatch, settings):
+    """The gate used to count rows created in the last 30 minutes, so anything
+    running longer than that freed its place while still occupying a thread."""
+    settings.VALD_MAX_QUEUE_SIZE = 2
+    monkeypatch.setattr('vald.backend._active_uuids', {'older-than-30-min', 'another'})
+    resp = logged_in_client.post('/submit/', EXTRACT)
+    assert resp.status_code == 200
+    assert 'Server is busy' in resp.content.decode()
+    assert not Request.objects.exists()        # refused before a row was made
+
+
+@pytest.mark.django_db
+def test_a_stranded_row_does_not_block_the_queue(
+        logged_in_client, no_background_worker, approved_user, settings):
+    settings.VALD_MAX_QUEUE_SIZE = 1
+    Request.objects.create(user=approved_user, request_type='extractall',
+                           parameters={}, status='processing')
+    assert logged_in_client.post('/submit/', EXTRACT).status_code == 302
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_finished_job_gives_its_place_back(logged_in_client, wait_for_worker,
+                                             monkeypatch, settings):
+    import vald.backend
+    settings.VALD_MAX_QUEUE_SIZE = 1
+    seen = []
+
+    def fake_submit(req_obj, **kw):
+        seen.append(vald.backend.is_request_active(req_obj.uuid))
+        return (False, 'whatever')
+    monkeypatch.setattr('vald.backend.submit_request_direct', fake_submit)
+
+    assert logged_in_client.post('/submit/', EXTRACT).status_code == 302
+    wait_for_worker()
+    assert seen == [True]
+    assert not vald.backend._active_uuids
+    assert logged_in_client.post('/submit/', EXTRACT).status_code == 302
+
+
 # --- extraction format: long by default, so results can be converted ---------
 
 @pytest.mark.parametrize('page', ['extractall', 'extractelement', 'extractstellar'])

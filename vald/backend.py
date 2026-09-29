@@ -96,15 +96,40 @@ class JobQueue:
         return result
 
 
-# Requests this process has handed to the queue and not yet finished - queue
-# wait included, since "is anything working on this row" is the question. The
-# queue lives in this process's memory (one gunicorn worker, deliberately), so
-# this set is authoritative for the whole site, and empty after a restart -
-# which is exactly the state that strands a row at 'processing' with nothing
-# running, and what the admin rerun checks before starting a second job over the
-# same job directory and output files.
+# Requests this process has admitted and not yet finished - from the submit
+# gate, through the wait for a job thread, to the end of process_request. This
+# is what VALD_MAX_QUEUE_SIZE limits, and what the admin rerun checks before
+# starting a second job over the same job directory and output files. The queue
+# lives in this process's memory (one gunicorn worker, deliberately), so the set
+# is authoritative for the whole site, and empty after a restart - which is
+# exactly the state that strands a row at 'processing' with nothing running.
 _active_uuids = set()
 _active_lock = threading.Lock()
+
+
+def admit_request(uuid_obj):
+    """Claim a place for a new submission, or refuse it.
+
+    Returns (admitted, in_flight, limit). Check and claim under one lock: two
+    submissions arriving together must not both see the last free place.
+    """
+    limit = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
+    with _active_lock:
+        in_flight = len(_active_uuids)
+        if in_flight >= limit:
+            return False, in_flight, limit
+        _active_uuids.add(str(uuid_obj))
+        return True, in_flight + 1, limit
+
+
+def mark_active(uuid_obj):
+    with _active_lock:
+        _active_uuids.add(str(uuid_obj))
+
+
+def release_request(uuid_obj):
+    with _active_lock:
+        _active_uuids.discard(str(uuid_obj))
 
 
 def is_request_active(uuid_obj) -> bool:
@@ -187,27 +212,6 @@ def queue_snapshot():
     # A request is in _active_uuids a moment before it reaches the queue.
     waiting = min(waiting, active)
     return active - waiting, waiting
-
-
-def check_queue_capacity():
-    """
-    Check if the job queue has capacity for new requests.
-    Only counts requests from the last 30 minutes to avoid stuck requests blocking the queue.
-    
-    Returns:
-        tuple: (has_capacity: bool, current_count: int, max_size: int)
-    """
-    from django.utils import timezone
-    from datetime import timedelta
-    from .models import Request
-    
-    cutoff = timezone.now() - timedelta(minutes=30)
-    pending_count = Request.objects.filter(
-        status__in=['pending', 'processing'],
-        created_at__gte=cutoff
-    ).count()
-    max_queue_size = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
-    return (pending_count < max_queue_size, pending_count, max_queue_size)
 
 
 def uuid_to_6digit(uuid_obj):
@@ -307,8 +311,6 @@ def submit_request_direct(request_obj, krz_content=None):
         return runner.run(job_config)
     
     # Submit job to queue
-    with _active_lock:
-        _active_uuids.add(str(request_obj.uuid))
     try:
         job_queue = get_job_queue()
         success, result = job_queue.submit(execute_job)
@@ -327,9 +329,6 @@ def submit_request_direct(request_obj, krz_content=None):
         return (False, str(e))
     except Exception as e:
         return (False, f"Error executing job: {e}")
-    finally:
-        with _active_lock:
-            _active_uuids.discard(str(request_obj.uuid))
 
 
 def format_request_file(request_obj):

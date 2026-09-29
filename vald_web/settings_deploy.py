@@ -243,7 +243,7 @@ VALD_FTP_DIR = VALD_HOME / 'WWW' / 'public_html' / 'FTP'  # Output directory for
 # process (vald.service), because the queue lives in that process's memory and
 # N processes would each get their own, making the real ceiling N x this.
 VALD_MAX_THREADS = 7  # Parallel job executions (FIFO queue)
-VALD_MAX_QUEUE_SIZE = 14  # Maximum pending jobs in queue before rejecting new requests
+VALD_MAX_QUEUE_SIZE = 14  # Jobs in flight (running + waiting) before rejecting new requests
 # Maximum output lines per request, written as pres_in line 2 (R29).
 # Was previously only a getattr() fallback in job_runner, defined nowhere.
 # For reference, legacy parserequest.c used two values chosen by delivery

@@ -137,11 +137,14 @@ try to log in again, which issues another.</p>
 <h2>Requests</h2>
 
 <p>Queue right now:
-  <strong>{{ queue_stats.running }} / {{ queue_stats.max_threads }}</strong> running,
-  <strong>{{ queue_stats.waiting }} / {{ queue_stats.max_queue_size }}</strong> waiting
-  for a job thread. These come from the running process, not from request
-  rows: a request shown as <code>processing</code> that isn't counted here was
-  stranded by a restart.</p>
+  <strong>{{ queue_stats.in_flight }} / {{ queue_stats.max_queue_size }}</strong>
+  in flight, {{ queue_stats.running }} running on {{ queue_stats.max_threads }}
+  job thread{{ queue_stats.max_threads|pluralize }} and {{ queue_stats.waiting }}
+  waiting for one. New submissions are refused once in flight reaches
+  <code>VALD_MAX_QUEUE_SIZE</code>, however long the running jobs take. These
+  numbers come from the running process, not from request rows: a request shown
+  as <code>processing</code> that isn't counted here was stranded by a
+  restart.</p>
 
 <p>A request goes <code>pending</code> &rarr; <code>processing</code> &rarr;
   <code>complete</code>, or to <code>failed</code> if the job errored or hit the

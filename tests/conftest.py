@@ -45,6 +45,15 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
+def empty_job_queue(monkeypatch):
+    """A submission claims its place in the queue at the gate and gives it back
+    when the worker finishes - which, for tests that decline the worker, is
+    never. Without a fresh set each, those claims pile up across the suite until
+    submissions start being refused as 'Server is busy'."""
+    monkeypatch.setattr('vald.backend._active_uuids', set())
+
+
+@pytest.fixture(autouse=True)
 def clear_rate_limit_buckets():
     """Rate-limit state is shared (filebased cache), so it leaks between tests.
 

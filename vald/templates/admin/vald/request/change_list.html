@@ -4,12 +4,13 @@
 {% if queue_stats %}
 <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 12px 16px; margin-bottom: 20px;">
     <strong>Job Queue:</strong>
-    {{ queue_stats.running }} / {{ queue_stats.max_threads }} running,
-    {{ queue_stats.waiting }} / {{ queue_stats.max_queue_size }} waiting
+    {{ queue_stats.in_flight }} / {{ queue_stats.max_queue_size }} in flight
+    ({{ queue_stats.running }} running on {{ queue_stats.max_threads }} threads,
+    {{ queue_stats.waiting }} waiting)
     {% if queue_stats.full %}
     <span style="color: #dc3545; font-weight: bold;">⚠ QUEUE FULL</span>
     {% elif queue_stats.high_load %}
-    <span style="color: #ffc107;">⚠ High load</span>
+    <span style="color: #ffc107;">⚠ All threads busy</span>
     {% endif %}
 </div>
 {% endif %}

@@ -37,14 +37,18 @@ def get_queue_stats():
     """
     from .backend import queue_snapshot
     running, waiting = queue_snapshot()
+    in_flight = running + waiting
     max_queue_size = getattr(settings, 'VALD_MAX_QUEUE_SIZE', 10)
     return {
+        'in_flight': in_flight,
         'running': running,
         'waiting': waiting,
         'max_queue_size': max_queue_size,
         'max_threads': getattr(settings, 'VALD_MAX_THREADS', 2),
-        'full': waiting >= max_queue_size,
-        'high_load': 2 * waiting >= max_queue_size,
+        # Same test the submit gate applies, so the banner says full exactly
+        # when users are being refused.
+        'full': in_flight >= max_queue_size,
+        'high_load': waiting > 0,
     }
 
 
@@ -129,7 +133,8 @@ def admin_help(request):
          'Jobs run in parallel, as threads inside the single gunicorn process. '
          'Everything else queues.'),
         ('VALD_MAX_QUEUE_SIZE', settings.VALD_MAX_QUEUE_SIZE,
-         'Queued jobs before new submissions are refused site-wide.'),
+         'Jobs in flight, running or waiting for a thread, before new '
+         'submissions are refused site-wide.'),
         ('VALD_MAX_REQUESTS_PER_USER', settings.VALD_MAX_REQUESTS_PER_USER,
          'Per-user cap on queued jobs, so one user cannot fill the queue alone.'),
         ('VALD_MAX_LINES_PER_REQUEST', settings.VALD_MAX_LINES_PER_REQUEST,

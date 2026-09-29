@@ -1497,22 +1497,24 @@ def test_queue_banner_counts_the_live_queue_not_row_status(
     # A stranded 'processing' row, as a restart leaves it: nothing is running it.
     Request.objects.create(user=approved_user, request_type='extractall',
                            parameters={}, status='processing')
-    monkeypatch.setattr('vald.backend._active_uuids', set())
     monkeypatch.setattr('vald.backend._job_queue', None)
-    assert '0 / 2 running, 0 / 14 waiting' in queue_banner(staff_client)
+    banner = queue_banner(staff_client)
+    assert '0 / 14 in flight (0 running on 2 threads, 0 waiting)' in banner
+    assert 'All threads busy' not in banner
 
     monkeypatch.setattr('vald.backend._active_uuids', {'a', 'b', 'c'})
     monkeypatch.setattr('vald.backend._job_queue', FakeQueue(1))
     banner = queue_banner(staff_client)
-    assert '2 / 2 running, 1 / 14 waiting' in banner
-    assert 'High load' not in banner
+    assert '3 / 14 in flight (2 running on 2 threads, 1 waiting)' in banner
+    assert 'All threads busy' in banner and 'QUEUE FULL' not in banner
 
 
-def test_queue_banner_warns_on_the_waiting_count(staff_client, monkeypatch, settings):
+def test_queue_banner_is_full_exactly_when_submissions_are_refused(
+        staff_client, monkeypatch, settings):
+    """Running jobs count: the gate refuses on running + waiting."""
     settings.VALD_MAX_QUEUE_SIZE = 4
+    monkeypatch.setattr('vald.backend._active_uuids', set('abc'))
+    monkeypatch.setattr('vald.backend._job_queue', FakeQueue(0))
+    assert 'QUEUE FULL' not in queue_banner(staff_client)
     monkeypatch.setattr('vald.backend._active_uuids', set('abcd'))
-    monkeypatch.setattr('vald.backend._job_queue', FakeQueue(2))
-    assert 'High load' in queue_banner(staff_client)
-    monkeypatch.setattr('vald.backend._active_uuids', set('abcdef'))
-    monkeypatch.setattr('vald.backend._job_queue', FakeQueue(4))
     assert 'QUEUE FULL' in queue_banner(staff_client)

@@ -20,6 +20,7 @@ import glob
 import logging
 import re
 import threading
+import uuid
 
 from .models import UNIT_KEYS, Request, User, UserEmail
 from .forms import (
@@ -843,10 +844,14 @@ def process_request(req_obj, krz_content=None):
     raised for a re-run whose uploaded model has since been swept.
     """
     from django import db
+    from .backend import mark_active, release_request
 
     # Close inherited DB connections from parent thread
     db.connections.close_all()
 
+    # Already there for a fresh submission (the gate claimed it); a rerun
+    # arrives unclaimed.
+    mark_active(req_obj.uuid)
     try:
         # Import here to avoid circular imports
         from .backend import submit_request_direct
@@ -986,6 +991,8 @@ def process_request(req_obj, krz_content=None):
             req_obj.save()
         except Exception as save_error:
             logger.exception(f"Failed to save exception status for request {req_obj.uuid}: {save_error}")
+    finally:
+        release_request(req_obj.uuid)
 
 
 def rerun_request(req_obj):
@@ -1144,23 +1151,29 @@ def handle_extract_request(request):
             'before submitting another.'
         )
 
-    # Check queue capacity before creating request
-    from .backend import check_queue_capacity, notify_queue_full
-    has_capacity, current_count, max_size = check_queue_capacity()
-    if not has_capacity:
+    # The uuid is chosen here so the place can be claimed before the row
+    # exists: a refused submission leaves no row behind.
+    from .backend import admit_request, notify_queue_full, release_request
+    request_uuid = uuid.uuid4()
+    admitted, in_flight, limit = admit_request(request_uuid)
+    if not admitted:
         notify_queue_full()
         return reject(
-            f'Server is busy processing requests ({current_count}/{max_size} in queue). '
+            f'Server is busy processing requests ({in_flight}/{limit} in queue). '
             'Please try again in a few minutes.'
         )
 
-    # Create Request record for tracking
-    req_obj = Request.objects.create(
-        user=user,
-        request_type=reqtype,
-        parameters=request_params,
-        status='pending'
-    )
+    try:
+        req_obj = Request.objects.create(
+            uuid=request_uuid,
+            user=user,
+            request_type=reqtype,
+            parameters=request_params,
+            status='pending'
+        )
+    except Exception:
+        release_request(request_uuid)
+        raise
 
     # Start background processing
     start_background_worker(lambda: process_request(req_obj, krz_content))
