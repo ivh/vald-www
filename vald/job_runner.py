@@ -9,6 +9,7 @@ import os
 import gzip
 import re
 import logging
+import select
 import shlex
 import shutil
 import signal
@@ -34,6 +35,19 @@ STDERR_EXCERPT_BYTES = 2000
 
 # How much of it to show the user
 USER_ERROR_MAX_CHARS = 200
+
+# preselect5 and showline report input they cannot use - above all a species
+# missing from VALD_list_of_species.csv - with an ERROR line on stdout and exit
+# 0. For preselect5 that line goes down the pipe, so all the request showed was
+# the next stage's EOF: "presformat5 failed: ... End of file".
+STDOUT_ERROR_RE = re.compile(r'^\s*(ERROR:.*)$', re.M)
+
+# Bounds the re-run in _preselect_complaint(). preselect5 rejects its input
+# before opening a single linelist, within milliseconds, so this is only reached
+# on a run it accepted - for the same reason a timed-out job is never probed.
+PRESELECT_PROBE_TIMEOUT = 5
+
+JOB_TIMED_OUT = "Job execution timed out"
 
 # Hitting VALD_MAX_LINES_PER_REQUEST is not an error, so no stage reports it in
 # its return code - both exit 0 having quietly stopped early. The two that
@@ -103,6 +117,19 @@ def summarise_stage_error(stderr_text: str) -> str:
     if len(summary) > USER_ERROR_MAX_CHARS:
         summary = summary[:USER_ERROR_MAX_CHARS].rstrip() + '...'
     return summary
+
+
+def stdout_error(text: str) -> str:
+    """The ERROR line a binary wrote to stdout, condensed, or ''.
+
+    The Fortran pads the species it echoes to the full field width, hence the
+    whitespace collapsing.
+    """
+    match = STDOUT_ERROR_RE.search(text[:STDERR_EXCERPT_BYTES])
+    if not match:
+        return ''
+    line = re.sub(r'"\s*([^"]*?)\s*"', r'"\1"', match.group(1))
+    return summarise_stage_error(' '.join(line.split()))
 
 
 @dataclass
@@ -274,6 +301,36 @@ class JobRunner:
         text = raw[-STDERR_EXCERPT_BYTES:].decode('utf-8', 'replace').strip()
         return summarise_stage_error(text)
 
+    def _preselect_complaint(self, config: JobConfig) -> str:
+        """preselect5's own ERROR line for a failed job, or ''.
+
+        That line went into the pipe and was consumed by the next stage, so it
+        is recovered by running preselect5 again on the same pres_in and reading
+        only its first line - an ERROR, or on input it accepted, the config path.
+        """
+        pres_in_path = config.job_dir / f"pres_in.{config.job_id:06d}"
+        if not pres_in_path.exists():
+            return ''
+        with open(pres_in_path, 'r') as pres_in:
+            proc = subprocess.Popen(
+                [str(self.preselect)],
+                stdin=pres_in,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                cwd=config.job_dir
+            )
+        try:
+            ready, _, _ = select.select([proc.stdout], [], [], PRESELECT_PROBE_TIMEOUT)
+            first = proc.stdout.readline(STDERR_EXCERPT_BYTES) if ready else b''
+        finally:
+            self._kill_all([proc])
+            proc.stdout.close()
+        complaint = stdout_error(first.decode('utf-8', 'replace'))
+        if complaint:
+            logger.error("preselect5 rejected its input in %s: %s",
+                         config.job_dir, complaint)
+        return complaint
+
     def _kill_all(self, procs):
         """Kill any still-running process in the pipeline and reap them all."""
         for proc in procs:
@@ -378,9 +435,14 @@ class JobRunner:
             if config.request_type == 'showline':
                 return self._run_showline(config)
             elif config.request_type == 'extractstellar':
-                return self._run_stellar(config)
+                result = self._run_stellar(config)
             else:
-                return self._run_extract(config)
+                result = self._run_extract(config)
+            if not result[0] and result[1] != JOB_TIMED_OUT:
+                complaint = self._preselect_complaint(config)
+                if complaint:
+                    return (False, f"preselect5 failed: {complaint}")
+            return result
         except Exception as e:
             return (False, f"Job execution error: {summarise_stage_error(str(e))}")
     
@@ -425,7 +487,7 @@ class JobRunner:
         except subprocess.TimeoutExpired:
             logger.error("Extract pipeline timed out after %ss in %s",
                          self.pipeline_timeout, config.job_dir)
-            return (False, "Job execution timed out")
+            return (False, JOB_TIMED_OUT)
         except Exception as e:
             logger.exception("Extract pipeline error in %s", config.job_dir)
             return (False, f"Pipeline error: {summarise_stage_error(str(e))}")
@@ -696,7 +758,7 @@ class JobRunner:
         except subprocess.TimeoutExpired:
             logger.error("Stellar pipeline timed out after %ss in %s",
                          self.pipeline_timeout, cwd)
-            return (False, "Job execution timed out")
+            return (False, JOB_TIMED_OUT)
         except Exception as e:
             logger.exception("Stellar pipeline error in %s", cwd)
             return (False, f"Stellar pipeline error: {summarise_stage_error(str(e))}")
@@ -768,9 +830,18 @@ class JobRunner:
                         out.write(f"Query failed: {detail}\n")
                         continue
 
+                    output_text = result.stdout.decode('utf-8', 'replace')
+                    complaint = stdout_error(output_text)
+                    if complaint:
+                        logger.error("showline query %d (%s %s) rejected: %s",
+                                     i, element, wl_center, complaint)
+                        failures.append(
+                            f"query {i + 1} ({element} at {wl_center}): {complaint}")
+                        out.write(f"Query failed: {complaint}\n")
+                        continue
+
                     # Write output, skipping the interactive prompts
                     # Prompts end after "Which data base information file..."
-                    output_text = result.stdout.decode()
                     lines = output_text.split('\n')
                     
                     # Find where actual data starts (after the prompts)

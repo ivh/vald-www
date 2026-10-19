@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from pathlib import Path
 import re
 
-from . import abundances, job_runner, krz
+from . import abundances, job_runner, krz, species
 from .models import UNIT_KEYS, User, UserPreferences
 
 
@@ -117,7 +117,8 @@ class UserPreferencesForm(forms.ModelForm):
 # opaque failure inside preselect5/select5.
 
 # <element> [spectral number], allowing an isotope prefix (48Ca 2) and
-# molecules (TiO, H2O). Deliberately permissive about the species itself.
+# molecules (TiO, H2O). Only the shape: whether VALD has the species is
+# species.problem()'s job.
 ELEMENT_ION_RE = re.compile(r'^\d{0,3}[A-Za-z][A-Za-z0-9]{0,5}(?: \d{1,2})?$')
 
 
@@ -310,13 +311,20 @@ def clean_element_ionization(value, field_label='Element'):
 
     parts = collapsed.split(' ')
     if len(parts) > 1 and not parts[1].isdigit():
-        raise ValidationError("Please express the ionization stage as an arabic number")
+        message = 'Please express the ionization stage as an arabic number'
+        if len(parts) == 2 and parts[1] in species.ROMAN_STAGES:
+            message += f' - "{parts[0]} {species.ROMAN_STAGES[parts[1]]}"'
+        raise ValidationError(f'{message}. {species.STAGE_HINT}')
 
     if not ELEMENT_ION_RE.match(collapsed):
         raise ValidationError(
             f'{field_label} must be an element, optionally followed by an '
             'ionization stage - for example "Fe" or "Fe 3".'
         )
+
+    problem = species.problem(collapsed)
+    if problem:
+        raise ValidationError(problem)
 
     return collapsed
 

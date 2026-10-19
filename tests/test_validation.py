@@ -4,6 +4,8 @@ The values covered here are written into the control files the Fortran binaries
 read, where a newline shifts every following line and missing quotes make a whole
 block get skipped. Both were real defects.
 """
+import re
+
 import pytest
 
 from vald import abundances
@@ -26,6 +28,35 @@ SHOWLINE_BASE = {'wvl0': '5000', 'win0': '0.5',
 
 
 # --- R3: element + ionization ----------------------------------------------
+
+# Enough of VALD_list_of_species.csv for every species named below, in its own
+# layout: version tag, column names, then Use,Index,Name,Charge,...
+SPECIES_CSV = """#VER03.03,,,,
+Use,Index,Name,Charge,InChI
+1,1,H,0,x
+1,29,O,0,x
+1,32,O,3,x
+""" + "".join(f"1,{i},Fe,{c},x\n" for i, c in enumerate(range(26), start=326)) + """1,60,Ca,0,x
+1,61,Ca,1,x
+1,62,Co,0,x
+1,63,N,0,x
+1,10010,CO,0,x
+1,10011,TiO,0,x
+1,10020,H2O,0,x
+1,10001,C2,0,x
+1,10030,MgH,0,x
+"""
+
+
+@pytest.fixture(autouse=True)
+def species_list(tmp_path, settings):
+    from vald import species
+    path = tmp_path / 'VALD_list_of_species.csv'
+    path.write_text(SPECIES_CSV)
+    settings.VALD_SPECIES_LIST = path
+    yield
+    species._load.cache_clear()
+
 
 @pytest.mark.parametrize('value,normalised', [
     ('Fe', 'Fe'),
@@ -55,6 +86,49 @@ def test_documented_element_forms_are_accepted(value, normalised):
 ])
 def test_malformed_element_is_rejected(value):
     assert not ExtractElementForm({**ELEMENT_BASE, 'elmion': value}).is_valid()
+
+
+def element_error(value):
+    form = ExtractElementForm({**ELEMENT_BASE, 'elmion': value})
+    assert not form.is_valid()
+    return form.errors['elmion'][0]
+
+
+# Each of these reached preselect5, which wrote an ERROR into its output stream
+# and exited 0 - failing the request with presformat5's EOF, or for the
+# lowercase name completing it with no lines at all.
+@pytest.mark.parametrize('value,hint', [
+    ('FeI', '"Fe 1"'),
+    ('OI', '"O 1"'),
+    ('O1', '"O 1"'),
+    ('Fe2', '"Fe 2"'),
+    ('NI', '"N 1"'),           # nitrogen, not nickel
+    ('Fe I', '"Fe 1"'),
+    ('fe 1', '"Fe 1"'),
+    ('o 4', '"O 4"'),
+    ('co', '"CO" or "Co"'),
+])
+def test_misspelt_species_gets_the_spelling_vald_wants(value, hint):
+    assert hint in element_error(value)
+
+
+@pytest.mark.parametrize('value', ['HII', 'H 2', 'O 2'])
+def test_stage_vald_lacks_names_the_stages_it_has(value):
+    assert 'ionization stage' in element_error(value)
+
+
+@pytest.mark.parametrize('value', ['Fe 0', 'FeI', 'H 2', 'Fe I'])
+def test_stage_errors_say_that_one_is_neutral(value):
+    assert re.search(r'1 (is|for) neutral', element_error(value))
+
+
+def test_unknown_species_is_named():
+    assert element_error('AlH 1') == '"AlH" is not in the VALD species list.'
+
+
+def test_unreadable_species_list_falls_back_to_shape_only(settings, tmp_path):
+    settings.VALD_SPECIES_LIST = tmp_path / 'missing.csv'
+    assert ExtractElementForm({**ELEMENT_BASE, 'elmion': 'AlH 1'}).is_valid()
 
 
 @pytest.mark.parametrize('form_class,extra', [

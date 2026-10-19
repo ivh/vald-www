@@ -434,6 +434,16 @@ def test_long_format_wavenumbers_run(run_job):
     assert data_rows(run.text), 'no lines formatted on the long/cm^-1 path'
 
 
+def test_a_species_preselect_rejects_is_reported_in_its_words(run_job):
+    """preselect5 writes this ERROR into the pipe and exits 0, so without
+    _preselect_complaint() the user saw only presformat5's EOF."""
+    run = run_job(request_type='extractelement', element='FeI',
+                  max_lines=500000, format_flags=flags())
+    assert not run.ok
+    assert run.result == ('preselect5 failed: ERROR: element "FeI" is not in '
+                          'the VALD species list')
+
+
 # --- HFS ------------------------------------------------------------------
 
 def test_hfs_works_for_an_element_filtered_request(run_job):
