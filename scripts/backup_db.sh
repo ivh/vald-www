@@ -25,10 +25,15 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 DB="${VALD_DB:-$REPO_DIR/db.sqlite3}"
 BACKUP_DIR="${VALD_BACKUP_DIR:-$REPO_DIR/backups}"
-RETENTION_DAYS="${VALD_BACKUP_RETENTION_DAYS:-90}"
+# Thinning: every snapshot younger than KEEP_DAILY days, then the newest one per
+# ISO week up to KEEP_WEEKLY weeks back, then the newest one per month up to
+# KEEP_MONTHLY months back. Anything older is deleted.
+KEEP_DAILY="${VALD_BACKUP_KEEP_DAILY:-14}"
+KEEP_WEEKLY="${VALD_BACKUP_KEEP_WEEKLY:-12}"
+KEEP_MONTHLY="${VALD_BACKUP_KEEP_MONTHLY:-24}"
 # Never prune below this many snapshots, however old they are. Without it, an
-# outage longer than the retention window leaves you with nothing at all.
-KEEP_MIN="${VALD_BACKUP_KEEP_MIN:-14}"
+# outage longer than the whole schedule leaves you with nothing at all.
+KEEP_MIN="${VALD_BACKUP_KEEP_MIN:-7}"
 
 die() { echo "backup_db: $*" >&2; exit 1; }
 
@@ -64,16 +69,44 @@ ln -sfn "$name" "$BACKUP_DIR/latest.sqlite3"
 size="$(du -h "$BACKUP_DIR/$name" | cut -f1)"
 echo "backup_db: wrote $BACKUP_DIR/$name ($size)"
 
-# Prune: drop snapshots older than the retention window, but only those outside
-# the newest KEEP_MIN.
+# Prune. Ages come from the timestamp in the filename, not mtime, so a copied
+# or restored backup dir keeps its schedule. Walking newest-first means each
+# week/month is represented by its latest snapshot.
+now="$(date +%s)"
 pruned=0
-protected="$(ls -1 "$BACKUP_DIR"/vald-db-*.sqlite3 2>/dev/null | sort -r | head -n "$KEEP_MIN")"
-while IFS= read -r old; do
-    [ -n "$old" ] || continue
-    if ! grep -qxF "$old" <<<"$protected"; then
-        rm -f "$old" && pruned=$((pruned + 1))
+n=0
+seen_weeks=" "
+seen_months=" "
+while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    n=$((n + 1))
+    f="${path##*/}"
+    day="${f:8:10}"   # vald-db-YYYY-MM-DDTHHMMSS-<rev>.sqlite3
+    if ! ts="$(date -d "$day" +%s 2>/dev/null)"; then
+        echo "backup_db: cannot parse date in $f, leaving it alone" >&2
+        continue
     fi
-done < <(find "$BACKUP_DIR" -maxdepth 1 -name 'vald-db-*.sqlite3' -mtime +"$RETENTION_DAYS")
+    age=$(( (now - ts) / 86400 ))
+    week="$(date -d "$day" +%G-W%V)"
+    month="${day:0:7}"
+
+    keep=0
+    if [ "$n" -le "$KEEP_MIN" ] || [ "$age" -lt "$KEEP_DAILY" ]; then
+        keep=1
+    elif [ "$age" -lt $((KEEP_WEEKLY * 7)) ]; then
+        [[ "$seen_weeks" == *" $week "* ]] || keep=1
+    elif [ "$age" -lt $((KEEP_MONTHLY * 31)) ]; then
+        [[ "$seen_months" == *" $month "* ]] || keep=1
+    fi
+    # Daily-tier snapshots count as their week's/month's representative too,
+    # otherwise each day ageing out of a tier would survive as one more extra.
+    seen_weeks+="$week "
+    seen_months+="$month "
+
+    if [ "$keep" -eq 0 ]; then
+        rm -f "$path" && pruned=$((pruned + 1))
+    fi
+done < <(find "$BACKUP_DIR" -maxdepth 1 -name 'vald-db-*.sqlite3' | sort -r)
 
 remaining="$(find "$BACKUP_DIR" -maxdepth 1 -name 'vald-db-*.sqlite3' | wc -l | tr -d ' ')"
 echo "backup_db: pruned $pruned, $remaining snapshot(s) retained"
