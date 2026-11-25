@@ -22,7 +22,7 @@ from django.urls import path, include
 from django.views.generic import RedirectView
 from django_ratelimit.decorators import ratelimit
 
-from vald.admin import admin_help, admin_stats
+from vald.admin import admin_help, admin_stats, admin_user_stats
 
 # Customize admin site
 admin.site.site_header = "VALD admin"
@@ -67,6 +67,7 @@ urlpatterns = [
     # to no single ModelAdmin.
     path("admin/help/", admin_help, name="admin_help"),
     path("admin/stats/", admin_stats, name="admin_stats"),
+    path("admin/stats/users/", admin_user_stats, name="admin_user_stats"),
 
     # The index is an app list and nothing else, which the sidebar already shows
     # on every other page - and it is the one admin page with no sidebar at all,

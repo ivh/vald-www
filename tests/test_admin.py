@@ -236,7 +236,7 @@ def test_admin_root_lands_on_the_user_list(staff_client):
 @pytest.mark.django_db
 def test_the_redirect_only_shadows_the_index(staff_client):
     """An exact "admin/" match, so everything under it still reaches the site."""
-    for page in ('/admin/vald/user/', '/admin/stats/', '/admin/help/',
+    for page in ('/admin/vald/user/', '/admin/stats/', '/admin/stats/users/', '/admin/help/',
                  '/admin/password_change/'):
         assert staff_client.get(page).status_code == 200, page
 
@@ -1518,3 +1518,89 @@ def test_queue_banner_is_full_exactly_when_submissions_are_refused(
     assert 'QUEUE FULL' not in queue_banner(staff_client)
     monkeypatch.setattr('vald.backend._active_uuids', set('abcd'))
     assert 'QUEUE FULL' in queue_banner(staff_client)
+
+
+# --- User statistics -------------------------------------------------------
+
+@pytest.mark.django_db
+def test_user_stats_page_requires_staff():
+    response = Client().get('/admin/stats/users/')
+    assert response.status_code == 302
+    assert '/admin/login/' in response['Location']
+
+
+@pytest.mark.django_db
+def test_user_stats_page_renders_before_any_request(staff_client):
+    make_user('Lonely', is_active=True)
+    response = staff_client.get('/admin/stats/users/')
+    assert response.status_code == 200
+    assert not response.context['launched']
+
+
+@pytest.mark.django_db
+def test_user_stats_is_in_the_sidebar(staff_client):
+    body = staff_client.get('/admin/stats/').content.decode()
+    assert 'href="/admin/stats/users/"' in sidebar_of(body)
+
+
+@pytest.mark.django_db
+def test_user_stats_splits_imported_from_registered(staff_client):
+    from datetime import timedelta
+    from django.utils import timezone
+    now = timezone.now()
+    legacy_back = make_user('LegacyBack', is_active=True, password='pw-for-testing-123')
+    make_user('LegacyGone', is_active=True)
+    User.objects.filter(name__startswith='Legacy').update(created_at=now - timedelta(days=200))
+    make_request(legacy_back, now - timedelta(days=100))   # launch
+    fresh = make_user('Fresh', is_active=True, password='pw-for-testing-123')
+    make_user('Waiting', is_active=False)
+
+    make_request(legacy_back, now - timedelta(days=60))
+    make_request(fresh, now - timedelta(days=2))
+    make_request(fresh, now - timedelta(days=1))
+
+    context = staff_client.get('/admin/stats/users/').context
+    legacy, registered, everyone = context['cohorts']
+    assert legacy['accounts'] == 2 and registered['accounts'] == 2
+    assert legacy['activated']['n'] == 1 and legacy['ever']['n'] == 1
+    # 7, 30, 90 days: the legacy user was last seen 60 days ago
+    assert [w['n'] for w in legacy['windows']] == [0, 0, 1]
+    assert [w['n'] for w in registered['windows']] == [1, 1, 1]
+    assert everyone['ever']['n'] == 2
+    assert context['funnel']['pending'] == 1
+    assert context['funnel']['submitted'] == 1
+    assert {r['name']: r['days'] for r in context['regulars']} == {
+        'Fresh': 2, 'LegacyBack': 2}
+
+
+@pytest.mark.django_db
+def test_user_stats_cohort_links_filter_the_changelist(staff_client):
+    make_user('Old', is_active=True)
+    User.objects.filter(name='Old').update(created_at=local(2026, 5, 1))
+    make_user('New', is_active=True)
+    make_request(User.objects.get(name='Old'), local(2026, 6, 1))
+    cohorts = staff_client.get('/admin/stats/users/').context['cohorts']
+    for cohort in cohorts[:2]:
+        assert staff_client.get(cohort['url']).context['cl'].result_count == 1
+
+
+@pytest.mark.django_db
+def test_user_stats_counts_rejections_from_the_log(staff_client):
+    pending = make_user('Spam', is_active=False)
+    make_request(make_user('Real', is_active=True), local(2026, 6, 1))
+    run_action(staff_client, 'reject_registration', [pending])
+    funnel = staff_client.get('/admin/stats/users/').context['funnel']
+    assert funnel['rejected'] == 1
+    assert funnel['applied'] == funnel['kept'] + 1
+
+
+@pytest.mark.parametrize('domain, expected', [
+    ('astro.uu.se', 'uu.se'),
+    ('physics.ox.ac.uk', 'ox.ac.uk'),
+    ('mail.ustc.edu.cn', 'ustc.edu.cn'),
+    ('cfa.harvard.edu', 'harvard.edu'),
+    ('gmail.com', 'gmail.com'),
+])
+def test_email_domains_collapse_to_the_institution(domain, expected):
+    from vald.admin import _institution
+    assert _institution(domain) == expected

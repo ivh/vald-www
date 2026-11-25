@@ -11,9 +11,10 @@ from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
-from django.db.models import (Count, DateField, DateTimeField, DurationField,
-                              ExpressionWrapper, F, Min, Q)
-from django.db.models.functions import TruncDay, TruncHour, TruncMonth, TruncYear
+from django.db.models import (BooleanField, Count, DateField, DateTimeField, DurationField,
+                              ExpressionWrapper, F, Max, Min, Q)
+from django.db.models.functions import (TruncDay, TruncHour, TruncMonth, TruncWeek,
+                                       TruncYear)
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.template.loader import render_to_string
@@ -267,6 +268,7 @@ _BUCKET_FORMATS = {
     'day': ('%Y-%m-%d', '%d %b'),
     'month': ('%B %Y', '%b %y'),
     'year': ('%Y', '%Y'),
+    'week': ('week of %Y-%m-%d', '%d %b'),
 }
 
 # Hour buckets are naive local datetimes; the coarser ones are plain dates. Both
@@ -658,6 +660,363 @@ def admin_stats(request):
         'help_url': reverse('admin_help'),
     }
     return render(request, 'admin/vald/stats.html', context)
+
+
+# Trailing windows, in days, that "active" is reported over. Active means
+# submitted a request: nothing records a login, and a login without a request
+# is not use of VALD anyway.
+ACTIVE_WINDOWS = (7, 30, 90)
+
+# Under these second-level labels a domain names a sector, not an institution:
+# ox.ac.uk is Oxford, ac.uk is every university in the UK.
+_SECTOR_LABELS = {'ac', 'edu', 'co', 'com', 'org', 'gov', 'net', 'res', 'sci', 'nic'}
+
+
+def _institution(domain):
+    labels = domain.lower().rstrip('.').split('.')
+    keep = 3 if (len(labels) >= 3 and labels[-2] in _SECTOR_LABELS
+                 and len(labels[-1]) == 2) else 2
+    return '.'.join(labels[-keep:])
+
+
+def _format_wait(seconds):
+    if seconds is None:
+        return '-'
+    if seconds < 2 * 86400:
+        return _format_positive_duration(seconds)
+    return f'{seconds / 86400:.1f} days'
+
+
+def _stacked_chart(buckets, series, period):
+    """Bar geometry for several series stacked per bucket, bottom first.
+
+    `series` is a list of (label, css_class, values). Same canvas as _chart, so
+    the two pages' charts line up when flicked between.
+    """
+    title_fmt, tick_fmt = _BUCKET_FORMATS[period]
+    plot_w = _SVG_W - _PLOT_L - _PLOT_R
+    plot_h = _SVG_H - _PLOT_T - _PLOT_B
+    baseline = _PLOT_T + plot_h
+
+    totals = [sum(column) for column in zip(*(values for _, _, values in series))]
+    top, ticks = _y_ticks(max(totals, default=0))
+    step = plot_w / len(buckets)
+    bar_w = min(step * 0.8, 60)
+    label_every = math.ceil(len(buckets) / _MAX_X_LABELS)
+
+    bars, labels = [], []
+    for i, bucket in enumerate(buckets):
+        centre = _PLOT_L + i * step + step / 2
+        y = baseline
+        segments = []
+        for _, css, values in series:
+            if not values[i]:
+                continue
+            height = plot_h * values[i] / top
+            y -= height
+            segments.append({'y': round(y, 2), 'h': round(height, 2), 'css': css})
+        parts = ', '.join(f'{values[i]} {label}' for label, _, values in series)
+        bars.append({
+            'x': round(centre - bar_w / 2, 2),
+            'w': round(bar_w, 2),
+            'segments': segments,
+            'title': f'{bucket.strftime(title_fmt)}: {parts}' if totals[i]
+                     else f'{bucket.strftime(title_fmt)}: none',
+        })
+        if i % label_every == 0:
+            labels.append({'x': round(centre, 2), 'text': bucket.strftime(tick_fmt)})
+
+    return {
+        'width': _SVG_W,
+        'height': _SVG_H,
+        'baseline': baseline,
+        'plot_left': _PLOT_L,
+        'plot_right': _SVG_W - _PLOT_R,
+        'plot_top': _PLOT_T,
+        'plot_height': plot_h,
+        'label_y': baseline + 18,
+        'bars': bars,
+        'x_labels': labels,
+        'legend': [{'label': label, 'css': css, 'total': sum(values)}
+                   for label, css, values in series],
+        'y_ticks': [
+            {'value': v, 'y': round(baseline - plot_h * v / top, 2)}
+            for v in ticks
+        ],
+    }
+
+
+def _weekly(rows, buckets):
+    """{bucket: n} from (aware-or-date bucket, n) rows, as a list over buckets."""
+    by_bucket = {}
+    for bucket, n in rows:
+        key = _bucket_key(bucket)
+        by_bucket[key] = by_bucket.get(key, 0) + n
+    return [by_bucket.get(b, 0) for b in buckets]
+
+
+def _cohort_row(label, qs, activity, now, changelist_url):
+    pks = set(qs.values_list('pk', flat=True))
+    accounts = len(pks)
+    mine = [a for pk, a in activity.items() if pk in pks]
+
+    def share(n):
+        return {'n': n, 'pct': f'{100 * n / accounts:.1f}%' if accounts else '-'}
+
+    return {
+        'label': label,
+        'accounts': accounts,
+        'url': changelist_url,
+        'activated': share(qs.exclude(NO_PASSWORD).count()),
+        'ever': share(len(mine)),
+        'windows': [share(sum(1 for a in mine if a['last'] >= now - timedelta(days=d)))
+                    for d in ACTIVE_WINDOWS],
+    }
+
+
+@staff_member_required
+def admin_user_stats(request):
+    """Who the accounts are, where they came from, and who is still using VALD.
+
+    No date controls, unlike the request page: everything here is measured from
+    the launch of this site, which is the only span the data covers. The legacy
+    system's request history was never imported, so for a legacy account
+    "active" can only mean active since the switch.
+
+    Legacy means created before the first request on this site. That is nearly
+    the import_users run; the two later, small imports (2026-08-11 and
+    2026-09-13, 16 accounts) count as registered here, and the couple of test
+    and early accounts made before the first request count as legacy. Accepted
+    in exchange for not tracking origin in the schema.
+    """
+    from django.contrib.admin.models import DELETION
+    from django.contrib.contenttypes.models import ContentType
+
+    now = timezone.now()
+    first_request = Request.objects.aggregate(first=Min('created_at'))['first']
+    user_changelist = reverse('admin:vald_user_changelist')
+
+    base = {
+        **admin.site.each_context(request),
+        'title': 'User statistics',
+        'request_stats_url': reverse('admin_stats'),
+    }
+    if first_request is None:
+        return render(request, 'admin/vald/user_stats.html', {**base, 'launched': False})
+
+    launch = timezone.localtime(first_request).date()
+    first_week = launch - timedelta(days=launch.weekday())
+    this_week = timezone.localdate() - timedelta(days=timezone.localdate().weekday())
+    buckets = []
+    cur = first_week
+    while cur <= this_week:
+        buckets.append(cur)
+        cur += timedelta(weeks=1)
+    buckets = buckets[-STATS_MAX_BUCKETS:]
+    window_start = timezone.make_aware(_as_datetime(buckets[0]))
+
+    def by_week(qs, field):
+        return qs.annotate(bucket=TruncWeek(field, output_field=DateField()))
+
+    # Every account that ever submitted, with its first and last request and how
+    # many distinct days it showed up on. One grouped query; the rest of the page
+    # is arithmetic over this dict.
+    activity = {
+        row['user_id']: row for row in
+        Request.objects.filter(user__isnull=False)
+        .values('user_id')
+        .annotate(first=Min('created_at'), last=Max('created_at'), n=Count('id'),
+                  days=Count(TruncDay('created_at'), distinct=True))
+    }
+    accounts = {
+        row['pk']: row for row in
+        User.objects.filter(pk__in=activity).values('pk', 'name', 'created_at')
+    }
+    for row in accounts.values():
+        row['legacy'] = row['created_at'] < first_request
+
+    legacy = User.objects.filter(created_at__lt=first_request)
+    registered = User.objects.filter(created_at__gte=first_request)
+    # Same form DateFieldListFilter emits, so the sidebar shows it as selected.
+    cohorts = [
+        _cohort_row('Legacy (existed before launch)', legacy, activity, now,
+                    f'{user_changelist}?{urlencode({"created_at__lt": str(first_request)})}'),
+        _cohort_row('Registered on this site', registered, activity, now,
+                    f'{user_changelist}?{urlencode({"created_at__gte": str(first_request)})}'),
+        _cohort_row('All accounts', User.objects.all(), activity, now, user_changelist),
+    ]
+
+    # Registrations per week, coloured by where each account stands today. A
+    # rejected registration leaves no row, only the admin log's deletion entry,
+    # so those are filed under the week they were rejected rather than the week
+    # they arrived.
+    states = [
+        ('activated', 'state-activated', registered.exclude(NO_PASSWORD)),
+        ('approved, not yet activated', 'state-approved',
+         registered.filter(NO_PASSWORD, is_active=True)),
+        ('awaiting approval', 'state-pending', registered.filter(PENDING_APPROVAL)),
+    ]
+    reg_series = [
+        (label, css, _weekly(by_week(qs.filter(created_at__gte=window_start), 'created_at')
+                             .values('bucket').annotate(n=Count('id'))
+                             .values_list('bucket', 'n'), buckets))
+        for label, css, qs in states
+    ]
+    deletions = LogEntry.objects.filter(
+        content_type=ContentType.objects.get_for_model(User), action_flag=DELETION)
+    reg_series.append((
+        'deleted (rejected)', 'state-rejected',
+        _weekly(by_week(deletions.filter(action_time__gte=window_start), 'action_time')
+                .values('bucket').annotate(n=Count('id'))
+                .values_list('bucket', 'n'), buckets)))
+
+    # Weekly active accounts, split by origin.
+    wau = (by_week(Request.objects.filter(created_at__gte=window_start, user__isnull=False),
+                   'created_at')
+           .annotate(legacy=ExpressionWrapper(Q(user__created_at__lt=first_request),
+                                              output_field=BooleanField()))
+           .values('bucket', 'legacy')
+           .annotate(n=Count('user_id', distinct=True)))
+    wau_series = [
+        (label, css, _weekly(((r['bucket'], r['n']) for r in wau
+                              if bool(r['legacy']) == flag), buckets))
+        for label, css, flag in (('legacy', 'origin-legacy', True),
+                                 ('registered here', 'origin-registered', False))
+    ]
+
+    # First request per account, i.e. when each one (re)appeared on this site.
+    firsts = {True: {}, False: {}}
+    for pk, a in activity.items():
+        local_first = timezone.localtime(a['first']).date()
+        week = local_first - timedelta(days=local_first.weekday())
+        is_legacy = accounts.get(pk, {}).get('legacy', False)
+        firsts[is_legacy][week] = firsts[is_legacy].get(week, 0) + 1
+    firsts_series = [
+        (label, css, [firsts[flag].get(b, 0) for b in buckets])
+        for label, css, flag in (('legacy', 'origin-legacy', True),
+                                 ('registered here', 'origin-registered', False))
+    ]
+
+    # The registration funnel, over accounts created on this site. Each step is a
+    # subset of the one before, except that an approval can be skipped by an
+    # admin who sets a password directly.
+    reg_pks = set(registered.values_list('pk', flat=True))
+    waits = sorted(
+        (activity[pk]['first'] - accounts[pk]['created_at']).total_seconds()
+        for pk in reg_pks if pk in activity
+    )
+    rejected_total = deletions.count()
+    funnel = {
+        'applied': len(reg_pks) + rejected_total,
+        'rejected': rejected_total,
+        'kept': len(reg_pks),
+        'approved': registered.exclude(PENDING_APPROVAL).count(),
+        'activated': registered.exclude(NO_PASSWORD).count(),
+        'submitted': len(waits),
+        'pending': registered.filter(PENDING_APPROVAL).count(),
+        'median_wait': _format_wait(_percentile(waits, 50)),
+        'quick': sum(1 for w in waits if w < 86400),
+    }
+
+    # Habit: on how many distinct days each account has come back.
+    habit_bins = ((1, 1, 'once'), (2, 4, '2-4 days'), (5, 19, '5-19 days'),
+                  (20, None, '20 days or more'))
+    habits = []
+    for lo, hi, label in habit_bins:
+        n = sum(1 for a in activity.values()
+                if a['days'] >= lo and (hi is None or a['days'] <= hi))
+        habits.append({'label': label, 'count': n,
+                       'pct': f'{100 * n / len(activity):.0f}%' if activity else '-'})
+
+    regulars = []
+    for pk, a in sorted(activity.items(),
+                        key=lambda kv: (-kv[1]['days'], -kv[1]['n']))[:15]:
+        regulars.append({
+            'name': accounts.get(pk, {}).get('name', 'Unknown'),
+            'url': reverse('admin:vald_user_change', args=[pk]),
+            'legacy': accounts.get(pk, {}).get('legacy', False),
+            'days': a['days'],
+            'requests': a['n'],
+            'first': a['first'],
+            'last': a['last'],
+        })
+
+    # Where recent users write from. The primary address stands in for the
+    # account; an account pooled from several registers counts once.
+    recent_cut = now - timedelta(days=max(ACTIVE_WINDOWS))
+    recent_pks = [pk for pk, a in activity.items() if a['last'] >= recent_cut]
+    email_of = {}
+    for user_id, email in (UserEmail.objects.filter(user_id__in=recent_pks)
+                           .order_by('-is_primary', 'id')
+                           .values_list('user_id', 'email')):
+        email_of.setdefault(user_id, email)
+    institutions, tlds = {}, {}
+    for email in email_of.values():
+        domain = email.rpartition('@')[2].lower()
+        if not domain:
+            continue
+        inst = _institution(domain)
+        institutions[inst] = institutions.get(inst, 0) + 1
+        tld = '.' + domain.rsplit('.', 1)[-1]
+        tlds[tld] = tlds.get(tld, 0) + 1
+
+    def top(counts, n):
+        return [{'name': k, 'count': v}
+                for k, v in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:n]]
+
+    # Which linelist configuration and units the recent users actually pick, by
+    # account rather than by request so one heavy user cannot dominate.
+    config_names = {c.slug: c.name for c in Config.objects.filter(user__isnull=True)
+                    if c.slug}
+    config_names.update({'default': 'Default', 'personal': 'Personal config'})
+    recent_requests = Request.objects.filter(created_at__gte=recent_cut,
+                                             user__isnull=False)
+    choices = []
+    for key, title in (('pconf', 'Linelist configuration'), ('medium', 'Medium'),
+                       ('waveunit', 'Wavelength unit'), ('energyunit', 'Energy unit'),
+                       ('format', 'Output format')):
+        rows = (recent_requests.values(f'parameters__{key}')
+                .annotate(n=Count('user_id', distinct=True))
+                .order_by('-n'))
+        values = []
+        for row in rows:
+            raw = row[f'parameters__{key}']
+            label = config_names.get(raw, raw) if key == 'pconf' else raw
+            values.append({'value': label if label not in (None, '') else '(not recorded)',
+                           'count': row['n']})
+        choices.append({'title': title, 'values': values})
+
+    personal_configs = Config.objects.filter(user__isnull=False).count()
+    personal_users = (Request.objects.filter(parameters__pconf='personal')
+                      .values('user_id').distinct().count())
+
+    context = {
+        **base,
+        'launched': True,
+        'launch': launch,
+        'days_live': (timezone.localdate() - launch).days,
+        'total_accounts': cohorts[2]['accounts'],
+        'cohorts': cohorts,
+        'windows': ACTIVE_WINDOWS,
+        # The kept registrations only; the rejected series is the last one.
+        'registered_this_week': sum(values[-1] for _, _, values in reg_series[:-1]),
+        'registrations_chart': _stacked_chart(buckets, reg_series, 'week'),
+        'wau_chart': _stacked_chart(buckets, wau_series, 'week'),
+        'firsts_chart': _stacked_chart(buckets, firsts_series, 'week'),
+        'funnel': funnel,
+        'pending_url': f'{user_changelist}?pending_approval=yes',
+        'log_url': reverse('admin:admin_logentry_changelist'),
+        'habits': habits,
+        'regulars': regulars,
+        'recent_days': max(ACTIVE_WINDOWS),
+        'recent_count': len(recent_pks),
+        'institutions': top(institutions, 15),
+        'tlds': top(tlds, 15),
+        'choices': choices,
+        'personal_configs': personal_configs,
+        'personal_users': personal_users,
+    }
+    return render(request, 'admin/vald/user_stats.html', context)
 
 
 class HasPasswordFilter(admin.SimpleListFilter):

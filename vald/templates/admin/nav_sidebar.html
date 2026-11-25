@@ -1,7 +1,7 @@
 {% load i18n %}
 
 {% comment %}
-Copied from django/contrib/admin/templates/admin/nav_sidebar.html so the two
+Copied from django/contrib/admin/templates/admin/nav_sidebar.html so the
 cross-model pages can sit in the sidebar and be reachable from anywhere in the
 admin, not just the index. Django ships no block here to hook into.
 
@@ -10,7 +10,7 @@ Django upgrade. Django 5.2.17 at the time of writing.
 
 The module mimics app_list.html's markup on purpose: the quick filter above
 collects "th[scope=row] a" and hides the enclosing <tr>, so matching that shape
-is what makes these two links filterable like every other entry.
+is what makes these links filterable like every other entry.
 {% endcomment %}
 
 <button class="sticky toggle-nav-sidebar" id="toggle-nav-sidebar" aria-label="{% translate 'Toggle navigation' %}"></button>
@@ -21,13 +21,20 @@ is what makes these two links filterable like every other entry.
   {% include 'admin/app_list.html' with app_list=available_apps show_changelinks=False %}
 
   {% url 'admin_stats' as stats_url %}
+  {% url 'admin_user_stats' as user_stats_url %}
   {% url 'admin_help' as help_url %}
-  <div class="module{% if request.path == stats_url or request.path == help_url %} current-app{% endif %}">
+  <div class="module{% if request.path == stats_url or request.path == user_stats_url or request.path == help_url %} current-app{% endif %}">
     <table>
       <caption><span class="section">Reports</span></caption>
       <tr class="model-stats{% if request.path == stats_url %} current-model{% endif %}">
         <th scope="row">
           <a href="{{ stats_url }}"{% if request.path == stats_url %} aria-current="page"{% endif %}>Request statistics</a>
+        </th>
+        <td></td>
+      </tr>
+      <tr class="model-user-stats{% if request.path == user_stats_url %} current-model{% endif %}">
+        <th scope="row">
+          <a href="{{ user_stats_url }}"{% if request.path == user_stats_url %} aria-current="page"{% endif %}>User statistics</a>
         </th>
         <td></td>
       </tr>

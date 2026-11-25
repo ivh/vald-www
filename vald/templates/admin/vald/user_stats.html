@@ -1,0 +1,244 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}{{ block.super }}
+{% include "admin/vald/stats_style.html" %}
+<style>
+  .stats-chart .hover-target { fill: transparent; }
+  .stats-chart .column:hover .seg { opacity: .75; }
+  /* Own tokens rather than the admin's: --secondary goes near-black in the dark
+     theme, which made the strong series vanish into the background. */
+  :root { --series-strong: #417690; --series-weak: #8fbdd3;
+          --series-pending: #d4a90a; --series-rejected: #ba2121; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --series-strong: #6cb4dd; --series-weak: #2f6580;
+          --series-pending: #d9b72a; --series-rejected: #e06060; }
+  }
+  html[data-theme="dark"] { --series-strong: #6cb4dd; --series-weak: #2f6580;
+          --series-pending: #d9b72a; --series-rejected: #e06060; }
+  .state-activated, .origin-legacy { fill: var(--series-strong); background: var(--series-strong); }
+  .state-approved, .origin-registered { fill: var(--series-weak); background: var(--series-weak); }
+  .state-pending { fill: var(--series-pending); background: var(--series-pending); }
+  .state-rejected { fill: var(--series-rejected); background: var(--series-rejected); }
+  .stats-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 1.4em;
+      padding: 0; margin: 0 0 1em; color: var(--body-quiet-color); }
+  .stats-legend li { list-style: none; padding: 0; }
+  .stats-legend .swatch { display: inline-block; width: .9em; height: .9em;
+      border-radius: 2px; margin-right: .4em; vertical-align: -.1em; }
+  .stats-page td .pct { color: var(--body-quiet-color); font-size: .85em; margin-left: .3em; }
+  .stats-columns { display: flex; flex-wrap: wrap; gap: 0 2.4em; }
+  .stats-columns > div { flex: 1 1 18em; min-width: 0; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="stats-page">
+
+{% if not launched %}
+<p class="note">No request has been made on this site yet, so there is no launch
+date to measure from.</p>
+{% else %}
+
+<p>Everything here counts from <strong>{{ launch|date:"Y-m-d" }}</strong>, the first
+request made on this site ({{ days_live }} days ago). <em>Active</em> means submitted
+at least one request: no login is recorded, and the legacy system's request history
+was never imported, so a legacy account counts as active only once it has used
+<em>this</em> site. Request volume is on the
+<a href="{{ request_stats_url }}">request statistics</a> page.</p>
+
+<div class="stats-summary">
+  <div>
+    <div class="figure">{{ total_accounts }}</div>
+    <div class="lbl">Accounts</div>
+  </div>
+  {% for c in cohorts|slice:":2" %}
+  <div>
+    <div class="figure">{{ c.accounts }}</div>
+    <div class="lbl">{% if forloop.first %}Legacy{% else %}Registered here{% endif %}</div>
+  </div>
+  {% endfor %}
+  <div>
+    <div class="figure">{{ cohorts.2.windows.1.n }}</div>
+    <div class="lbl">Active, last {{ windows.1 }} days</div>
+  </div>
+  <div>
+    <div class="figure">{{ registered_this_week }}</div>
+    <div class="lbl">Registered this week</div>
+  </div>
+  {% if funnel.pending %}
+  <div>
+    <div class="figure"><a href="{{ pending_url }}">{{ funnel.pending }}</a></div>
+    <div class="lbl">Awaiting approval</div>
+  </div>
+  {% endif %}
+</div>
+
+<h2>Imported vs registered here</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th></th>
+      <th class="count">Accounts</th>
+      <th class="count">Activated</th>
+      <th class="count">Ever submitted</th>
+      {% for d in windows %}<th class="count">Active {{ d }} d</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in cohorts %}
+    <tr>
+      <td>{{ c.label }}</td>
+      <td class="count"><a href="{{ c.url }}">{{ c.accounts }}</a></td>
+      <td class="count">{{ c.activated.n }}<span class="pct">{{ c.activated.pct }}</span></td>
+      <td class="count">{{ c.ever.n }}<span class="pct">{{ c.ever.pct }}</span></td>
+      {% for w in c.windows %}
+      <td class="count">{{ w.n }}<span class="pct">{{ w.pct }}</span></td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="note"><em>Legacy</em> is every account created before the first request on
+this site. The two small later imports from the old register count as registered here.
+<em>Activated</em> means a password has been set. Legacy accounts arrive without one,
+so for them this is the share that has found its way to the new site and logged in at
+least once.</p>
+
+<h2>New registrations per week</h2>
+
+{% include "admin/vald/stacked_chart.html" with chart=registrations_chart label="Registrations per week by current state" %}
+<p class="note">Coloured by where each account stands <em>today</em>. A rejected
+registration leaves no account behind, only a deletion in the
+<a href="{{ log_url }}">admin log</a>, so it is counted in the week it was rejected
+rather than the week it arrived &mdash; and an admin deleting any other account would
+show up there too.</p>
+
+<h3>From registration to first request</h3>
+
+<table>
+  <tbody>
+    <tr><td>Registrations received</td><td class="count">{{ funnel.applied }}</td></tr>
+    <tr><td>&hellip; rejected and deleted</td><td class="count">{{ funnel.rejected }}</td></tr>
+    <tr><td>&hellip; kept</td><td class="count">{{ funnel.kept }}</td></tr>
+    <tr><td>Approved</td><td class="count">{{ funnel.approved }}</td></tr>
+    <tr><td>Activated (password set)</td><td class="count">{{ funnel.activated }}</td></tr>
+    <tr><td>Submitted at least one request</td><td class="count">{{ funnel.submitted }}</td></tr>
+    <tr><td>&hellip; of which within a day of registering</td><td class="count">{{ funnel.quick }}</td></tr>
+    <tr><td>Median wait, registration to first request</td><td class="count">{{ funnel.median_wait }}</td></tr>
+  </tbody>
+</table>
+
+<h2>Weekly active accounts</h2>
+
+{% include "admin/vald/stacked_chart.html" with chart=wau_chart label="Distinct accounts submitting per week" %}
+<p class="note">Distinct accounts that submitted anything that week. The legend
+totals add up account-weeks, not people.</p>
+
+<h3>First request on this site, per week</h3>
+
+{% include "admin/vald/stacked_chart.html" with chart=firsts_chart label="Accounts making their first request per week" %}
+<p class="note">For legacy accounts this is the week each one came back after the
+switch; the tail of that series is how many old users are still discovering the new
+site.</p>
+
+<h2>Regulars</h2>
+
+<p>How many distinct days each account has submitted on. A heavy user with one long
+session counts once here, which is what separates regulars from bursts.</p>
+
+<div class="stats-columns">
+<div>
+<table>
+  <thead><tr><th>Came on</th><th class="count">Accounts</th></tr></thead>
+  <tbody>
+    {% for h in habits %}
+    <tr><td>{{ h.label }}</td>
+        <td class="count">{{ h.count }}<span class="pct">{{ h.pct }}</span></td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<div>
+<table>
+  <thead>
+    <tr>
+      <th>User</th>
+      <th class="count">Days</th>
+      <th class="count">Requests</th>
+      <th class="count">Last</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in regulars %}
+    <tr>
+      <td><a href="{{ r.url }}">{{ r.name }}</a>{% if not r.legacy %} <span class="pct">new</span>{% endif %}</td>
+      <td class="count">{{ r.days }}</td>
+      <td class="count">{{ r.requests }}</td>
+      <td class="count">{{ r.last|date:"Y-m-d" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+
+<h2>Where recent users write from</h2>
+
+<p>Primary email address of the {{ recent_count }} account{{ recent_count|pluralize }}
+active in the last {{ recent_days }} days. An address is a rough proxy: webmail says
+nothing about the institution, and people keep old addresses after moving.</p>
+
+<div class="stats-columns">
+<div>
+<h3>Institution</h3>
+<table>
+  <tbody>
+    {% for r in institutions %}
+    <tr><td><code>{{ r.name }}</code></td><td class="count">{{ r.count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<div>
+<h3>Top-level domain</h3>
+<table>
+  <tbody>
+    {% for r in tlds %}
+    <tr><td><code>{{ r.name }}</code></td><td class="count">{{ r.count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+</div>
+
+<h2>What recent users choose</h2>
+
+<p>Counted in accounts over the last {{ recent_days }} days, not requests, so one
+heavy user is one vote. An account that switched counts under each choice it made.
+Personal linelist configurations on file: {{ personal_configs }}, most of them
+imported. Accounts that have ever submitted with one: {{ personal_users }}.</p>
+
+<div class="stats-columns">
+{% for c in choices %}
+<div>
+<h3>{{ c.title }}</h3>
+<table>
+  <tbody>
+    {% for v in c.values %}
+    <tr><td>{{ v.value }}</td><td class="count">{{ v.count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endfor %}
+</div>
+
+{% endif %}
+</div>
+{% endblock %}

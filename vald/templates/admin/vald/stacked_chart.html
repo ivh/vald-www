@@ -1,0 +1,37 @@
+{% comment %}
+A chart from admin._stacked_chart. Hovering anywhere on a column gives every
+series' count for it, which is why the <title> sits on the group, not a segment.
+{% endcomment %}
+<svg class="stats-chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}"
+     role="img" aria-label="{{ label }}">
+  {% for tick in chart.y_ticks %}
+    <line class="grid" x1="{{ chart.plot_left }}" y1="{{ tick.y }}"
+          x2="{{ chart.plot_right }}" y2="{{ tick.y }}"/>
+    <text class="ylabel" x="{{ chart.plot_left|add:"-8" }}" y="{{ tick.y }}"
+          dominant-baseline="middle">{{ tick.value }}</text>
+  {% endfor %}
+  <line class="axis" x1="{{ chart.plot_left }}" y1="{{ chart.baseline }}"
+        x2="{{ chart.plot_right }}" y2="{{ chart.baseline }}"/>
+  {% for bar in chart.bars %}
+    <g class="column">
+      <title>{{ bar.title }}</title>
+      {# Transparent full-height target, so a short or empty column still hovers. #}
+      <rect class="hover-target" x="{{ bar.x }}" y="{{ chart.plot_top }}"
+            width="{{ bar.w }}" height="{{ chart.plot_height }}"/>
+      {% for seg in bar.segments %}
+        <rect class="seg {{ seg.css }}" x="{{ bar.x }}" y="{{ seg.y }}"
+              width="{{ bar.w }}" height="{{ seg.h }}"/>
+      {% endfor %}
+    </g>
+  {% endfor %}
+  {% for label in chart.x_labels %}
+    <text class="xlabel" x="{{ label.x }}" y="{{ chart.label_y }}">{{ label.text }}</text>
+  {% endfor %}
+</svg>
+{% if chart.legend|length > 1 %}
+<ul class="stats-legend">
+  {% for item in chart.legend %}
+    <li><span class="swatch {{ item.css }}"></span>{{ item.label }} ({{ item.total }})</li>
+  {% endfor %}
+</ul>
+{% endif %}
